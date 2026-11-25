@@ -24,7 +24,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "0.7.2"
+VERSION = "0.7.3"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -97,6 +97,7 @@ class Api:
         self._queue: list[dict] = self._load_queue()
         self._reading = {"active": False, "path": "", "started": 0.0, "error": ""}
         self._last_check = 0.0
+        self._started = __import__("time").time()     # 이 시각 이후에 저장된 세이브만 자동으로 읽는다
         self._index = faceindex.FaceIndex()
         self._thumbs: dict[str, str] = {}
         threading.Thread(target=lambda: self._index.build(self._cfg.graphics_dir), daemon=True).start()
@@ -240,8 +241,14 @@ class Api:
                 self._cfg.last_save = str(p)
                 self._cfg.save()
             return
-        if not force and not self._cfg.follow_save:
-            return      # 자동 읽기는 끔: 사용자가 버튼을 누를 때만 읽는다
+        if not force:
+            if not self._cfg.follow_save:
+                return      # 자동 읽기는 끔: 사용자가 버튼을 누를 때만 읽는다
+            try:
+                if p.stat().st_mtime < self._started:
+                    return  # 켜져 있어도 프로그램을 켠 뒤 게임에서 새로 저장한 것만 읽는다
+            except OSError:
+                return
         self._reading = {"active": True, "path": str(p), "started": _t.time(), "error": ""}
         try:
             data = savedata.read_save(p)

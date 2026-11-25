@@ -26,11 +26,11 @@ REF = {
 REF_GAME = {
     "ko": ("첫 번째 첨부 사진은 게임 속 3D 그래픽 얼굴이에요. 이 그림을 고치거나 따라 그리지 말고, "
            "이 사람이 실제로 있다면 찍혔을 법한 새 실제 사진을 처음부터 만들어 주세요. "
-           "그림에서 참고할 것은 피부색, 머리 색과 머리 모양, 대략적인 얼굴형과 이목구비 비율, 나이대뿐이에요. "
+           "그림에서 참고할 것은 피부색, 머리 색과 머리 모양, 나이대뿐이에요. 얼굴 생김새는 아래 설명을 따라 새로 만들어 주세요. "
            "눈 색은 그래픽의 회색빛을 따르지 말고 실제 사람처럼 자연스럽게 해 주세요. "),
     "en": ("The first attached image is a 3D video-game render of a face. Do not edit, trace or copy that render. "
            "Create a brand-new real photograph of how this person would look in real life. Take only these from the "
-           "render: skin tone, hair colour and hairstyle, rough face shape and proportions, and age range. "
+           "render: skin tone, hair colour and hairstyle, and age range. Build the facial features from the description below. "
            "Do not copy the render's grey eye colour; give natural, realistic eyes. "),
 }
 
@@ -51,13 +51,21 @@ FEATURES = {
     "face": [("갸름한 얼굴", "a narrow face"), ("각진 턱", "a square jaw"), ("둥근 얼굴", "a round face"),
              ("광대가 도드라진 얼굴", "prominent cheekbones"), ("긴 얼굴", "a long face")],
     "brow": [("짙은 눈썹", "thick eyebrows"), ("옅은 눈썹", "thin, light eyebrows"), ("일자 눈썹", "straight eyebrows")],
+    "nose": [("콧대가 높은 코", "a high-bridged nose"), ("넓적한 코", "a broad nose"), ("작고 동그란 코", "a small rounded nose"),
+             ("매부리코", "a slightly hooked nose")],
+    "eyes": [("쌍꺼풀 없는 가는 눈", "narrow eyes"), ("큰 눈", "large eyes"), ("깊게 들어간 눈", "deep-set eyes"),
+             ("처진 눈매", "downturned eyes")],
+    "extra": [("주근깨", "freckles"), ("작은 흉터 하나", "a small scar"), ("튀어나온 귀", "slightly protruding ears"),
+              ("두꺼운 입술", "full lips"), ("얇은 입술", "thin lips"), ("", ""), ("", "")],
     "beard": [("깔끔하게 면도한 얼굴", "clean-shaven"), ("살짝 자란 수염", "light stubble"), ("짧게 다듬은 수염", "a short trimmed beard")],
 }
 
 
-def random_features(age: str, lang: str) -> str:
+def random_features(age: str, lang: str, with_hair: bool = True) -> str:
+    """with_hair=False: 게임 얼굴을 참고할 때 (머리는 그림을 따르고 얼굴 생김새만 섞는다)"""
     i = 1 if lang == "en" else 0
-    pick = [random.choice(FEATURES["hair"])[i], random.choice(FEATURES["face"])[i], random.choice(FEATURES["brow"])[i]]
+    pick = [random.choice(FEATURES[k])[i] for k in (("hair",) if with_hair else ()) + ("face", "brow", "nose", "eyes", "extra")]
+    pick = [x for x in pick if x]
     try:
         adult = int(age) >= 20
     except (TypeError, ValueError):
@@ -163,7 +171,8 @@ def face_prompt(person: dict, *, lang: str, template: str, has_ref: bool, has_ki
     outfit, badge_ok = outfit_text(kind, plain_club, kit_index, manager_outfit, lang)
     vars_ = {
         "ref": ((REF_GAME if ref_mode == "game" else REF)[lang]) if has_ref else "",
-        "features": "" if has_ref else random_features(age, lang),
+        "features": ("" if ref_mode == "photo" else random_features(age, lang, with_hair=False)) if has_ref
+                    else random_features(age, lang),
         "realism": REALISM[lang],
         "subject": subject, "outfit": outfit, "expression": EXPRESSIONS[expr][lang],
         "badge_note": (" (유니폼의 엠블럼과 스폰서는 괜찮아요)" if lang == "ko" else " (the kit's badge and sponsor are fine)") if badge_ok else "",
