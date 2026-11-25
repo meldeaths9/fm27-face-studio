@@ -24,7 +24,7 @@ from .people import People
 from .settings import DEFAULT_PROMPT, REF_SENTENCE, Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "0.5.0"
+VERSION = "0.5.1"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -214,7 +214,8 @@ class Api:
             for p in self._people.items:
                 kinds[p.get("kind", "")] = kinds.get(p.get("kind", ""), 0) + 1
             save["counts"] = kinds
-        return {"save": save, "game": g, "graphics_dir": c.graphics_dir, "auto_refresh": c.auto_refresh}
+        return {"save": save, "game": g, "graphics_dir": c.graphics_dir, "auto_refresh": c.auto_refresh,
+                "bepinex_url": gamesetup.BEPINEX_URL}
 
     @_safe
     def install_plugin(self) -> dict:

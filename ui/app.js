@@ -765,13 +765,13 @@ function renderPop() {
     const pOk = g.plugin_installed && g.plugin_up_to_date && g.bepinex;
     const diagOn = g.connected && g.heartbeat && g.heartbeat.diagnosing;
     html = `<h4><i class="${pOk ? "ok" : "warn"}"></i>${pOk ? "플러그인이 설치되어 있어요" : g.plugin_installed ? "플러그인을 업데이트해야 해요" : "플러그인이 설치되어 있지 않아요"}</h4>
-      <div class="kv">${row("BepInEx", g.bepinex ? (g.bepinex_ready ? "설치됨" : "설치됨 · 게임을 한 번 켜야 준비돼요") : "없음", g.bepinex ? "ok" : "warn")}
+      <div class="kv">${row("BepInEx", g.bepinex ? (g.bepinex_ready ? "설치됨" : "설치됨 · 게임을 한 번 켜야 준비돼요") : "없음 — 먼저 설치해 주세요", g.bepinex ? "ok" : "warn")}
         ${row("플러그인", g.plugin_installed ? (g.plugin_up_to_date ? "설치됨 (최신)" : "예전 버전") : "없음", g.plugin_installed && g.plugin_up_to_date ? "ok" : "warn")}
         ${row("게임 연결", g.connected ? "연결됨" : g.running ? "응답 없음" : "게임 꺼짐", g.connected ? "ok" : "")}
         ${g.heartbeat && g.heartbeat.last ? row("최근 결과", g.heartbeat.last, "dim") : ""}</div>
-      <div class="note">플러그인이 있으면 '한 번에 적용' 후 게임을 끄지 않아도 사진이 바로 바뀌어요.</div>
+      <div class="note">플러그인이 있으면 '한 번에 적용' 후 게임을 끄지 않아도 사진이 바로 바뀌어요.${g.bepinex ? "" : `<br><b style="color:var(--warn)">BepInEx 6 (Unity IL2CPP, win-x64, be.793 이상)</b>를 먼저 FM27 설치 폴더에 설치하고 게임을 한 번 켰다 꺼 주세요. <a data-act="bepinex">BepInEx 받는 곳</a>`}</div>
       <div style="margin-top:10px"><label class="switch"><input type="checkbox" id="optAuto" ${ST.auto_refresh ? "checked" : ""}><i></i>적용 후 게임에 자동 반영</label></div>
-      <div class="acts">${!pOk ? `<button class="btn primary" data-act="install">${ico("upload")}${g.plugin_installed ? "업데이트" : "설치하기"}</button>` : ""}
+      <div class="acts">${!pOk && g.bepinex ? `<button class="btn primary" data-act="install">${ico("upload")}${g.plugin_installed ? "플러그인 업데이트" : "플러그인 설치"}</button>` : ""}
         ${g.connected ? `<button class="btn" data-act="refresh">${ico("refresh")}지금 반영</button>` : ""}</div>
       <hr><div class="k" style="font-size:12px;color:var(--muted);font-weight:700">진단 (감독 사진·지원 스태프 작업용)</div>
       <div class="note" style="margin-top:6px">진단을 켜고 2분 동안 내 감독 프로필, 언론 담당자·개인 비서 프로필을 차례로 열어 주세요. 끝나면 진단 파일을 보내 주시면 돼요.</div>
@@ -790,14 +790,14 @@ async function popAction(act, btn) {
   else if (act === "launch") { await call("launch_game"); toast("Steam으로 FM27을 켰어요.", "ok", 2500); }
   else if (act === "gamefolder") call("open_game_folder");
   else if (act === "diagfolder") call("open_diag_folder");
+  else if (act === "bepinex") call("open_url", ST.bepinex_url);
   else if (act === "install") {
     const g = ST.game;
     if (g.running) { toast("FM27이 켜져 있어요. 게임을 완전히 끈 다음 설치해 주세요.", "err"); return; }
-    if (!await confirmBox("플러그인 설치", (g.bepinex ? "" : "BepInEx(모드 로더)가 없어서 같이 설치해요. 이미 다른 모드용 BepInEx가 있으면 건드리지 않아요.\n\n")
-      + "게임 폴더(Program Files)에 쓰려면 관리자 권한이 필요해요. 권한 창이 뜨면 '예'를 눌러 주세요.\n\n설치할까요?", "설치")) return;
+    if (!await confirmBox("플러그인 설치", "FM27 Face Studio 플러그인을 BepInEx\\plugins 폴더에 넣어요. BepInEx와 다른 플러그인은 건드리지 않아요.\n\n게임 폴더(Program Files)에 쓰려면 관리자 권한이 필요해요. 권한 창이 뜨면 '예'를 눌러 주세요.\n\n설치할까요?", "설치")) return;
     btn.disabled = true; btn.textContent = "설치 중…";
     const r = await call("install_plugin");
-    if (r && r.done) toast("설치 완료: " + r.done.join(", ") + (r.done.some((d) => d.startsWith("BepInEx")) ? "\n처음 게임을 켤 때는 준비 작업 때문에 몇 분 걸리고 인터넷이 필요해요." : "\n게임을 켜면 플러그인이 적용돼요."), "ok", 9000);
+    if (r && r.done) toast("설치 완료: " + r.done.join(", ") + "\n게임을 켜면 플러그인이 적용돼요.", "ok", 7000);
     pollStatus();
   } else if (act === "refresh") {
     btn.disabled = true;

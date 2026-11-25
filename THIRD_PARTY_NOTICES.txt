@@ -19,9 +19,6 @@ sublicense, and/or sell copies of the Software, subject to the condition that th
 notice and this permission notice shall be included in all copies or substantial portions of the
 Software. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
 
-BepInEx 6.0.0-be.793 (Unity IL2CPP, win-x64) — https://github.com/BepInEx/BepInEx
-LGPL-2.1. Bundled unmodified; installed into the game folder only when BepInEx is not already there.
-Includes Doorstop (LGPL-2.1), HarmonyX (MIT), Il2CppInterop (LGPL-3.0), Cpp2IL (MIT) and a .NET 6 runtime (MIT).
-
-FM27 Face Studio plugin (plugin/src) is our own code. It references interop assemblies that BepInEx
-generates from the game on the user's computer; those files are not included in this repository.
+FM27 Face Studio plugin (plugin/src) is our own code. It runs on BepInEx 6 (installed separately by the user)
+and references interop assemblies that BepInEx generates from the game on the user's computer; those files are
+not included in this repository.

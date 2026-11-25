@@ -1,7 +1,6 @@
 """FM27 게임 폴더 찾기, BepInEx·플러그인 설치, 플러그인과 통신.
 
-- BepInEx는 공식 배포본(6.0.0-be.793, LGPL-2.1)을 수정 없이 함께 넣어 두고, 게임 폴더에 없을 때만 설치한다.
-- 이미 BepInEx가 있으면(다른 모드용 포함) 건드리지 않고 플러그인만 넣는다.
+- BepInEx는 버전이 많아 이 프로그램이 설치하지 않는다. 사용자가 먼저 설치하고, 우리는 플러그인만 넣는다.
 - Program Files 아래는 쓰기 권한이 없으니 관리자 권한으로 이 exe를 다시 실행해서 설치한다.
 - 플러그인과는 %APPDATA%\\FM27FacePicker\\plugin 의 JSON 파일로 주고받는다.
 """
@@ -17,7 +16,6 @@ import subprocess
 import sys
 import time
 import uuid
-import zipfile
 from pathlib import Path
 
 from .pack import fm_running
@@ -26,9 +24,11 @@ from .settings import app_data_dir
 log = logging.getLogger("gamesetup")
 BASE = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
 PLUGIN_DLL = BASE / "plugin_dist" / "FM27FaceStudio.dll"
-BEPINEX_ZIP_DIR = BASE / "bepinex"
 STEAM_APP_ID = "4530370"   # Football Manager 27
 PLUGIN_FOLDER = "FM27FaceStudio"
+BEPINEX_URL = "https://builds.bepinex.dev/projects/bepinex_be"
+BEPINEX_HELP = ("BepInEx가 설치되어 있지 않아요. BepInEx 6 (Unity IL2CPP, win-x64, be.793 이상)를 먼저 "
+                "FM27 설치 폴더(fm.exe가 있는 곳)에 설치하고, 게임을 한 번 켰다 끈 뒤 다시 시도해 주세요.")
 
 
 # ------------------------------------------------------------------ 게임 폴더
@@ -88,14 +88,6 @@ def _md5(path: Path) -> str:
         return ""
 
 
-def bundled_bepinex() -> Path | None:
-    if BEPINEX_ZIP_DIR.is_dir():
-        zips = sorted(BEPINEX_ZIP_DIR.glob("*.zip"))
-        if zips:
-            return zips[0]
-    return None
-
-
 def bridge_dir() -> Path:
     d = app_data_dir() / "plugin"
     d.mkdir(exist_ok=True)
@@ -127,7 +119,6 @@ def status(game_dir: str) -> dict:
         "running": fm_running(),
         "bepinex": bool(has_loader),
         "bepinex_ready": bool(initialized),
-        "bundled_bepinex": bundled_bepinex() is not None,
         "plugin_installed": installed,
         "plugin_up_to_date": bool(up_to_date),
         "plugin_available": PLUGIN_DLL.exists(),
@@ -154,22 +145,7 @@ def install(game_dir: str) -> list[str]:
         raise RuntimeError("FM27 게임 폴더가 아니에요 (fm.exe가 없음).")
     done: list[str] = []
     if not ((g / "winhttp.dll").exists() and (g / "BepInEx" / "core").is_dir()):
-        z = bundled_bepinex()
-        if not z:
-            raise RuntimeError("BepInEx가 설치되어 있지 않고, 프로그램에 BepInEx가 들어 있지 않아요.")
-        n = 0
-        with zipfile.ZipFile(z) as zf:
-            for info in zf.infolist():
-                if info.is_dir():
-                    continue
-                dst = g / info.filename
-                if dst.exists():
-                    continue          # 이미 있는 파일은 덮어쓰지 않음
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                with zf.open(info) as src, open(dst, "wb") as out:
-                    shutil.copyfileobj(src, out)
-                n += 1
-        done.append(f"BepInEx 6 설치 ({n}개 파일)")
+        raise RuntimeError(BEPINEX_HELP)
     if not PLUGIN_DLL.exists():
         raise RuntimeError("프로그램 안에 플러그인 파일이 없어요.")
     pdir = g / "BepInEx" / "plugins" / PLUGIN_FOLDER
