@@ -64,13 +64,14 @@
       <button class="btn sm" id="btnManual" title="세이브 없이 UID로 바로 편집"><svg class="i"><use href="#i-edit"/></svg>UID로 직접 편집</button></div>
     <div class="pb grow">
       <div class="btool">
-        <div class="seg seg3" id="kindSeg"><button class="on" data-kind="player">선수</button><button data-kind="staff">스태프</button><button data-kind="support">지원 스태프</button></div>
+        <div class="seg seg4" id="kindSeg"><button class="on" data-kind="player">선수</button><button data-kind="staff">스태프</button><button data-kind="support">지원 스태프</button><button data-kind="manager">내 감독</button></div>
         <label class="field"><svg class="i"><use href="#i-search"/></svg><input id="qName" placeholder="이름" autocomplete="off"></label>
         <label class="field"><svg class="i"><use href="#i-shield"/></svg><input id="qTeam" placeholder="팀" autocomplete="off"></label>
         <button class="btn" id="btnMyTeam" title="내가 맡은 팀만 보기">내 팀</button>
         <div class="sp"></div>
         <div class="chips" id="fChips"><button class="chip on" data-f="all">전체</button><button class="chip" data-f="none">사진 없음</button><button class="chip" data-f="has">사진 있음</button><button class="chip" data-f="ours">내가 넣은 사진</button></div>
       </div>
+      <div class="btool2" id="sqRow"><span class="lbl2">소속 팀</span><div class="chips" id="sqChips"><button class="chip on" data-s="">전체</button><button class="chip" data-s="1군">1군</button><button class="chip" data-s="2군">2군</button><button class="chip" data-s="U-21">U-21</button><button class="chip" data-s="U-18">U-18</button></div><span class="hint" style="margin-left:8px">2군·유스 구분은 나이로 추정해요</span></div>
       <div class="gridwrap grow" id="bwrap"><div class="bgrid" id="bgrid"></div><div id="bmore"></div></div>
     </div>
   </section>
@@ -91,6 +92,7 @@
             <div class="full"><span class="lbl">UID <span class="hint">· 생성 인물은 r- 붙여도 돼요</span></span><label class="field"><input id="fUid" placeholder="게임 프로필의 고유번호"></label></div>
             <div class="full"><span class="lbl">이름</span><label class="field"><input id="fName" placeholder="표시용 이름"></label></div>
             <div class="full"><span class="lbl">소속</span><label class="field"><input id="fClub"></label></div>
+            <div class="full"><span class="lbl">클럽 설명 <span class="hint">· AI용, 작은 클럽은 AI가 잘 몰라요</span></span><label class="field"><input id="fClubHint" placeholder="예: 잉글랜드 크로즈비의 클럽"></label></div>
             <div><span class="lbl">나이</span><label class="field"><input id="fAge"></label></div>
             <div><span class="lbl">국적 <span class="hint">· AI용</span></span><label class="field"><input id="fNat" placeholder="예: Korea"></label></div>
           </div>
@@ -150,11 +152,14 @@
             <div class="sp"></div>
             <select id="aiSel"></select>
           </div>
-          <div class="kitrow" id="kitRow" hidden>
+          <div class="exprrow" id="exprRow"><span class="lbl2">표정</span><div class="chips" id="exprChips"></div>
+            <div class="chips" id="mgrOutfit" hidden style="margin-left:10px"><button class="chip" data-o="suit">정장</button><button class="chip" data-o="training">트레이닝복</button></div></div>
+          <div class="kitrow" id="kitRow">
             <div class="kitimg" id="kitImg"><span>유니폼<br>사진</span></div>
-            <div class="hint grow">유니폼 사진을 넣으면 그 유니폼으로 바꿔요. 없으면 <b>소속 팀의 홈 유니폼</b>으로 요청해요. 편집기 사진(선수 사진)은 그대로 두고 옷만 바꿔요.</div>
+            <div class="hint grow" id="kitHint">유니폼 사진을 넣으면 그 유니폼을 입혀요. 없으면 <b>소속 팀의 홈 유니폼</b>으로 요청해요.</div>
             <button class="btn sm" id="btnKit">유니폼 사진</button><button class="btn sm ghost" id="btnKitX" hidden>빼기</button>
           </div>
+          <div class="step2" id="step2" hidden><span><b>① 사진</b>을 사이트에 붙여넣었으면</span><button class="btn sm primary" id="btnStep2">② 프롬프트 복사</button><span class="hint">누른 다음 사이트에서 한 번 더 Ctrl+V</span><button class="x" id="btnStep2X" title="닫기"><svg class="i"><use href="#i-x"/></svg></button></div>
           <textarea id="prompt" rows="3" placeholder="프롬프트 — 인물을 고르면 자동으로 채워져요"></textarea>
           <div class="row">
             <label class="switch" id="sendPhotoWrap"><input type="checkbox" id="sendPhoto" checked><i></i>현재 사진 참고</label>
@@ -212,8 +217,10 @@
     </div>
 
     <div class="sec">프롬프트</div>
-    <div><span class="lbl">프롬프트 틀 <a id="lnkDefault" style="margin-left:6px">기본값으로</a></span><textarea id="sTpl" rows="5"></textarea>
-      <div class="hint" style="margin-top:5px">쓸 수 있는 칸: {ref} {role} {age_text} {nationality_text} {name} {club} {age} {nationality}</div></div>
+    <div><span class="lbl">프롬프트 언어</span><select id="sLang"><option value="ko">한국어 (기본)</option><option value="en">영어</option></select>
+      <div class="hint" style="margin-top:5px">클라우드플레어는 영어만 잘 알아들어서 언제나 영어로 보내요.</div></div>
+    <div><span class="lbl">프롬프트 틀 <a id="lnkDefault" style="margin-left:6px">기본값으로</a></span><textarea id="sTpl" rows="6" placeholder="비워 두면 기본 프롬프트를 써요"></textarea>
+      <div class="hint" style="margin-top:5px">쓸 수 있는 칸: {ref} {subject} {outfit} {expression} {badge_note} {role} {name} {club} {age} {nationality}</div></div>
   </div>
   <div class="df"><button class="btn" data-close>취소</button><button class="btn primary" id="btnSaveSettings">저장</button></div>
 </div></div>

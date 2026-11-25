@@ -16,7 +16,7 @@ from .pack import looks_like_newgen
 from .settings import app_data_dir, default_fm_user_dir
 
 log = logging.getLogger("savedata")
-CACHE_VERSION = 2
+CACHE_VERSION = 3
 
 JOB_KO = {
     "COACH": "코치", "CHAIRPERSON": "회장", "DIRECTOR": "이사", "MANAGING_DIRECTOR": "대표이사",
@@ -70,6 +70,33 @@ def _name(rec) -> str:
     return " ".join(x for x in (first, last) if x) or ""
 
 
+SQUADS = ("1군", "2군", "U-21", "U-18")
+
+
+def _label_squads(players: list[dict], keys: list[tuple]) -> None:
+    """클럽 안의 팀 칸(slot)으로 1군/2군/U-21/U-18을 나눈다.
+    세이브에는 칸 번호만 있고 어느 칸이 유스팀인지는 없어서, 0번 칸은 1군, 나머지는 그 칸 선수들의 평균 나이로 정한다."""
+    from collections import defaultdict
+    ages: dict[tuple, list[int]] = defaultdict(list)
+    for p, (cuid, tclub, slot) in zip(players, keys):
+        if slot is None or cuid is None:
+            continue
+        try:
+            ages[(cuid, tclub, slot)].append(int(p["age"]))
+        except (TypeError, ValueError):
+            pass
+    label: dict[tuple, str] = {}
+    for k, a in ages.items():
+        cuid, tclub, slot = k
+        if slot == 0 and (tclub is None or tclub == cuid):
+            label[k] = "1군"
+            continue
+        avg = sum(a) / len(a) if a else 99
+        label[k] = "U-18" if avg < 18.6 else "U-21" if avg < 21.6 else "2군"
+    for p, k in zip(players, keys):
+        p["squad"] = label.get(k, "")
+
+
 def read_save(path: str | Path) -> dict:
     """세이브를 읽어 인물 목록을 만들고 캐시에 저장."""
     import fmsave  # 무거운 import는 필요할 때만
@@ -87,16 +114,22 @@ def read_save(path: str | Path) -> dict:
                                  "manager": m.manager_name, "manager_staff_uid": m.manager_staff_uid})
             my_club_names = {c["name"] for c in my_clubs}
 
+            squad_keys: list[tuple] = []
             for pl in s.players():
                 uid = pl.unique_id
                 if uid is None:
                     continue
                 club = pl.club_name or ""
+                slot = getattr(pl, "team_slot", None)
+                tclub = getattr(pl, "team_club_uid", None)
+                cuid = getattr(pl, "club_uid", None)
+                squad_keys.append((cuid, tclub, slot))
                 people.append({
                     "uid": str(uid), "name": _name(pl), "club": club, "age": pl.age or "",
                     "kind": "player", "newgen": looks_like_newgen(str(uid)), "job": "",
-                    "mine": club in my_club_names, "me": False,
+                    "mine": club in my_club_names, "me": False, "squad": "",
                 })
+            _label_squads([p for p in people if p["kind"] == "player"], squad_keys)
             for st in s.staff():
                 uid = st.unique_id
                 if uid is None:

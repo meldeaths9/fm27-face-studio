@@ -9,7 +9,7 @@ from pathlib import Path
 APP_NAME = "FM27FacePicker"
 PACK_FOLDER_NAME = "FacePicker"          # graphics 폴더 안에 만들 이 프로그램 전용 폴더
 FM_FOLDER_NAME = "Football Manager 27"
-SETTINGS_VERSION = 3
+SETTINGS_VERSION = 4
 
 GEMINI_MODELS = [
     "gemini-3.1-flash-image",
@@ -73,9 +73,14 @@ class Settings:
         self.last_save: str = ""
         self.game_dir: str = ""
         self.auto_refresh: bool = True
-        self.follow_save: bool = True     # 게임의 '가장 최근 세이브'를 자동으로 따라가기
+        self.follow_save: bool = False    # 게임의 '가장 최근 세이브'를 자동으로 따라가기 (기본: 끔)
         self.output_size: int = 512
-        self.prompt_template: str = DEFAULT_PROMPT
+        self.prompt_template: str = ""     # 비어 있으면 기본 프롬프트(언어별)
+        self.prompt_lang: str = "ko"       # ko / en (클라우드플레어는 항상 영어)
+        self.expression: str = "random"
+        self.manager_outfit: str = "suit"  # suit / training
+        self.manager_uid: str = ""         # 내 감독 UID (세이브 없이 넣었을 때도 기억)
+        self.club_hints: dict = {}         # {클럽 이름: "잉글랜드 크로즈비의 클럽"}
         self.send_photo: bool = True
         self.ai_provider: str = "web_gemini"
         self.ai_cfg: dict = {}          # {provider_id: {"key":..., "model":..., "account":...}}
@@ -102,6 +107,11 @@ class Settings:
                 self.ai_cfg["gemini"]["model"] = data.get("gemini_model", "")
             if self.output_size == 250:
                 self.output_size = 512
+        if old_version < 4:
+            self.follow_save = False
+            if self.prompt_template.strip() == DEFAULT_PROMPT.strip():
+                self.prompt_template = ""
+        if old_version < SETTINGS_VERSION:
             self.settings_version = SETTINGS_VERSION
             self.save()
 

@@ -18,13 +18,13 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-from . import ai_models, clipboard, faceindex, gamesetup, imaging, providers, savedata
+from . import ai_models, clipboard, faceindex, gamesetup, imaging, prompts, providers, savedata
 from .pack import FaceEntry, FacePack, find_conflicts, fm_running, looks_like_newgen
 from .people import People
-from .settings import DEFAULT_PROMPT, REF_SENTENCE, UNIFORM_PROMPT, Settings, app_data_dir
+from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "0.6.5"
+VERSION = "0.7.0"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -75,6 +75,9 @@ def _safe(fn):
             return {"error": f"{type(e).__name__}: {e}"}
     wrap.__name__ = fn.__name__
     return wrap
+
+
+BROWSE_MAX = 50       # 첫 화면에 한 번에 보여 줄 최대 인원
 
 
 class Api:
@@ -128,11 +131,15 @@ class Api:
             "settings": {
                 "graphics_dir": c.graphics_dir, "output_size": c.output_size,
                 "prompt_template": c.prompt_template, "send_photo": c.send_photo,
-                "ai_provider": c.ai_provider, "deco": c.deco,
+                "ai_provider": c.ai_provider, "deco": c.deco, "prompt_lang": c.prompt_lang,
+                "expression": c.expression, "manager_outfit": c.manager_outfit, "club_hints": c.club_hints,
             },
             "ai": self._ai_view(),
             "styles": STYLE_LABELS,
-            "default_prompt": DEFAULT_PROMPT,
+            "default_prompt": prompts.FACE["ko"],
+            "default_prompt_en": prompts.FACE["en"],
+            "expressions": prompts.EXPRESSION_LABELS,
+            "squads": list(savedata.SQUADS),
             "people": self._people_info(),
             "queue": self._queue_view(),
             "face_ai": ai_models.face_available(),
@@ -151,7 +158,14 @@ class Api:
             except (TypeError, ValueError):
                 c.output_size = 512
         if "prompt_template" in s:
-            c.prompt_template = str(s["prompt_template"]).strip() or DEFAULT_PROMPT
+            t = str(s["prompt_template"]).strip()
+            c.prompt_template = "" if t in (prompts.FACE["ko"].strip(), prompts.FACE["en"].strip()) else t
+        if s.get("prompt_lang") in ("ko", "en"):
+            c.prompt_lang = s["prompt_lang"]
+        if s.get("expression") in prompts.EXPRESSION_LABELS:
+            c.expression = s["expression"]
+        if s.get("manager_outfit") in ("suit", "training"):
+            c.manager_outfit = s["manager_outfit"]
         if "send_photo" in s:
             c.send_photo = bool(s["send_photo"])
         if s.get("ai_provider") in providers.BY_ID:
@@ -199,31 +213,33 @@ class Api:
             return savedata.last_saved_game() or self._cfg.last_save
         return self._cfg.last_save
 
-    def _maybe_reload(self) -> None:
+    def _maybe_reload(self, force: bool = False, path: str = "", reread: bool = False) -> None:
         """현재 세이브(게임이 마지막으로 저장/불러온 것)에 연결하고, 바뀌었으면 백그라운드로 다시 읽는다."""
         import time as _t
         if self._reading["active"]:
             return
         self._last_check = _t.time()
         try:
-            target = self._target_save()
+            target = path or self._target_save()
         except Exception:  # noqa: BLE001
             return
         if not target or not Path(target).exists():
             return
         p = Path(target)
         try:
-            if _t.time() - p.stat().st_mtime < 4:      # 게임이 아직 저장 중일 수 있음
+            if not force and _t.time() - p.stat().st_mtime < 4:      # 게임이 아직 저장 중일 수 있음
                 return
         except OSError:
             return
-        cache = savedata.load_cache(p)
+        cache = None if reread else savedata.load_cache(p)
         if cache is not None:
             if self._people.save != str(p) or not self._people.items:
                 self._people.set(cache)
                 self._cfg.last_save = str(p)
                 self._cfg.save()
             return
+        if not force and not self._cfg.follow_save:
+            return      # 자동 읽기는 끔: 사용자가 버튼을 누를 때만 읽는다
         self._reading = {"active": True, "path": str(p), "started": _t.time(), "error": ""}
         try:
             data = savedata.read_save(p)
@@ -236,6 +252,24 @@ class Api:
             self._reading["error"] = f"{type(e).__name__}: {e}"
         finally:
             self._reading["active"] = False
+
+    @_safe
+    def read_save_now(self, which: str = "current") -> dict:
+        """버튼으로만 세이브를 읽는다. current: 게임이 마지막으로 쓴 세이브, reload: 지금 세이브 다시 읽기."""
+        if self._reading["active"]:
+            return {"started": True, "path": self._reading["path"]}
+        if which == "reload":
+            path = self._cfg.last_save
+        else:
+            path = savedata.last_saved_game() or self._cfg.last_save
+        if not path or not Path(path).exists():
+            return {"error": "읽을 세이브를 찾지 못했어요. FM27에서 세이브를 한 번 저장하거나 '세이브 직접 고르기'를 눌러 주세요."}
+        self._reading = {"active": True, "path": str(path), "started": __import__("time").time(), "error": ""}
+        def run():
+            self._reading["active"] = False
+            self._maybe_reload(force=True, path=str(path), reread=(which == "reload"))
+        threading.Thread(target=run, daemon=True).start()
+        return {"started": True, "path": str(path)}
 
     # ---------------------------------------------------------------- 첫 화면 (선수 카드)
     def _face_thumb(self, path: str, size: int = 200) -> str:
@@ -258,9 +292,12 @@ class Api:
         return url
 
     @_safe
-    def browse(self, name: str, team: str, kind: str, filt: str = "all", offset: int = 0, limit: int = 40) -> dict:
+    def browse(self, name: str, team: str, kind: str, filt: str = "all", offset: int = 0, limit: int = 50,
+               squad: str = "") -> dict:
         idx = self._index
-        items = self._people.search(name, team, kind, limit=100000, mine_if_empty=True)
+        limit = min(int(limit), BROWSE_MAX)
+        offset = 0
+        items = self._people.search(name, team, kind, limit=100000, mine_if_empty=True, squad=squad)
         def face_of(p):
             return idx.get(p["uid"])
         if filt == "none":
@@ -277,7 +314,7 @@ class Api:
             d["face_state"] = "ours" if f and f.get("ours") else "has" if f else "none"
             d["pack"] = f["pack"] if f else ""
             page.append(d)
-        return {"total": len(items), "items": page, "offset": int(offset),
+        return {"total": len(items), "items": page, "offset": 0, "max": BROWSE_MAX,
                 "index": {"building": idx.building, "count": len(idx.map), "configs": idx.configs},
                 "empty_query": not (name.strip() or team.strip())}
 
@@ -382,6 +419,19 @@ class Api:
                 providers.reveal(files[-1])
             else:
                 os.startfile(d)  # type: ignore[attr-defined]
+        return True
+
+    @_safe
+    def set_club_hint(self, club: str, hint: str) -> bool:
+        club = str(club or "").strip()
+        if not club:
+            return False
+        hint = str(hint or "").strip()
+        if hint:
+            self._cfg.club_hints[club] = hint
+        else:
+            self._cfg.club_hints.pop(club, None)
+        self._cfg.save()
         return True
 
     @_safe
@@ -564,41 +614,30 @@ class Api:
         self._kit = None
         return True
 
-    def _uniform_prompt(self, person: dict) -> str:
-        club = str(person.get("club", "")).strip()
-        if self._kit is not None:
-            kit = "the football kit shown in the second attached image (same colours, pattern, collar, badge and sponsor)"
-        elif club:
-            kit = f"the current home football kit of {club}"
-        else:
-            kit = "a plain dark football training top"
-        return UNIFORM_PROMPT.format(kit_text=kit)
+    def _lang(self) -> str:
+        return "en" if self._cfg.prompt_lang == "en" or self._cfg.ai_provider == "cloudflare" else "ko"
+
+    def _hint(self, person: dict) -> str:
+        return self._cfg.club_hints.get(str(person.get("club", "")).strip(), "")
 
     @_safe
-    def build_prompt(self, person: dict, send_photo: bool, mode: str = "face") -> str:
+    def build_prompt(self, person: dict, send_photo: bool, mode: str = "face", expression: str = "") -> str:
         if mode == "uniform":
-            return self._uniform_prompt(person)
-        age = str(person.get("age", "")).strip()
-        nat = str(person.get("nationality", "")).strip()
-        kind = person.get("kind", "player")
-        has_photo = bool(send_photo) and self._work is not None
-        vars_ = {
-            "ref": REF_SENTENCE if has_photo else "",
-            "role": {"player": "professional football player", "staff": "football club coach",
-                     "support": "football club office staff member in smart business clothes"}.get(kind, "football club coach"),
-            "age_text": f"{age} years old" if age else "",
-            "nationality_text": (", " if age and nat else "") + (f"from {nat}" if nat else ""),
-            "name": str(person.get("name", "")).strip(), "club": str(person.get("club", "")).strip(),
-            "age": age, "nationality": nat,
-        }
-        tpl = self._cfg.prompt_template or DEFAULT_PROMPT
-        try:
-            text = tpl.format(**vars_)
-        except (KeyError, IndexError, ValueError):
-            text = tpl
-        for a, b in ((" ,", ","), (", .", "."), ("a , ", "a "), ("  ", " ")):
-            text = text.replace(a, b)
-        return text.strip()
+            return prompts.uniform_prompt(person, lang=self._lang(), has_kit=self._kit is not None, club_hint=self._hint(person))
+        text, _ = prompts.face_prompt(
+            person, lang=self._lang(), template=self._cfg.prompt_template,
+            has_ref=bool(send_photo) and self._work is not None, has_kit=self._kit is not None,
+            expression=expression or self._cfg.expression, club_hint=self._hint(person),
+            manager_outfit=self._cfg.manager_outfit)
+        return text
+
+    def _face_photos(self, send_photo: bool) -> list:
+        photos = []
+        if send_photo and self._work is not None:
+            photos.append(self._work)
+        if self._kit is not None:
+            photos.append(self._kit)
+        return photos
 
     @_safe
     def ai_web(self, pid: str, prompt: str, send_photo: bool, mode: str = "face") -> dict:
@@ -615,20 +654,26 @@ class Api:
             files = [ref]
             if self._kit is not None:
                 files.append(providers.save_reference(self._kit, "유니폼"))
-        elif send_photo and self._work is not None:
-            ref = providers.save_reference(self._work)
-            files = [ref]
         else:
-            prompt = prompt.replace(REF_SENTENCE, "").replace(REF_SENTENCE.strip(), "").strip()
+            if send_photo and self._work is not None:
+                ref = providers.save_reference(self._work)
+                files.append(ref)
+            else:
+                prompt = prompts.strip_ref(prompt)
+            if self._kit is not None:
+                files.append(providers.save_reference(self._kit, "유니폼"))
+                ref = ref or files[-1]
+        # 사이트는 붙여넣기 한 번에 파일과 글 중 하나만 받는다 → 사진 먼저, 프롬프트는 2단계
         clip = False
         try:
-            clip = clipboard.set_files_and_text(files, prompt)
+            clip = clipboard.set_files_and_text(files, "" if files else prompt)
         except Exception as e:  # noqa: BLE001
             log.warning("클립보드 실패: %s", e)
         if ref and not clip:
             providers.reveal(ref)
         webbrowser.open(p["url"])
-        return {"ok": True, "clip": clip, "with_photo": bool(ref), "files": len(files)}
+        return {"ok": True, "clip": clip, "with_photo": bool(files), "files": len(files),
+                "step2": bool(files), "prompt": prompt}
 
     @_safe
     def ai_generate(self, pid: str, prompt: str, send_photo: bool, mode: str = "face") -> dict:
@@ -646,11 +691,13 @@ class Api:
                     return {"error": "need_key"}
                 raise
             return self._set_photo(im, original=False)
-        photo = self._work if (send_photo and self._work is not None) else None
-        if photo is None or not providers.BY_ID.get(pid, {}).get("ref"):
-            prompt = prompt.replace(REF_SENTENCE, "").replace(REF_SENTENCE.strip(), "").strip()
+        photos = self._face_photos(send_photo)
+        if not providers.BY_ID.get(pid, {}).get("ref"):
+            photos = []
+        if not (send_photo and self._work is not None and photos):
+            prompt = prompts.strip_ref(prompt)
         try:
-            im = providers.generate(pid, cfg, prompt, photo)
+            im = providers.generate(pid, cfg, prompt, photos or None)
         except providers.ProviderError as e:
             if str(e) == "need_key":
                 return {"error": "need_key"}
@@ -703,6 +750,9 @@ class Api:
             "club": str(person.get("club", "")).strip(), "kind": person.get("kind", "player"),
             "newgen": bool(person.get("newgen")) or prefixed, "png": str(png),
         })
+        if person.get("me") and uid != self._cfg.manager_uid:
+            self._cfg.manager_uid = uid
+            self._cfg.save()
         self._save_queue()
         return {"queue": self._queue_view()}
 
@@ -726,7 +776,9 @@ class Api:
         gdir = Path(self._cfg.graphics_dir)
         if not gdir.parent.exists():
             return {"error": f"FM27 사용자 폴더를 찾지 못했어요: {gdir.parent}\n설정에서 graphics 폴더를 지정해 주세요."}
-        if not force and fm_running():
+        hb = gamesetup.heartbeat()
+        live = bool(hb and hb.get("alive"))
+        if not force and not live and fm_running():
             return {"confirm": "fm_running"}
         items = list(self._queue)
         pairs = [(FaceEntry(it["uid"], bool(it["newgen"]), it.get("name", ""), it.get("club", ""),
@@ -757,8 +809,8 @@ class Api:
     def _manager_uid(self) -> str | None:
         for p in getattr(self._people, "items", []) or []:
             if p.get("me"):
-                return str(p.get("uid"))
-        return self._cfg.__dict__.get("manager_uid") or None
+                return str(p.get("uid")).removeprefix("r-")
+        return self._cfg.manager_uid or None
 
     def _sync_manager(self) -> None:
         """내 감독 사진이 적용돼 있으면 플러그인용 파일을 맞춰 둔다. 감독 사진은 config.xml로는 안 바뀐다."""
