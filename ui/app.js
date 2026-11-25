@@ -882,7 +882,7 @@ function renderPop() {
       <div class="acts">${!pOk && g.bepinex ? `<button class="btn primary" data-act="install">${ico("upload")}${g.plugin_installed ? "플러그인 업데이트" : "플러그인 설치"}</button>` : ""}
         ${g.connected ? `<button class="btn" data-act="refresh">${ico("refresh")}지금 반영</button>` : ""}</div>
       <hr><div class="k" style="font-size:12px;color:var(--muted);font-weight:700">진단 (감독 사진·지원 스태프 작업용)</div>
-      <div class="note" style="margin-top:6px">진단을 켜고 2분 동안 내 감독 프로필, 언론 담당자·개인 비서 프로필을 차례로 열어 주세요. 끝나면 진단 파일을 보내 주시면 돼요.</div>
+      <div class="note" style="margin-top:6px">진단을 켜고 2분 동안 게임에서 내 감독 프로필, 그리고 언론 담당자·개인 비서처럼 얼굴이 뜨는 화면(받은 메시지 등)을 차례로 열어 주세요. 끝나면 진단 파일을 보내 주시면 돼요.</div>
       <div class="acts">${g.connected ? (diagOn ? `<button class="btn" data-act="diagstop">진단 끝내기</button>` : `<button class="btn" data-act="diag">진단 시작 (2분)</button>`) : ""}<button class="btn" data-act="diagfolder">${ico("folder")}진단 파일</button></div>`;
   }
   el.innerHTML = html;

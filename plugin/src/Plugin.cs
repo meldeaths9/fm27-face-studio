@@ -20,7 +20,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string Id = "kr.fm27facestudio.plugin";
     public const string Name = "FM27 Face Studio";
-    public const string Version = "0.1.0";
+    public const string Version = "0.2.0";
 
     internal static ManualLogSource L = null!;
     internal static Harmony H = null!;
@@ -242,6 +242,8 @@ internal static class Diag
         if (Active) return "이미 진단 중이에요.";
         Seen.Clear();
         Keys.Clear();
+        Calls.Clear();
+        _callCount = 0;
         _until = Time.realtimeSinceStartup + Math.Clamp(seconds, 10, 900);
         _file = Path.Combine(Bridge.DiagDir, $"diag-{DateTime.Now:yyyyMMdd-HHmmss}.txt");
         var report = new StringBuilder();
@@ -268,6 +270,35 @@ internal static class Diag
                 }
             }
         }
+        // 2판: 사람 사진 주소를 만드는 곳과 실제로 그림을 거는 곳을 따라간다.
+        var traced = new (Type t, string[] names)[]
+        {
+            (typeof(FM.UI.DatabaseObjectImageHelpers), new[] { "ConvertObjectIDToAddressableID", "ConvertDynamicReferenceToAddressableID", "EncodeNewgenAppearanceDescription" }),
+            (typeof(SI.Bindable.SIImage), new[] { "SetImage" }),
+            (typeof(FM.UI.NewGenPortraitResourceLocator), new[] { "Locate", "PrepareGeneration" }),
+            (typeof(FM.UI.NewGenPortraitManager), new[] { "GetIDFromResourceID", "GetNewgenFromResourceIDAsync" }),
+            (typeof(FM.UI.NewGenPortraitTextureLoader), new[] { "DecodeKey", "FindBestPortrait" }),
+            (typeof(FM.UI.EditManagerAppearanceModule), new[] { "MarkProfilePictureDirty" }),
+        };
+        foreach (var (t, names) in traced)
+        {
+            foreach (var m in AccessTools.GetDeclaredMethods(t).Where(m => names.Contains(m.Name)))
+            {
+                try
+                {
+                    var ret = (m as System.Reflection.MethodInfo)?.ReturnType;
+                    var withResult = ret is not null && ret != typeof(void) && !ret.IsValueType;
+                    var post = new HarmonyMethod(typeof(Diag).GetMethod(withResult ? nameof(TracePostR) : nameof(TracePost),
+                        System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic));
+                    Plugin.H.Patch(m, postfix: post);
+                    Patched.Add(m);
+                }
+                catch (Exception e)
+                {
+                    Calls.AppendLine($"(감시 실패) {t.Name}.{m.Name}: {e.Message}");
+                }
+            }
+        }
         Active = true;
         return $"진단 시작 ({seconds}초). 그동안 내 감독 프로필, 지원 스태프(언론 담당자 등) 프로필, 사진이 바뀌어야 할 선수 프로필을 차례로 열어 주세요. 감시 {Patched.Count}곳.";
     }
@@ -289,6 +320,68 @@ internal static class Diag
         }
     }
 
+    private static readonly StringBuilder Calls = new();
+    private static int _callCount;
+
+    private static void TracePost(System.Reflection.MethodBase __originalMethod, object[] __args) => Trace(__originalMethod, __args, null, false);
+    private static void TracePostR(System.Reflection.MethodBase __originalMethod, object[] __args, object __result) => Trace(__originalMethod, __args, __result, true);
+
+    private static void Trace(System.Reflection.MethodBase m, object[] args, object? result, bool hasResult)
+    {
+        if (!Active) return;
+        try
+        {
+            var sb = new StringBuilder();
+            sb.Append(m.DeclaringType?.Name).Append('.').Append(m.Name).Append('(');
+            for (var i = 0; i < (args?.Length ?? 0); i++)
+            {
+                if (i > 0) sb.Append(", ");
+                sb.Append(Describe(args![i]));
+            }
+            sb.Append(')');
+            if (hasResult) sb.Append(" => ").Append(Describe(result));
+            var line = sb.ToString();
+            if (line.Length > 600) line = line[..600];
+            if (!Seen.Add("C|" + line) || ++_callCount > 5000) return;
+            Calls.AppendLine($"{DateTime.Now:HH:mm:ss}  {line}");
+        }
+        catch (Exception e)
+        {
+            if (Seen.Add("E|" + m.Name)) Calls.AppendLine($"(기록 실패) {m.Name}: {e.Message}");
+        }
+    }
+
+    private static string Describe(object? o)
+    {
+        if (o is null) return "null";
+        try
+        {
+            switch (o)
+            {
+                case string str: return "\"" + str + "\"";
+                case SI.Bindable.DynamicReference dr:
+                {
+                    string id = "?", txt = "";
+                    try { id = dr.ID.ToString(); } catch { }
+                    try { txt = dr.ToString(); } catch { }
+                    return $"DynRef(ID={id}, {txt})";
+                }
+                case Il2CppSystem.Object io:
+                {
+                    var tn = io.GetIl2CppType()?.Name ?? "?";
+                    string v = "";
+                    try { v = io.ToString(); } catch { }
+                    return v == tn || string.IsNullOrEmpty(v) ? tn : $"{tn}:{v}";
+                }
+                default: return o.ToString() ?? "?";
+            }
+        }
+        catch
+        {
+            return o.GetType().Name;
+        }
+    }
+
     public static void Tick(float now)
     {
         if (Active && now >= _until) Stop();
@@ -300,13 +393,16 @@ internal static class Diag
         Active = false;
         foreach (var m in Patched)
         {
-            try { Plugin.H.Unpatch(m, HarmonyPatchType.Prefix, Plugin.H.Id); } catch { }
+            try { Plugin.H.Unpatch(m, HarmonyPatchType.All, Plugin.H.Id); } catch { }
         }
         Patched.Clear();
         var report = new StringBuilder();
         report.AppendLine();
         report.AppendLine($"== 요청된 리소스 키 ({Seen.Count}개, 처음 본 순서) ==");
         report.Append(Keys);
+        report.AppendLine();
+        report.AppendLine($"== 사진 경로 추적 ({_callCount}건, 같은 내용은 한 번만) ==");
+        report.Append(Calls);
         report.AppendLine();
         report.AppendLine("== 바인딩 Human (깊이 3) ==");
         report.Append(BindingDump.Path("Human", 3));
