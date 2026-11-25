@@ -1,0 +1,276 @@
+"""FM27 게임 폴더 찾기, BepInEx·플러그인 설치, 플러그인과 통신.
+
+- BepInEx는 공식 배포본(6.0.0-be.793, LGPL-2.1)을 수정 없이 함께 넣어 두고, 게임 폴더에 없을 때만 설치한다.
+- 이미 BepInEx가 있으면(다른 모드용 포함) 건드리지 않고 플러그인만 넣는다.
+- Program Files 아래는 쓰기 권한이 없으니 관리자 권한으로 이 exe를 다시 실행해서 설치한다.
+- 플러그인과는 %APPDATA%\\FM27FacePicker\\plugin 의 JSON 파일로 주고받는다.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+import uuid
+import zipfile
+from pathlib import Path
+
+from .pack import fm_running
+from .settings import app_data_dir
+
+log = logging.getLogger("gamesetup")
+BASE = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+PLUGIN_DLL = BASE / "plugin_dist" / "FM27FaceStudio.dll"
+BEPINEX_ZIP_DIR = BASE / "bepinex"
+STEAM_APP_ID = "4530370"   # Football Manager 27
+PLUGIN_FOLDER = "FM27FaceStudio"
+
+
+# ------------------------------------------------------------------ 게임 폴더
+def _steam_roots() -> list[Path]:
+    roots: list[Path] = []
+    if sys.platform == "win32":
+        try:
+            import winreg
+            for hive, key, val in ((winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam", "SteamPath"),
+                                   (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Valve\Steam", "InstallPath"),
+                                   (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Valve\Steam", "InstallPath")):
+                try:
+                    with winreg.OpenKey(hive, key) as k:
+                        roots.append(Path(winreg.QueryValueEx(k, val)[0]))
+                except OSError:
+                    pass
+        except ImportError:
+            pass
+    roots.append(Path(r"C:\Program Files (x86)\Steam"))
+    libs: list[Path] = []
+    for r in roots:
+        vdf = r / "steamapps" / "libraryfolders.vdf"
+        libs.append(r)
+        try:
+            for m in re.finditer(r'"path"\s+"([^"]+)"', vdf.read_text(encoding="utf-8", errors="ignore")):
+                libs.append(Path(m.group(1).replace("\\\\", "\\")))
+        except OSError:
+            pass
+    out, seen = [], set()
+    for p in libs:
+        k = str(p).lower()
+        if k not in seen:
+            seen.add(k)
+            out.append(p)
+    return out
+
+
+def valid_game(path: str | Path | None) -> bool:
+    return bool(path) and (Path(path) / "fm.exe").exists()
+
+
+def find_game(saved: str = "") -> str:
+    if valid_game(saved):
+        return str(saved)
+    for lib in _steam_roots():
+        p = lib / "steamapps" / "common" / "Football Manager 27"
+        if valid_game(p):
+            return str(p)
+    return ""
+
+
+# ------------------------------------------------------------------ 상태
+def _md5(path: Path) -> str:
+    try:
+        return hashlib.md5(path.read_bytes()).hexdigest()
+    except OSError:
+        return ""
+
+
+def bundled_bepinex() -> Path | None:
+    if BEPINEX_ZIP_DIR.is_dir():
+        zips = sorted(BEPINEX_ZIP_DIR.glob("*.zip"))
+        if zips:
+            return zips[0]
+    return None
+
+
+def bridge_dir() -> Path:
+    d = app_data_dir() / "plugin"
+    d.mkdir(exist_ok=True)
+    return d
+
+
+def heartbeat() -> dict | None:
+    """플러그인이 2초마다 쓰는 상태. 6초 안에 갱신됐으면 연결된 것."""
+    try:
+        data = json.loads((bridge_dir() / "status.json").read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    data["alive"] = (time.time() - float(data.get("time", 0))) < 6.5
+    return data
+
+
+def status(game_dir: str) -> dict:
+    g = Path(game_dir) if game_dir else None
+    ok_game = valid_game(g)
+    has_loader = ok_game and (g / "winhttp.dll").exists() and (g / "BepInEx" / "core" / "BepInEx.Unity.IL2CPP.dll").exists()
+    initialized = ok_game and (g / "BepInEx" / "interop").is_dir() and any((g / "BepInEx" / "interop").glob("*.dll"))
+    installed_dll = (g / "BepInEx" / "plugins" / PLUGIN_FOLDER / "FM27FaceStudio.dll") if ok_game else None
+    installed = bool(installed_dll and installed_dll.exists())
+    up_to_date = installed and PLUGIN_DLL.exists() and _md5(installed_dll) == _md5(PLUGIN_DLL)
+    hb = heartbeat()
+    return {
+        "game_dir": str(g) if ok_game else "",
+        "game_found": ok_game,
+        "running": fm_running(),
+        "bepinex": bool(has_loader),
+        "bepinex_ready": bool(initialized),
+        "bundled_bepinex": bundled_bepinex() is not None,
+        "plugin_installed": installed,
+        "plugin_up_to_date": bool(up_to_date),
+        "plugin_available": PLUGIN_DLL.exists(),
+        "connected": bool(hb and hb.get("alive")),
+        "heartbeat": hb or {},
+    }
+
+
+# ------------------------------------------------------------------ 설치
+def writable(folder: Path) -> bool:
+    test = folder / f".fs_write_test_{uuid.uuid4().hex[:6]}"
+    try:
+        test.write_text("x")
+        test.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def install(game_dir: str) -> list[str]:
+    """실제 설치 (이 프로세스에 쓰기 권한이 있어야 함). 한 일을 문장 목록으로 돌려준다."""
+    g = Path(game_dir)
+    if not valid_game(g):
+        raise RuntimeError("FM27 게임 폴더가 아니에요 (fm.exe가 없음).")
+    done: list[str] = []
+    if not ((g / "winhttp.dll").exists() and (g / "BepInEx" / "core").is_dir()):
+        z = bundled_bepinex()
+        if not z:
+            raise RuntimeError("BepInEx가 설치되어 있지 않고, 프로그램에 BepInEx가 들어 있지 않아요.")
+        n = 0
+        with zipfile.ZipFile(z) as zf:
+            for info in zf.infolist():
+                if info.is_dir():
+                    continue
+                dst = g / info.filename
+                if dst.exists():
+                    continue          # 이미 있는 파일은 덮어쓰지 않음
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                with zf.open(info) as src, open(dst, "wb") as out:
+                    shutil.copyfileobj(src, out)
+                n += 1
+        done.append(f"BepInEx 6 설치 ({n}개 파일)")
+    if not PLUGIN_DLL.exists():
+        raise RuntimeError("프로그램 안에 플러그인 파일이 없어요.")
+    pdir = g / "BepInEx" / "plugins" / PLUGIN_FOLDER
+    pdir.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(PLUGIN_DLL, pdir / "FM27FaceStudio.dll")
+    done.append("FM27 Face Studio 플러그인 설치")
+    return done
+
+
+def run_elevated(args: list[str]) -> int | None:
+    """이 exe를 관리자 권한으로 다시 실행하고 끝날 때까지 기다린다. 사용자가 거절하면 None."""
+    if sys.platform != "win32":
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    class SEI(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.DWORD), ("fMask", ctypes.c_ulong), ("hwnd", wintypes.HWND),
+                    ("lpVerb", wintypes.LPCWSTR), ("lpFile", wintypes.LPCWSTR), ("lpParameters", wintypes.LPCWSTR),
+                    ("lpDirectory", wintypes.LPCWSTR), ("nShow", ctypes.c_int), ("hInstApp", wintypes.HINSTANCE),
+                    ("lpIDList", ctypes.c_void_p), ("lpClass", wintypes.LPCWSTR), ("hkeyClass", wintypes.HKEY),
+                    ("dwHotKey", wintypes.DWORD), ("hIcon", wintypes.HANDLE), ("hProcess", wintypes.HANDLE)]
+
+    exe = sys.executable
+    params = subprocess.list2cmdline(args if getattr(sys, "frozen", False) else [str(BASE / "main.py"), *args])
+    sei = SEI()
+    sei.cbSize = ctypes.sizeof(SEI)
+    sei.fMask = 0x00000040          # SEE_MASK_NOCLOSEPROCESS
+    sei.lpVerb = "runas"
+    sei.lpFile = exe
+    sei.lpParameters = params
+    sei.nShow = 0
+    if not ctypes.windll.shell32.ShellExecuteExW(ctypes.byref(sei)):
+        return None
+    ctypes.windll.kernel32.WaitForSingleObject(sei.hProcess, 120000)
+    code = wintypes.DWORD()
+    ctypes.windll.kernel32.GetExitCodeProcess(sei.hProcess, ctypes.byref(code))
+    ctypes.windll.kernel32.CloseHandle(sei.hProcess)
+    return int(code.value)
+
+
+def install_any(game_dir: str) -> list[str]:
+    if fm_running():
+        raise RuntimeError("FM27이 켜져 있어요. 게임을 완전히 끈 다음 설치해 주세요.")
+    g = Path(game_dir)
+    if writable(g):
+        return install(game_dir)
+    result = app_data_dir() / "install_result.json"
+    result.unlink(missing_ok=True)
+    code = run_elevated(["--install-plugin", str(g), str(result)])
+    if code is None:
+        raise RuntimeError("게임 폴더에 쓸 권한이 없어요. 관리자 권한 창에서 '예'를 눌러야 설치돼요.")
+    try:
+        data = json.loads(result.read_text(encoding="utf-8"))
+    except Exception:
+        raise RuntimeError(f"관리자 권한 설치 결과를 확인하지 못했어요 (코드 {code}).") from None
+    if not data.get("ok"):
+        raise RuntimeError(data.get("error") or "설치 실패")
+    return data.get("done", [])
+
+
+def cli_install(game_dir: str, result_path: str) -> int:
+    """관리자 권한으로 다시 실행됐을 때 (main.py --install-plugin)."""
+    try:
+        done = install(game_dir)
+        Path(result_path).write_text(json.dumps({"ok": True, "done": done}, ensure_ascii=False), encoding="utf-8")
+        return 0
+    except Exception as e:  # noqa: BLE001
+        Path(result_path).write_text(json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False), encoding="utf-8")
+        return 1
+
+
+def launch_game() -> None:
+    if sys.platform == "win32":
+        os.startfile(f"steam://rungameid/{STEAM_APP_ID}")  # type: ignore[attr-defined]
+
+
+# ------------------------------------------------------------------ 플러그인 명령
+def command(cmd: str, timeout: float = 20.0, **extra) -> dict:
+    """플러그인에 명령을 보내고 답을 기다린다."""
+    hb = heartbeat()
+    if not hb or not hb.get("alive"):
+        return {"ok": False, "message": "게임 속 플러그인과 연결되어 있지 않아요. 게임을 켜고 세이브를 불러와 주세요."}
+    d = bridge_dir()
+    cid = uuid.uuid4().hex[:12]
+    tmp = d / "command.json.tmp"
+    tmp.write_text(json.dumps({"id": cid, "cmd": cmd, **extra}), encoding="utf-8")
+    os.replace(tmp, d / "command.json")
+    end = time.time() + timeout
+    while time.time() < end:
+        time.sleep(0.25)
+        try:
+            r = json.loads((d / "result.json").read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if r.get("id") == cid:
+            return {"ok": bool(r.get("ok")), "message": r.get("message", "")}
+    return {"ok": False, "message": "플러그인이 답하지 않아요. 게임이 멈춰 있거나 로딩 중일 수 있어요."}
+
+
+def diag_dir() -> Path:
+    d = bridge_dir() / "diag"
+    d.mkdir(exist_ok=True)
+    return d

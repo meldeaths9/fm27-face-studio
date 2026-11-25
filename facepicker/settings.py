@@ -65,6 +65,8 @@ class Settings:
         self.settings_version: int = SETTINGS_VERSION
         self.graphics_dir: str = str(fm / "graphics")
         self.last_save: str = ""
+        self.game_dir: str = ""
+        self.auto_refresh: bool = True
         self.output_size: int = 512
         self.prompt_template: str = DEFAULT_PROMPT
         self.send_photo: bool = True

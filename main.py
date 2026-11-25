@@ -75,6 +75,8 @@ def selftest() -> int:
         from PIL import Image
         assert len(build_html()) > 20000, "ui 없음"
         assert ai_models.face_available(), "얼굴 인식 모델 없음"
+        from facepicker import gamesetup
+        assert gamesetup.PLUGIN_DLL.exists(), "플러그인 파일 없음"
         ai_models.detect_face(Image.new("RGB", (320, 240), (128, 128, 128)))
         style.decorate(Image.new("RGBA", (128, 128)), style.Deco(caption=True, text="테스트", rounded=True, border=True))
         if sys.platform == "win32":
@@ -113,6 +115,10 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    if "--install-plugin" in sys.argv:      # 관리자 권한으로 다시 실행됐을 때
+        i = sys.argv.index("--install-plugin")
+        from facepicker import gamesetup
+        sys.exit(gamesetup.cli_install(sys.argv[i + 1], sys.argv[i + 2]))
     if "--selftest" in sys.argv:
         close_splash()
         sys.exit(selftest())

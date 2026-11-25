@@ -44,6 +44,11 @@
     <button class="tab" data-page="pageApplied"><svg class="i"><use href="#i-layers"/></svg>적용된 얼굴 <span class="cnt" id="appliedCnt">0</span></button>
   </nav>
   <div class="sp"></div>
+  <div class="badges">
+    <button class="pill" id="bSave" data-pop="save"><i></i><span>세이브</span></button>
+    <button class="pill" id="bGame" data-pop="game"><i></i><span>FM27</span></button>
+    <button class="pill" id="bPlugin" data-pop="plugin"><i></i><span>플러그인</span></button>
+  </div>
   <span class="ver" id="ver"></span>
   <button class="btn ghost" id="btnFolder"><svg class="i"><use href="#i-folder"/></svg>얼굴 폴더</button>
   <button class="btn icon" id="btnSettings" title="설정"><svg class="i"><use href="#i-gear"/></svg></button>
@@ -56,7 +61,7 @@
     <div class="ph"><span class="step">1</span><h2>대상 선택</h2></div>
     <div class="pb grow">
       <div id="saveBox"></div>
-      <div class="seg" id="kindSeg"><button class="on" data-kind="player">선수</button><button data-kind="staff">스태프</button></div>
+      <div class="seg seg3" id="kindSeg"><button class="on" data-kind="player">선수</button><button data-kind="staff">스태프</button><button data-kind="support">지원 스태프</button></div>
       <label class="field"><svg class="i"><use href="#i-search"/></svg><input id="qName" placeholder="이름" autocomplete="off"></label>
       <div class="rowf2">
         <label class="field grow"><svg class="i"><use href="#i-shield"/></svg><input id="qTeam" placeholder="팀" autocomplete="off"></label>
@@ -193,6 +198,7 @@
   <div class="df"><button class="btn" id="cNo">취소</button><button class="btn primary" id="cYes">확인</button></div>
 </div></div>
 
+<div class="pop" id="pop"></div>
 <div class="toasts" id="toasts"></div>
 <script src="app.js"></script>
 </body>

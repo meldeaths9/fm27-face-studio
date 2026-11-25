@@ -30,6 +30,17 @@ jobs:
           Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Linzaer/Ultra-Light-Fast-Generic-Face-Detector-1MB/master/models/onnx/version-RFB-320.onnx" -OutFile models/ultraface-rfb-320.onnx
           Get-Item models/ultraface-rfb-320.onnx | Select-Object Name, Length
 
+      - name: Get BepInEx (official build, unmodified)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force bepinex | Out-Null
+          $u = "https://builds.bepinex.dev/projects/bepinex_be/793/BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.793%2Bdbc82f0.zip"
+          try {
+            Invoke-WebRequest -Uri $u -OutFile "bepinex/BepInEx-Unity.IL2CPP-win-x64-6.0.0-be.793.zip"
+            Get-Item bepinex/*.zip | Select-Object Name, Length
+          } catch { Write-Warning "BepInEx download failed: $_" }
+          "BepInEx 6.0.0-be.793 (LGPL-2.1) https://github.com/BepInEx/BepInEx" | Out-File bepinex/README.txt
+
       - name: Build exe
         run: >
           pyinstaller --noconfirm --clean --onefile --windowed
@@ -39,6 +50,8 @@ jobs:
           --add-data "assets/icon.png;assets"
           --add-data "models;models"
           --add-data "THIRD_PARTY_NOTICES.txt;."
+          --add-data "plugin_dist;plugin_dist"
+          --add-data "bepinex;bepinex"
           --collect-submodules fmsave
           --collect-all backports.zstd
           --splash assets/splash.png
@@ -53,6 +66,8 @@ jobs:
           --add-data "assets/icon.png;assets"
           --add-data "models;models"
           --add-data "THIRD_PARTY_NOTICES.txt;."
+          --add-data "plugin_dist;plugin_dist"
+          --add-data "bepinex;bepinex"
           --collect-submodules fmsave
           --collect-all backports.zstd
           main.py

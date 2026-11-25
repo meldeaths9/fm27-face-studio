@@ -114,7 +114,7 @@ def read_save(path: str | Path) -> dict:
     data = {
         "version": CACHE_VERSION, **_stamp(p),
         "game": f"{getattr(getattr(info, 'version', None), 'major', '')}",
-        "my_clubs": my_clubs, "people": people, "read_seconds": round(time.time() - t0, 1),
+        "my_clubs": my_clubs, "people": people, "read_seconds": round(time.time() - t0, 1), "read_at": time.time(),
     }
     tmp = cache_path().with_suffix(".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")

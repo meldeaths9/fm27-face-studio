@@ -18,13 +18,13 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-from . import ai_models, imaging, providers, savedata
+from . import ai_models, clipboard, gamesetup, imaging, providers, savedata
 from .pack import FaceEntry, FacePack, find_conflicts, fm_running, looks_like_newgen
 from .people import People
 from .settings import DEFAULT_PROMPT, REF_SENTENCE, Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -186,6 +186,90 @@ class Api:
     def progress(self) -> dict:
         return dict(self._progress)
 
+    # ---------------------------------------------------------------- 상태 배지
+    @_safe
+    def status_all(self) -> dict:
+        c = self._cfg
+        game = gamesetup.find_game(c.game_dir)
+        if game and game != c.game_dir:
+            c.game_dir = game
+            c.save()
+        g = gamesetup.status(game)
+        save = {"loaded": bool(self._people.items), "path": self._people.save,
+                "name": Path(self._people.save).stem if self._people.save else "",
+                "count": len(self._people.items), "changed": False, "exists": False,
+                "counts": {}, "read_at": 0}
+        if self._people.save:
+            sp = Path(self._people.save)
+            save["exists"] = sp.exists()
+            cache = savedata.load_cache()
+            if cache and save["exists"]:
+                try:
+                    save["changed"] = abs(sp.stat().st_mtime - float(cache.get("mtime", 0))) > 1
+                except OSError:
+                    pass
+                save["read_at"] = cache.get("read_at", 0)
+                save["game"] = cache.get("game", "")
+            kinds = {}
+            for p in self._people.items:
+                kinds[p.get("kind", "")] = kinds.get(p.get("kind", ""), 0) + 1
+            save["counts"] = kinds
+        return {"save": save, "game": g, "graphics_dir": c.graphics_dir, "auto_refresh": c.auto_refresh}
+
+    @_safe
+    def install_plugin(self) -> dict:
+        game = gamesetup.find_game(self._cfg.game_dir)
+        if not game:
+            return {"error": "FM27 설치 폴더를 찾지 못했어요. 설정에서 게임 폴더를 지정해 주세요."}
+        done = gamesetup.install_any(game)
+        return {"done": done, "status": gamesetup.status(game)}
+
+    @_safe
+    def launch_game(self) -> bool:
+        gamesetup.launch_game()
+        return True
+
+    @_safe
+    def open_game_folder(self) -> bool:
+        game = gamesetup.find_game(self._cfg.game_dir)
+        if game and sys.platform == "win32":
+            os.startfile(game)  # type: ignore[attr-defined]
+        return True
+
+    @_safe
+    def plugin_refresh(self) -> dict:
+        return gamesetup.command("refresh", timeout=30)
+
+    @_safe
+    def plugin_diag(self, seconds: int = 120) -> dict:
+        return gamesetup.command("diag", timeout=10, seconds=int(seconds))
+
+    @_safe
+    def plugin_diag_stop(self) -> dict:
+        return gamesetup.command("diag_stop", timeout=10)
+
+    @_safe
+    def open_diag_folder(self) -> bool:
+        d = gamesetup.diag_dir()
+        if sys.platform == "win32":
+            files = sorted(d.glob("diag-*.txt"))
+            if files:
+                providers.reveal(files[-1])
+            else:
+                os.startfile(d)  # type: ignore[attr-defined]
+        return True
+
+    @_safe
+    def set_option(self, key: str, value) -> bool:
+        if key == "auto_refresh":
+            self._cfg.auto_refresh = bool(value)
+        elif key == "game_dir" and gamesetup.valid_game(value):
+            self._cfg.game_dir = str(value)
+        else:
+            return False
+        self._cfg.save()
+        return True
+
     # ---------------------------------------------------------------- 세이브
     @_safe
     def pick_save(self) -> dict | None:
@@ -337,7 +421,8 @@ class Api:
         has_photo = bool(send_photo) and self._work is not None
         vars_ = {
             "ref": REF_SENTENCE if has_photo else "",
-            "role": "professional football player" if kind == "player" else "football club coach",
+            "role": {"player": "professional football player", "staff": "football club coach",
+                     "support": "football club office staff member in smart business clothes"}.get(kind, "football club coach"),
             "age_text": f"{age} years old" if age else "",
             "nationality_text": (", " if age and nat else "") + (f"from {nat}" if nat else ""),
             "name": str(person.get("name", "")).strip(), "club": str(person.get("club", "")).strip(),
@@ -353,17 +438,25 @@ class Api:
         return text.strip()
 
     @_safe
-    def ai_web(self, pid: str, send_photo: bool) -> dict:
-        """무료 웹 연동: 사이트 열기 + (참고 사진이 있으면) 파일로 저장해서 탐색기로 보여주기."""
+    def ai_web(self, pid: str, prompt: str, send_photo: bool) -> dict:
+        """무료 웹 연동: 참고 사진+프롬프트를 클립보드에 함께 넣고 사이트 열기 (입력칸에 Ctrl+V 한 번)."""
         p = providers.BY_ID.get(pid)
         if not p or p["group"] != "free_web":
             return {"error": "웹 연동 방식이 아니에요."}
         ref = None
         if send_photo and self._work is not None:
             ref = providers.save_reference(self._work)
+        else:
+            prompt = prompt.replace(REF_SENTENCE, "").replace(REF_SENTENCE.strip(), "").strip()
+        clip = False
+        try:
+            clip = clipboard.set_files_and_text([ref] if ref else [], prompt)
+        except Exception as e:  # noqa: BLE001
+            log.warning("클립보드 실패: %s", e)
+        if ref and not clip:
             providers.reveal(ref)
         webbrowser.open(p["url"])
-        return {"ok": True, "ref": str(ref) if ref else ""}
+        return {"ok": True, "clip": clip, "with_photo": bool(ref)}
 
     @_safe
     def ai_generate(self, pid: str, prompt: str, send_photo: bool) -> dict:
@@ -461,8 +554,11 @@ class Api:
         done = {it["id"] for it in items}
         self._queue = [i for i in self._queue if i["id"] not in done]
         self._save_queue()
+        refresh = None
+        if self._cfg.auto_refresh and gamesetup.heartbeat() and gamesetup.heartbeat().get("alive"):
+            refresh = gamesetup.command("refresh", timeout=30)
         return {
-            "count": len(items), "queue": self._queue_view(),
+            "count": len(items), "queue": self._queue_view(), "refresh": refresh,
             "conflicts": [{"uid": u, "name": names.get(u, u), "packs": [Path(p).parent.name for p in ps]}
                           for u, ps in conflicts.items()],
         }
