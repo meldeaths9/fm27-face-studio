@@ -34,6 +34,16 @@ jobs:
           --splash assets/splash.png
           main.py
 
+      - name: Build debug exe (console)
+        run: >
+          pyinstaller --noconfirm --onefile --console
+          --name FM27FaceStudio_debug
+          --icon assets/icon.ico
+          --add-data "ui;ui"
+          --add-data "assets/icon.png;assets"
+          --collect-data cv2
+          main.py
+
       - name: Self test
         shell: pwsh
         run: |
@@ -44,7 +54,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: FM27FaceStudio
-          path: dist/FM27FaceStudio.exe
+          path: dist/*.exe
 
       - name: Read version
         id: ver
@@ -60,8 +70,11 @@ jobs:
           tag_name: ${{ steps.ver.outputs.tag }}
           name: FM27 Face Studio ${{ steps.ver.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          files: dist/FM27FaceStudio.exe
+          files: |
+            dist/FM27FaceStudio.exe
+            dist/FM27FaceStudio_debug.exe
           make_latest: true
           body: |
             `FM27FaceStudio.exe`를 받아서 더블클릭하면 실행돼요. 파이썬 설치는 필요 없어요.
             처음 실행할 때 윈도우 보안 경고(SmartScreen)가 뜨면 "추가 정보" → "실행"을 누르세요.
+            실행이 안 되면 `FM27FaceStudio_debug.exe`(검은 창에 진행 기록이 나오는 진단용)로 실행해서 내용을 알려주세요.

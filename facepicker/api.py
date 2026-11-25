@@ -22,7 +22,7 @@ from .pack import FaceEntry, FacePack, find_conflicts, fm_running, looks_like_ne
 from .people import People
 from .settings import DEFAULT_PROMPT, GEMINI_MODELS, REF_SENTENCE, Settings, app_data_dir
 
-VERSION = "0.3"
+VERSION = "0.3.1"
 DISPLAY_MAX = 1400   # 화면에 보낼 편집용 사진 최대 크기
 
 
