@@ -41,12 +41,27 @@ def error_box(msg: str) -> None:
 
 
 def close_splash(*_a) -> None:
-    """exe 스플래시 화면 닫기 (exe가 아닐 때는 아무 일 없음)."""
+    """exe 스플래시 화면 닫기 (스플래시가 없으면 아무 일 없음)."""
+    if "_PYI_SPLASH_IPC" not in os.environ:
+        return
     try:
         import pyi_splash  # type: ignore
         pyi_splash.close()
     except Exception:
         pass
+
+
+def build_html() -> str:
+    """index.html에 style.css·app.js를 직접 넣은 한 덩어리 화면.
+    (파일 경로나 내부 웹서버에 의존하지 않아서 어떤 PC에서도 그대로 뜸)"""
+    ui = BASE / "ui"
+    html = (ui / "index.html").read_text(encoding="utf-8")
+    css = (ui / "style.css").read_text(encoding="utf-8")
+    js = (ui / "app.js").read_text(encoding="utf-8").replace("</script", "<\\/script")
+    html = html.replace('<link rel="stylesheet" href="style.css">', f"<style>\n{css}\n</style>")
+    html = html.replace('<script src="app.js"></script>', f"<script>\n{js}\n</script>")
+    assert "href=\"style.css\"" not in html and "src=\"app.js\"" not in html, "화면 파일 합치기 실패"
+    return html
 
 
 def selftest() -> int:
@@ -55,7 +70,7 @@ def selftest() -> int:
         from facepicker import imaging
         from facepicker.api import Api
         import webview  # noqa: F401
-        assert (BASE / "ui" / "index.html").exists(), "ui 없음"
+        assert len(build_html()) > 20000, "ui 없음"
         assert imaging._CASCADE is not None and not imaging._CASCADE.empty(), "얼굴 인식 데이터 없음"
         if sys.platform == "win32":
             import webview.platforms.winforms  # noqa: F401  (.NET/WebView2 연결 확인)
@@ -77,7 +92,7 @@ def main() -> None:
     log.info("Api 준비됨")
     window = webview.create_window(
         f"FM27 Face Studio v{VERSION}",
-        str(BASE / "ui" / "index.html"),
+        html=build_html(),
         js_api=api,
         width=1440, height=900, min_size=(1240, 760),
         background_color="#0a0f1d",
