@@ -20,7 +20,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string Id = "kr.fm27facestudio.plugin";
     public const string Name = "FM27 Face Studio";
-    public const string Version = "0.3.2";
+    public const string Version = "0.4.0";
 
     internal static ManualLogSource L = null!;
     internal static Harmony H = null!;
@@ -561,11 +561,35 @@ internal static class ManagerFace
         Hits++;
     }
 
+    private static int _closeupSize = -1;
+    private static bool LooksLikeManagerShot(Texture2D t)
+    {
+        // 게임이 그림을 직접 거는 건 감독 사진뿐이다 (다른 사진은 'person_123' 같은 이름으로 불러온다).
+        // 이름 없는 정사각형 + 감독 촬영 크기와 같으면 감독 사진으로 본다.
+        try
+        {
+            if (_closeupSize < 0)
+            {
+                try { _closeupSize = FM.UI.ManagerAppearance.ManagerCloseupShot.ManagerCloseupTextureSize; } catch { _closeupSize = 0; }
+                Plugin.L.LogInfo($"감독 촬영 크기: {_closeupSize}");
+            }
+            if (!string.IsNullOrEmpty(t.name)) return false;
+            if (t.width != t.height) return false;
+            return _closeupSize <= 0 ? t.width == 256 : t.width == _closeupSize;
+        }
+        catch { return false; }
+    }
+
     private static void SetImagePrefix2D(ref Texture2D __0)
     {
-        if (__0 is null || _orig == IntPtr.Zero || __0.Pointer != _orig) return;
+        if (__0 is null || !HasPhoto) return;
+        if (_tex is not null && __0.Pointer == _tex.Pointer) return;
+        if (!(__0.Pointer == _orig || LooksLikeManagerShot(__0))) return;
         var p = Photo();
-        if (p is not null) { __0 = p; Hits++; }
+        if (p is null) return;
+        _orig = __0.Pointer;
+        __0 = p;
+        if (++Hits <= 3) Plugin.L.LogInfo($"감독 사진 바꿔 끼움 ({Hits}번째)");
     }
 
     private static void SetImagePrefixTex(ref Texture __0)
