@@ -24,7 +24,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "0.7.1"
+VERSION = "0.7.2"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -132,7 +132,7 @@ class Api:
                 "graphics_dir": c.graphics_dir, "output_size": c.output_size,
                 "prompt_template": c.prompt_template, "send_photo": c.send_photo,
                 "ai_provider": c.ai_provider, "deco": c.deco, "prompt_lang": c.prompt_lang,
-                "expression": c.expression, "manager_outfit": c.manager_outfit, "club_hints": c.club_hints,
+                "expression": c.expression, "manager_outfit": c.manager_outfit, "ref_mode": c.ref_mode, "club_hints": c.club_hints,
             },
             "ai": self._ai_view(),
             "styles": STYLE_LABELS,
@@ -164,6 +164,8 @@ class Api:
             c.prompt_lang = s["prompt_lang"]
         if s.get("expression") in prompts.EXPRESSION_LABELS:
             c.expression = s["expression"]
+        if s.get("ref_mode") in ("game", "photo"):
+            c.ref_mode = s["ref_mode"]
         if s.get("manager_outfit") in ("suit", "training"):
             c.manager_outfit = s["manager_outfit"]
         if "send_photo" in s:
@@ -628,7 +630,7 @@ class Api:
             person, lang=self._lang(), template=self._cfg.prompt_template,
             has_ref=bool(send_photo) and self._work is not None, has_kit=self._kit is not None,
             expression=expression or self._cfg.expression, club_hint=self._hint(person),
-            manager_outfit=self._cfg.manager_outfit)
+            manager_outfit=self._cfg.manager_outfit, ref_mode=self._cfg.ref_mode)
         return text
 
     def _face_photos(self, send_photo: bool) -> list:

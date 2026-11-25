@@ -78,6 +78,7 @@ class Settings:
         self.prompt_template: str = ""     # 비어 있으면 기본 프롬프트(언어별)
         self.prompt_lang: str = "ko"       # ko / en (클라우드플레어는 항상 영어)
         self.expression: str = "random"
+        self.ref_mode: str = "game"        # game: 참고 사진이 게임 3D 얼굴(느슨하게) / photo: 실제 사진(그대로)
         self.manager_outfit: str = "suit"  # suit / training
         self.manager_uid: str = ""         # 내 감독 UID (세이브 없이 넣었을 때도 기억)
         self.club_hints: dict = {}         # {클럽 이름: "잉글랜드 크로즈비의 클럽"}

@@ -6,13 +6,13 @@ import random
 # 사용자가 직접 만든 템플릿에서 쓸 수 있는 자리: {ref} {subject} {outfit} {expression} {badge_note}
 #   {role} {name} {club} {age} {age_text} {nationality} {nationality_text}
 FACE = {
-    "ko": ("{ref}{subject}의 사실적인 머리·어깨 인물 사진을 만들어 주세요. {outfit}"
-           "카메라를 정면으로 보고 있고, {expression}. "
+    "ko": ("{ref}{subject}의 사실적인 머리·어깨 인물 사진을 만들어 주세요. {features}{outfit}"
+           "카메라를 정면으로 보고 있고, {expression}. {realism}"
            "배경은 단색 밝은 회색 스튜디오, 조명은 부드럽고 고르게 해 주세요. "
            "1:1 정사각형 구도에 머리는 가운데, 머리카락 위로 약간 여백을 두고 어깨까지 보이게 해 주세요. "
            "글자와 워터마크는 넣지 마세요{badge_note}."),
-    "en": ("{ref}Create a realistic head-and-shoulders portrait photo of {subject}. {outfit}"
-           "Facing the camera, {expression}. Plain light grey studio background, soft even lighting. "
+    "en": ("{ref}Create a realistic head-and-shoulders portrait photo of {subject}. {features}{outfit}"
+           "Facing the camera, {expression}. {realism}Plain light grey studio background, soft even lighting. "
            "Square 1:1 framing, head centered with a little space above the hair, shoulders visible. "
            "No added text or watermark{badge_note}."),
 }
@@ -21,6 +21,53 @@ REF = {
     "ko": "첫 번째 첨부 사진을 참고해서 이 사람의 얼굴, 생김새, 피부색, 머리 모양을 그대로 유지해 주세요. ",
     "en": "Use the first attached photo as the reference: keep this person's face, identity, skin tone and hairstyle. ",
 }
+
+# 참고 사진이 게임의 3D 뉴젠 얼굴일 때: 따라 그리지 말고 실제 사진을 새로 찍게 한다
+REF_GAME = {
+    "ko": ("첫 번째 첨부 사진은 게임 속 3D 그래픽 얼굴이에요. 이 그림을 고치거나 따라 그리지 말고, "
+           "이 사람이 실제로 있다면 찍혔을 법한 새 실제 사진을 처음부터 만들어 주세요. "
+           "그림에서 참고할 것은 피부색, 머리 색과 머리 모양, 대략적인 얼굴형과 이목구비 비율, 나이대뿐이에요. "
+           "눈 색은 그래픽의 회색빛을 따르지 말고 실제 사람처럼 자연스럽게 해 주세요. "),
+    "en": ("The first attached image is a 3D video-game render of a face. Do not edit, trace or copy that render. "
+           "Create a brand-new real photograph of how this person would look in real life. Take only these from the "
+           "render: skin tone, hair colour and hairstyle, rough face shape and proportions, and age range. "
+           "Do not copy the render's grey eye colour; give natural, realistic eyes. "),
+}
+
+REALISM = {
+    "ko": ("실제 카메라(85mm 렌즈)로 찍은 사진처럼 모공이 보이는 자연스러운 피부 결, 살짝 비대칭인 실제 사람 얼굴로 해 주세요. "
+           "3D 렌더, CG, 게임 그래픽, 일러스트, 매끈한 플라스틱 피부, 과한 보정 느낌은 피해 주세요. "),
+    "en": ("It must look like a real DSLR photo (85mm lens): natural skin texture with visible pores, a slightly "
+           "asymmetric real human face. Avoid any 3D render, CGI, video-game, illustration, smooth plastic skin or "
+           "heavy retouching look. "),
+}
+
+# 참고 사진이 없을 때 얼굴이 다 똑같아지지 않게 섞는 특징 (인종·피부색과는 상관없는 것만)
+FEATURES = {
+    "hair": [("짧게 민 머리", "a short buzz cut"), ("옆가르마를 탄 짧은 머리", "short hair with a side parting"),
+             ("뒤로 넘긴 머리", "slicked-back hair"), ("윗부분만 길고 옆은 짧은 머리", "longer on top, short on the sides"),
+             ("어깨에 살짝 닿는 긴 머리", "shoulder-length hair"), ("덥수룩하게 헝클어진 머리", "messy, tousled hair"),
+             ("이마를 덮는 앞머리", "a fringe covering the forehead")],
+    "face": [("갸름한 얼굴", "a narrow face"), ("각진 턱", "a square jaw"), ("둥근 얼굴", "a round face"),
+             ("광대가 도드라진 얼굴", "prominent cheekbones"), ("긴 얼굴", "a long face")],
+    "brow": [("짙은 눈썹", "thick eyebrows"), ("옅은 눈썹", "thin, light eyebrows"), ("일자 눈썹", "straight eyebrows")],
+    "beard": [("깔끔하게 면도한 얼굴", "clean-shaven"), ("살짝 자란 수염", "light stubble"), ("짧게 다듬은 수염", "a short trimmed beard")],
+}
+
+
+def random_features(age: str, lang: str) -> str:
+    i = 1 if lang == "en" else 0
+    pick = [random.choice(FEATURES["hair"])[i], random.choice(FEATURES["face"])[i], random.choice(FEATURES["brow"])[i]]
+    try:
+        adult = int(age) >= 20
+    except (TypeError, ValueError):
+        adult = True
+    if adult:
+        pick.append(random.choice(FEATURES["beard"])[i])
+    if lang == "en":
+        return "Distinct look: " + ", ".join(pick) + ". "
+    return "생김새: " + ", ".join(pick) + ". "
+
 
 UNIFORM = {
     "ko": ("첫 번째 첨부 사진을 수정해 주세요. 사람은 완전히 그대로 두세요. 얼굴, 생김새, 표정, 머리 모양, 피부색, "
@@ -94,7 +141,7 @@ def outfit_text(kind: str, club: str, kit_index: int, manager_outfit: str, lang:
 
 
 def face_prompt(person: dict, *, lang: str, template: str, has_ref: bool, has_kit: bool,
-                expression: str, club_hint: str, manager_outfit: str) -> tuple[str, str]:
+                expression: str, club_hint: str, manager_outfit: str, ref_mode: str = "game") -> tuple[str, str]:
     """(프롬프트, 고른 표정 키)"""
     lang = "en" if lang == "en" else "ko"
     kind = person.get("kind", "player")
@@ -115,7 +162,9 @@ def face_prompt(person: dict, *, lang: str, template: str, has_ref: bool, has_ki
     kit_index = (2 if has_ref else 1) if has_kit else 0
     outfit, badge_ok = outfit_text(kind, plain_club, kit_index, manager_outfit, lang)
     vars_ = {
-        "ref": REF[lang] if has_ref else "",
+        "ref": ((REF_GAME if ref_mode == "game" else REF)[lang]) if has_ref else "",
+        "features": "" if has_ref else random_features(age, lang),
+        "realism": REALISM[lang],
         "subject": subject, "outfit": outfit, "expression": EXPRESSIONS[expr][lang],
         "badge_note": (" (유니폼의 엠블럼과 스폰서는 괜찮아요)" if lang == "ko" else " (the kit's badge and sponsor are fine)") if badge_ok else "",
         "role": role, "name": str(person.get("name", "")).strip(), "club": club, "age": age,
@@ -145,6 +194,6 @@ def uniform_prompt(person: dict, *, lang: str, has_kit: bool, club_hint: str) ->
 
 
 def strip_ref(text: str) -> str:
-    for r in REF.values():
+    for r in list(REF.values()) + list(REF_GAME.values()):
         text = text.replace(r, "").replace(r.strip(), "")
     return text.strip()

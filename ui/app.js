@@ -598,6 +598,7 @@ $$("#aiMode .chip").forEach((c) => c.onclick = () => {
   S.aiMode = c.dataset.m;
   $$("#aiMode .chip").forEach((x) => x.classList.toggle("on", x === c));
   $("#sendPhotoWrap").style.display = S.aiMode === "uniform" ? "none" : "";
+  $("#refMode").style.display = S.aiMode === "uniform" ? "none" : "";
   $("#exprRow").hidden = S.aiMode === "uniform";
   $("#kitHint").innerHTML = S.aiMode === "uniform"
     ? "편집기 사진(선수)은 그대로 두고 옷만 바꿔요. 유니폼 사진이 없으면 <b>소속 팀의 홈 유니폼</b>으로 요청해요."
@@ -640,6 +641,12 @@ function renderExpr() {
     call("save_settings", { expression: c.dataset.e });
     renderExpr();
     S.promptDirty = false; autoPrompt(true);
+  });
+  const rm = S.settings.ref_mode || "game";
+  $$("#refMode .chip").forEach((c) => {
+    c.classList.toggle("on", c.dataset.r === rm);
+    c.title = c.dataset.r === "game" ? "참고 사진이 게임의 3D 얼굴일 때: 따라 그리지 말고 실제 사진으로 새로 만들어요" : "참고 사진이 실제 사람 사진일 때: 얼굴을 그대로 유지해요";
+    c.onclick = () => { S.settings.ref_mode = c.dataset.r; call("save_settings", { ref_mode: c.dataset.r }); renderExpr(); S.promptDirty = false; autoPrompt(true); };
   });
   const mo = S.settings.manager_outfit || "suit";
   $$("#mgrOutfit .chip").forEach((c) => {

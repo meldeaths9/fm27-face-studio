@@ -380,3 +380,4 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px;
 .step2 .x{margin-left:auto;background:none;border:0;color:var(--muted);cursor:pointer}
 .capnote{grid-column:1/-1;text-align:center;color:var(--muted);font-size:12.5px;padding:14px}
 .pcard2 .sub .alt{color:var(--warn);font-weight:600}
+#refMode .chip{padding:3px 9px;font-size:11.5px}
