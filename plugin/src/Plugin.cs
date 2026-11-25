@@ -20,7 +20,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string Id = "kr.fm27facestudio.plugin";
     public const string Name = "FM27 Face Studio";
-    public const string Version = "0.2.0";
+    public const string Version = "0.3.0";
 
     internal static ManualLogSource L = null!;
     internal static Harmony H = null!;
@@ -31,6 +31,7 @@ public sealed class Plugin : BasePlugin
         H = new Harmony(Id);
         Bridge.Init();
         AddComponent<Runner>();
+        ManagerFace.Install();
         L.LogInfo($"{Name} {Version} 준비됨 — 통신 폴더: {Bridge.Dir}");
     }
 }
@@ -96,6 +97,8 @@ public sealed class Runner : MonoBehaviour
                 time = DateTimeOffset.Now.ToUnixTimeSeconds(),
                 resources = Refresher.Find() is not null,
                 diagnosing = Diag.Active,
+                manager_photo = ManagerFace.HasPhoto,
+                manager_hits = ManagerFace.Hits,
                 last = _lastResult,
             });
         }
@@ -465,5 +468,98 @@ internal static class BindingDump
             if (i++ >= 300) { sb.Append(' ', (indent + 1) * 2).AppendLine("…"); break; }
             Append(sb, c, indent + 1, depth - 1);
         }
+    }
+}
+
+
+/// <summary>
+/// 내 감독 사진: FM27은 감독 외모 편집에서 만든 3D 캐릭터를 그 자리에서 찍어(ManagerCloseupShot) 쓴다.
+/// 프로그램이 manager.raw(가로·세로 + RGBA, 아래→위 줄 순서)를 두면 그 찍은 사진을 우리 사진으로 바꾼다.
+/// </summary>
+internal static class ManagerFace
+{
+    public static int Hits;
+    private static Texture2D? _tex;
+    private static DateTime _stamp;
+    private static IntPtr _orig = IntPtr.Zero;
+
+    private static string FilePath => Path.Combine(Bridge.Dir, "manager.raw");
+    public static bool HasPhoto => File.Exists(FilePath);
+
+    public static void Install()
+    {
+        var flags = System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic;
+        try
+        {
+            var get = AccessTools.Method(typeof(FM.UI.ManagerAppearance.ManagerCloseupShot), "GetManagerCloseupTexture");
+            Plugin.H.Patch(get, postfix: new HarmonyMethod(typeof(ManagerFace).GetMethod(nameof(CloseupPostfix), flags)));
+        }
+        catch (Exception e) { Plugin.L.LogWarning("감독 사진 연결 실패(촬영): " + e.Message); }
+        try
+        {
+            foreach (var m in AccessTools.GetDeclaredMethods(typeof(SI.Bindable.SIImage)).Where(m => m.Name == "SetImage"))
+            {
+                var ps = m.GetParameters();
+                if (ps.Length < 1) continue;
+                var t = ps[0].ParameterType;
+                string? name = t == typeof(Texture2D) ? nameof(SetImagePrefix2D) : t == typeof(Texture) ? nameof(SetImagePrefixTex) : null;
+                if (name is null) continue;
+                Plugin.H.Patch(m, prefix: new HarmonyMethod(typeof(ManagerFace).GetMethod(name, flags)));
+            }
+        }
+        catch (Exception e) { Plugin.L.LogWarning("감독 사진 연결 실패(표시): " + e.Message); }
+    }
+
+    private static Texture2D? Photo()
+    {
+        try
+        {
+            if (!File.Exists(FilePath)) { _tex = null; return null; }
+            var t = File.GetLastWriteTimeUtc(FilePath);
+            if (_tex is not null && t == _stamp) return _tex;
+            var bytes = File.ReadAllBytes(FilePath);
+            int w = BitConverter.ToInt32(bytes, 0), h = BitConverter.ToInt32(bytes, 4);
+            if (w <= 0 || h <= 0 || bytes.Length < 8 + w * h * 4) return _tex;
+            var data = new byte[w * h * 4];
+            Buffer.BlockCopy(bytes, 8, data, 0, data.Length);
+            var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
+            tex.LoadRawTextureData(data);
+            tex.Apply(false, false);
+            tex.hideFlags = HideFlags.HideAndDontSave;
+            tex.name = "FaceStudioManager";
+            _tex = tex;
+            _stamp = t;
+            Plugin.L.LogInfo($"감독 사진 불러옴 {w}x{h}");
+            return _tex;
+        }
+        catch (Exception e)
+        {
+            Plugin.L.LogWarning("감독 사진 읽기 실패: " + e.Message);
+            return _tex;
+        }
+    }
+
+    private static void CloseupPostfix(ref Texture2D __result)
+    {
+        // 사진이 나중에 생겨도 바꿀 수 있게, 게임이 찍은 원본은 항상 기억해 둔다.
+        if (__result is not null && (_tex is null || __result.Pointer != _tex.Pointer)) _orig = __result.Pointer;
+        var p = Photo();
+        if (p is null) return;
+        __result = p;
+        Hits++;
+    }
+
+    private static void SetImagePrefix2D(ref Texture2D __0)
+    {
+        if (__0 is null || _orig == IntPtr.Zero || __0.Pointer != _orig) return;
+        var p = Photo();
+        if (p is not null) { __0 = p; Hits++; }
+    }
+
+    private static void SetImagePrefixTex(ref Texture __0)
+    {
+        if (__0 is null || _orig == IntPtr.Zero || __0.Pointer != _orig) return;
+        var p = Photo();
+        if (p is not null) { __0 = p; Hits++; }
     }
 }

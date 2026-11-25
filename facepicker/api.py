@@ -24,7 +24,7 @@ from .people import People
 from .settings import DEFAULT_PROMPT, REF_SENTENCE, UNIFORM_PROMPT, Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "0.6.1"
+VERSION = "0.6.2"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -332,6 +332,7 @@ class Api:
             save["counts"] = kinds
         import time as _t
         if not self._reading["active"] and _t.time() - self._last_check > 5:
+            self._sync_manager()
             threading.Thread(target=self._maybe_reload, daemon=True).start()
         save["reading"] = dict(self._reading)
         save["index"] = {"building": self._index.building, "count": len(self._index.map)}
@@ -742,6 +743,7 @@ class Api:
         done = {it["id"] for it in items}
         self._queue = [i for i in self._queue if i["id"] not in done]
         self._save_queue()
+        self._sync_manager()
         refresh = None
         if self._cfg.auto_refresh and gamesetup.heartbeat() and gamesetup.heartbeat().get("alive"):
             refresh = gamesetup.command("refresh", timeout=30)
@@ -750,6 +752,27 @@ class Api:
             "conflicts": [{"uid": u, "name": names.get(u, u), "packs": [Path(p).parent.name for p in ps]}
                           for u, ps in conflicts.items()],
         }
+
+    # ---------------------------------------------------------------- 내 감독 사진 (플러그인)
+    def _manager_uid(self) -> str | None:
+        for p in getattr(self._people, "items", []) or []:
+            if p.get("me"):
+                return str(p.get("uid"))
+        return self._cfg.__dict__.get("manager_uid") or None
+
+    def _sync_manager(self) -> None:
+        """내 감독 사진이 적용돼 있으면 플러그인용 파일을 맞춰 둔다. 감독 사진은 config.xml로는 안 바뀐다."""
+        try:
+            uid = self._manager_uid()
+            raw = gamesetup.manager_photo_path()
+            img = self._pack().image_path(uid) if uid else None
+            if img is not None and img.exists():
+                if not raw.exists() or raw.stat().st_mtime < img.stat().st_mtime:
+                    gamesetup.write_manager_photo(img)
+            elif uid and raw.exists():
+                gamesetup.clear_manager_photo()
+        except Exception as e:  # noqa: BLE001
+            log.warning("감독 사진 동기화 실패: %s", e)
 
     # ---------------------------------------------------------------- 적용된 얼굴
     @_safe
@@ -768,6 +791,7 @@ class Api:
             if (self._index.map.get(str(u)) or {}).get("ours"):
                 self._index.map.pop(str(u), None)
         threading.Thread(target=lambda: self._index.build(self._cfg.graphics_dir, force=True), daemon=True).start()
+        self._sync_manager()
         return self.applied_list()
 
     @_safe

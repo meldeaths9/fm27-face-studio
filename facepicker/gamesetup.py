@@ -250,3 +250,24 @@ def diag_dir() -> Path:
     d = bridge_dir() / "diag"
     d.mkdir(exist_ok=True)
     return d
+
+
+# ---------------------------------------------------------------- 내 감독 사진
+def manager_photo_path() -> Path:
+    return bridge_dir() / "manager.raw"
+
+
+def write_manager_photo(png: Path) -> None:
+    """플러그인이 바로 쓸 수 있게 가로·세로(int32) + RGBA(아래 줄부터)로 저장."""
+    import struct
+    from PIL import Image
+    im = Image.open(png).convert("RGBA").transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+    d = bridge_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    tmp = d / "manager.raw.tmp"
+    tmp.write_bytes(struct.pack("<ii", im.width, im.height) + im.tobytes())
+    tmp.replace(manager_photo_path())
+
+
+def clear_manager_photo() -> None:
+    manager_photo_path().unlink(missing_ok=True)
