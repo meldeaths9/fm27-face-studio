@@ -20,7 +20,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string Id = "kr.fm27facestudio.plugin";
     public const string Name = "FM27 Face Studio";
-    public const string Version = "0.3.0";
+    public const string Version = "0.3.1";
 
     internal static ManualLogSource L = null!;
     internal static Harmony H = null!;
@@ -99,6 +99,7 @@ public sealed class Runner : MonoBehaviour
                 diagnosing = Diag.Active,
                 manager_photo = ManagerFace.HasPhoto,
                 manager_hits = ManagerFace.Hits,
+                manager_shots = ManagerFace.Shots,
                 last = _lastResult,
             });
         }
@@ -237,7 +238,7 @@ internal static class Diag
     private static float _until;
     private static readonly HashSet<string> Seen = new();
     private static readonly StringBuilder Keys = new();
-    private static readonly List<System.Reflection.MethodBase> Patched = new();
+    private static readonly List<(System.Reflection.MethodBase target, System.Reflection.MethodInfo patch)> Patched = new();
     private static string _file = "";
 
     public static string Start(int seconds)
@@ -263,9 +264,9 @@ internal static class Diag
             {
                 try
                 {
-                    var prefix = new HarmonyMethod(typeof(Diag).GetMethod(nameof(KeyPrefix), System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic));
-                    Plugin.H.Patch(m, prefix: prefix);
-                    Patched.Add(m);
+                    var pm = typeof(Diag).GetMethod(nameof(KeyPrefix), System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+                    Plugin.H.Patch(m, prefix: new HarmonyMethod(pm));
+                    Patched.Add((m, pm));
                 }
                 catch (Exception e)
                 {
@@ -281,7 +282,10 @@ internal static class Diag
             (typeof(FM.UI.NewGenPortraitResourceLocator), new[] { "Locate", "PrepareGeneration" }),
             (typeof(FM.UI.NewGenPortraitManager), new[] { "GetIDFromResourceID", "GetNewgenFromResourceIDAsync" }),
             (typeof(FM.UI.NewGenPortraitTextureLoader), new[] { "DecodeKey", "FindBestPortrait" }),
-            (typeof(FM.UI.EditManagerAppearanceModule), new[] { "MarkProfilePictureDirty" }),
+            (typeof(FM.UI.EditManagerAppearanceModule), new[] { "MarkProfilePictureDirty", "MarkProfilePictureDirtyWithDelay", "SetupData", "Init" }),
+            (typeof(FM.UI.ManagerAppearance.ManagerCloseupShot), new[] { "OnAppearanceSet", "SetManagerAppearance", "RenderManagerCloseup" }),
+            (typeof(FM.UI.ManagerAppearanceModuleHelper), new[] { "CreateAppearanceData", "CreateCharacterSettingFromAppearance" }),
+            (typeof(FM.UI.FileBrowserHandler), new[] { "get_DefaultPicturePath" }),
         };
         foreach (var (t, names) in traced)
         {
@@ -291,10 +295,10 @@ internal static class Diag
                 {
                     var ret = (m as System.Reflection.MethodInfo)?.ReturnType;
                     var withResult = ret is not null && ret != typeof(void) && !ret.IsValueType;
-                    var post = new HarmonyMethod(typeof(Diag).GetMethod(withResult ? nameof(TracePostR) : nameof(TracePost),
-                        System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic));
-                    Plugin.H.Patch(m, postfix: post);
-                    Patched.Add(m);
+                    var pm = typeof(Diag).GetMethod(withResult ? nameof(TracePostR) : nameof(TracePost),
+                        System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+                    Plugin.H.Patch(m, postfix: new HarmonyMethod(pm));
+                    Patched.Add((m, pm));
                 }
                 catch (Exception e)
                 {
@@ -369,6 +373,13 @@ internal static class Diag
                     try { txt = dr.ToString(); } catch { }
                     return $"DynRef(ID={id}, {txt})";
                 }
+                case Texture tx:
+                {
+                    string n = "", sz = "";
+                    try { n = tx.name; } catch { }
+                    try { sz = $"{tx.width}x{tx.height}"; } catch { }
+                    return $"{tx.GetIl2CppType()?.Name}('{n}' {sz})";
+                }
                 case Il2CppSystem.Object io:
                 {
                     var tn = io.GetIl2CppType()?.Name ?? "?";
@@ -394,9 +405,9 @@ internal static class Diag
     {
         if (!Active) return "진단 중이 아니에요.";
         Active = false;
-        foreach (var m in Patched)
+        foreach (var (m, pm) in Patched)
         {
-            try { Plugin.H.Unpatch(m, HarmonyPatchType.All, Plugin.H.Id); } catch { }
+            try { Plugin.H.Unpatch(m, pm); } catch { }   // 진단용만 떼고 감독 사진 연결은 그대로 둔다
         }
         Patched.Clear();
         var report = new StringBuilder();
@@ -508,6 +519,7 @@ internal static class ManagerFace
             }
         }
         catch (Exception e) { Plugin.L.LogWarning("감독 사진 연결 실패(표시): " + e.Message); }
+        Plugin.L.LogInfo($"감독 사진 연결 준비 (사진 파일 {(HasPhoto ? "있음" : "없음")}: {FilePath})");
     }
 
     private static Texture2D? Photo()
@@ -539,8 +551,11 @@ internal static class ManagerFace
         }
     }
 
+    public static int Shots;
     private static void CloseupPostfix(ref Texture2D __result)
     {
+        Shots++;
+        if (Shots <= 3) Plugin.L.LogInfo($"게임이 감독 사진을 찍음 ({Shots}번째)");
         // 사진이 나중에 생겨도 바꿀 수 있게, 게임이 찍은 원본은 항상 기억해 둔다.
         if (__result is not null && (_tex is null || __result.Pointer != _tex.Pointer)) _orig = __result.Pointer;
         var p = Photo();
