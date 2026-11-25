@@ -20,7 +20,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string Id = "kr.fm27facestudio.plugin";
     public const string Name = "FM27 Face Studio";
-    public const string Version = "0.3.1";
+    public const string Version = "0.3.2";
 
     internal static ManualLogSource L = null!;
     internal static Harmony H = null!;
@@ -282,10 +282,7 @@ internal static class Diag
             (typeof(FM.UI.NewGenPortraitResourceLocator), new[] { "Locate", "PrepareGeneration" }),
             (typeof(FM.UI.NewGenPortraitManager), new[] { "GetIDFromResourceID", "GetNewgenFromResourceIDAsync" }),
             (typeof(FM.UI.NewGenPortraitTextureLoader), new[] { "DecodeKey", "FindBestPortrait" }),
-            (typeof(FM.UI.EditManagerAppearanceModule), new[] { "MarkProfilePictureDirty", "MarkProfilePictureDirtyWithDelay", "SetupData", "Init" }),
-            (typeof(FM.UI.ManagerAppearance.ManagerCloseupShot), new[] { "OnAppearanceSet", "SetManagerAppearance", "RenderManagerCloseup" }),
-            (typeof(FM.UI.ManagerAppearanceModuleHelper), new[] { "CreateAppearanceData", "CreateCharacterSettingFromAppearance" }),
-            (typeof(FM.UI.FileBrowserHandler), new[] { "get_DefaultPicturePath" }),
+
         };
         foreach (var (t, names) in traced)
         {
