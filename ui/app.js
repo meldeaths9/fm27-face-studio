@@ -6,20 +6,36 @@ const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const ico = (n, cls = "i") => `<svg class="${cls}"><use href="#i-${n}"/></svg>`;
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+const GROUPS = { free_web: "무료 · 웹에서 직접", free_auto: "무료 · 자동", sub: "구독", api: "API 키 · 쓴 만큼 요금" };
+const TAG = { free_web: ["free", "무료"], free_auto: ["free", "무료"], sub: ["sub", "구독"], api: ["paid", "유료"] };
+const HOWTO = {
+  web_gemini: ["'사이트 열기'를 누르면 프롬프트가 복사되고 제미나이가 열려요.", "참고 사진을 켰으면 사진 파일이 있는 폴더가 같이 열려요. 사진을 제미나이 입력창에 끌어다 놓아요.", "입력창에 Ctrl+V로 프롬프트를 붙여넣고 보내요.", "완성된 사진을 우클릭 → 이미지 복사 후, 이 프로그램에서 Ctrl+V."],
+  web_chatgpt: ["'사이트 열기'를 누르면 프롬프트가 복사되고 챗GPT가 열려요.", "참고 사진을 켰으면 사진 파일을 입력창에 끌어다 놓아요.", "Ctrl+V로 프롬프트를 붙여넣고 보내요.", "완성된 사진을 복사해서 이 프로그램에서 Ctrl+V."],
+  web_grok: ["'사이트 열기'를 누르면 프롬프트가 복사되고 그록 Imagine이 열려요.", "참고 사진을 켰으면 사진 파일을 끌어다 놓아요.", "Ctrl+V로 프롬프트를 붙여넣고 만들어요.", "완성된 사진을 복사해서 이 프로그램에서 Ctrl+V."],
+  cloudflare: ["dash.cloudflare.com 에서 무료 계정을 만들어요.", "오른쪽 위 계정 메뉴의 Account ID를 복사해 아래 '계정 ID'에 넣어요.", "내 프로필 → API 토큰 → 토큰 만들기 → 'Workers AI' 템플릿으로 만든 토큰을 '토큰'에 넣어요.", "하루 무료 사용량 안에서 버튼 하나로 생성돼요. 참고 사진은 못 보내요."],
+  codex: ["ChatGPT 유료 구독(Plus 이상)이 필요해요.", "Node.js 설치 후 명령 프롬프트에서: npm i -g @openai/codex", "codex login 으로 ChatGPT 계정 로그인.", "프로그램을 다시 켜면 '설치됨'으로 바뀌어요. 한 장에 30초~1분 걸려요."],
+  gemini: ["aistudio.google.com/apikey 에서 키를 만들어요.", "이미지 생성은 결제를 등록한 계정에서만 돼요 (무료 키는 오류).", "키를 아래에 넣어요."],
+  openai: ["platform.openai.com/api-keys 에서 키를 만들어요.", "크레딧 충전이 필요해요.", "키를 아래에 넣어요."],
+  xai: ["console.x.ai 에서 키를 만들어요.", "크레딧 충전이 필요해요.", "키를 아래에 넣어요. 참고 사진은 못 보내요."],
+};
+const KEY_URL = { gemini: "https://aistudio.google.com/apikey", openai: "https://platform.openai.com/api-keys", xai: "https://console.x.ai/", cloudflare: "https://dash.cloudflare.com/" };
+
 const S = {
   kind: "player",
-  people: { loaded: false, count: 0 },
+  people: { loaded: false, count: 0, my_clubs: [] },
   results: [],
   selUid: null,
-  photo: null,          // {img, w, h, box:[cx,cy,side], auto:[...], nobg, isOriginal}
+  photo: null,            // {img, w, h, box:[cx,cy,side], auto, nobg, isOriginal}
   queue: [],
   applied: [],
   aSel: new Set(),
   settings: {},
-  models: [],
+  ai: [],
+  styles: {},
   defaultPrompt: "",
-  rembg: false,
   promptDirty: false,
+  deco: { caption: false, text: "", style: "gold", rounded: false, radius: 14, border: false },
+  decoTextDirty: false,
 };
 
 /* ------------------------------------------------------------------ API */
@@ -28,8 +44,7 @@ function ready() {
   return new Promise((res) => {
     if (window.pywebview && window.pywebview.api) return res(window.pywebview.api);
     window.addEventListener("pywebviewready", () => res(window.pywebview.api));
-    // 개발용: 브라우저에서 dev_server.py로 열었을 때
-    setTimeout(() => {
+    setTimeout(() => {   // 개발용: 브라우저에서 dev_server.py로 열었을 때
       if (!window.pywebview && location.protocol.startsWith("http")) {
         window.pywebview = { api: new Proxy({}, { get: (_, n) => n === "then" ? undefined : (...a) =>
           fetch("/api/" + n, { method: "POST", body: JSON.stringify(a) }).then((r) => r.json()) }) };
@@ -74,10 +89,19 @@ function confirmBox(title, body, yes = "확인", danger = false) {
     $("#mConfirm").classList.add("on");
   });
 }
+let progTimer = null;
 function busy(on, text = "처리 중…", sub = "") {
   $("#busy").classList.toggle("on", on);
   $("#busyText").textContent = text;
   $("#busySub").textContent = sub;
+  clearInterval(progTimer);
+  if (on) progTimer = setInterval(async () => {
+    const p = await API.progress();
+    if (p && p.task) {
+      $("#busyText").textContent = p.task;
+      $("#busySub").textContent = p.total ? `${Math.floor(p.done / p.total * 100)}% · ${(p.done / 1048576).toFixed(0)} / ${(p.total / 1048576).toFixed(0)} MB` : `${(p.done / 1048576).toFixed(0)} MB`;
+    }
+  }, 500);
 }
 function hue(s) { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; }
 function initials(name) {
@@ -89,6 +113,16 @@ function avatar(p) {
   const h = hue(p.name || p.uid);
   return `<div class="av" style="background:linear-gradient(135deg,hsl(${h} 55% 42%),hsl(${(h + 40) % 360} 60% 30%))">${esc(initials(p.name))}</div>`;
 }
+async function copyText(t) {
+  try { await navigator.clipboard.writeText(t); return true; } catch (e) { /* 아래 방식으로 */ }
+  const ta = document.createElement("textarea");
+  ta.value = t; ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta); ta.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+  ta.remove();
+  return ok;
+}
 
 /* ------------------------------------------------------------------ 탭 */
 $$(".tab").forEach((b) => b.onclick = () => {
@@ -98,55 +132,87 @@ $$(".tab").forEach((b) => b.onclick = () => {
   else requestAnimationFrame(drawStage);
 });
 
-/* ------------------------------------------------------------------ 1. 검색 */
-function renderPeopleInfo() {
-  const el = $("#peopleInfo");
-  if (S.people.loaded) {
-    el.innerHTML = `<div class="callout ok">${ico("users")}<div>세이브 인물 <b>${S.people.count.toLocaleString()}</b>명을 불러왔어요.</div></div>`;
+/* ------------------------------------------------------------------ 1. 세이브·검색 */
+function renderSaveBox() {
+  const el = $("#saveBox"), P = S.people;
+  if (P.loaded) {
+    el.innerHTML = `<div class="savebox"><div class="ic">${ico("folder")}</div>
+      <div class="tx"><div class="nm">${esc(P.save_name)}</div><div class="sub">인물 ${P.count.toLocaleString()}명${P.my_clubs && P.my_clubs.length ? " · 내 팀 " + esc(P.my_clubs.join(", ")) : ""}</div></div>
+      <button class="btn icon sm" id="btnSaveReload" title="세이브 다시 읽기">${ico("refresh")}</button>
+      <button class="btn sm" id="btnSavePick">바꾸기</button></div>`;
+    $("#btnSaveReload").onclick = reloadSave;
+    $("#btnSavePick").onclick = pickSave;
   } else {
-    el.innerHTML = `<div class="callout">${ico("info")}<div>세이브 인물 목록이 아직 없어요.<br>2단계 플러그인이 완성되면 이름·팀으로 검색할 수 있어요. 지금은 아래에 <b>UID를 직접 입력</b>해 주세요.</div></div>`;
+    el.innerHTML = `<div class="savebox empty" id="btnSavePick"><div class="ic">${ico("upload")}</div>
+      <div class="tx"><div class="nm">세이브 불러오기</div><div class="sub">세이브를 고르면 이름·팀으로 검색할 수 있어요</div></div></div>`;
+    $("#btnSavePick").onclick = pickSave;
   }
-  $("#q").disabled = !S.people.loaded;
+  $("#btnMyTeam").disabled = !(P.my_clubs && P.my_clubs.length);
   renderResults();
+}
+async function pickSave() {
+  busySave(true);
+  const r = await call("pick_save");
+  busySave(false);
+  if (r) afterSave(r);
+}
+async function reloadSave() {
+  busySave(true);
+  const r = await call("reload_save");
+  busySave(false);
+  if (r) { afterSave(r); toast("세이브를 다시 읽었어요.", "ok", 2000); }
+}
+function busySave(on) {
+  const el = $("#saveBox .savebox");
+  if (el) el.style.opacity = on ? .55 : 1;
+  if (on) toast("세이브를 읽는 중이에요. 처음엔 수십 초 걸릴 수 있어요…", "info", 6000);
+}
+function afterSave(r) {
+  S.people = r;
+  renderSaveBox();
+  if (r.loaded) toast(`인물 ${r.count.toLocaleString()}명을 불러왔어요${r.cached ? " (저장된 목록 사용)" : r.seconds ? ` (${r.seconds}초)` : ""}.`, "ok");
+  doSearch();
 }
 function renderResults() {
   const el = $("#results");
-  if (!S.people.loaded) { el.innerHTML = ""; return; }
-  if (!$("#q").value.trim()) {
+  if (!S.people.loaded) {
+    el.innerHTML = `<div class="empty"><div>${ico("search")}<br>세이브를 불러오면 검색할 수 있어요.<br>지금은 아래에 <b style="color:var(--muted)">UID를 직접 입력</b>해도 돼요.</div></div>`;
+    return;
+  }
+  if (!$("#qName").value.trim() && !$("#qTeam").value.trim()) {
     el.innerHTML = `<div class="empty"><div>${ico("search")}<br>이름이나 팀을 입력해 보세요</div></div>`;
     return;
   }
   if (!S.results.length) { el.innerHTML = `<div class="empty"><div>${ico("search")}<br>검색 결과가 없어요</div></div>`; return; }
   el.innerHTML = S.results.map((p, i) => `
-    <div class="pcard ${p.uid === S.selUid ? "sel" : ""}" data-i="${i}">
+    <div class="rrow ${p.uid === S.selUid ? "sel" : ""}" data-i="${i}">
       ${avatar(p)}
-      <div class="tx"><div class="nm">${esc(p.name)}</div>
-        <div class="sub">${esc(p.club || "무소속")}${p.age ? " · " + esc(p.age) + "세" : ""}${p.nationality ? " · " + esc(p.nationality) : ""}</div></div>
-      ${p.newgen ? '<span class="badge ng">뉴젠</span>' : ""}${p.face ? '<span class="badge face">적용됨</span>' : ""}
-    </div>`).join("");
-  $$(".pcard", el).forEach((c) => c.onclick = () => pickPerson(S.results[+c.dataset.i]));
+      <div class="nm">${esc(p.name)}</div>
+      ${p.me ? '<span class="badge me">내 감독</span>' : p.job ? `<span class="badge job">${esc(p.job)}</span>` : ""}
+      ${p.newgen && !p.me ? '<span class="badge ng">뉴젠</span>' : ""}${p.face ? '<span class="badge face">적용됨</span>' : ""}
+      <div class="club">${esc(p.club || "무소속")}</div>
+    </div>`).join("") + (S.results.length >= 200 ? '<div class="more">200명까지만 보여요. 더 좁혀서 검색해 보세요.</div>' : "");
+  $$(".rrow", el).forEach((c) => c.onclick = () => pickPerson(S.results[+c.dataset.i]));
 }
 let qTimer;
-$("#q").addEventListener("input", () => { clearTimeout(qTimer); qTimer = setTimeout(doSearch, 180); });
+["#qName", "#qTeam"].forEach((s) => $(s).addEventListener("input", () => { clearTimeout(qTimer); qTimer = setTimeout(doSearch, 160); }));
 async function doSearch() {
-  const q = $("#q").value.trim();
-  S.results = q ? (await call("search", q, S.kind)) || [] : [];
+  const n = $("#qName").value.trim(), t = $("#qTeam").value.trim();
+  S.results = S.people.loaded && (n || t) ? (await call("search", n, t, S.kind)) || [] : [];
   renderResults();
 }
+$("#btnMyTeam").onclick = () => {
+  const clubs = S.people.my_clubs || [];
+  if (!clubs.length) return;
+  const cur = $("#qTeam").value.trim();
+  const i = clubs.indexOf(cur);
+  $("#qTeam").value = i >= 0 && clubs.length > 1 ? clubs[(i + 1) % clubs.length] : clubs[0];
+  doSearch();
+};
 $$("#kindSeg button").forEach((b) => b.onclick = () => {
-  S.kind = b.dataset.kind;
-  $$("#kindSeg button").forEach((x) => x.classList.toggle("on", x === b));
+  setKind(b.dataset.kind);
   doSearch(); updateCard(); autoPrompt();
 });
-$("#btnReload").onclick = async () => {
-  const r = await call("reload_people");
-  if (!r) return;
-  S.people = r;
-  renderPeopleInfo();
-  if (r.status === "missing") toast("세이브 인물 목록 파일이 아직 없어요.");
-  else if (r.loaded) { toast(`인물 ${r.count.toLocaleString()}명 불러옴`, "ok"); doSearch(); }
-};
-
 function setKind(k) {
   S.kind = k;
   $$("#kindSeg button").forEach((x) => x.classList.toggle("on", x.dataset.kind === k));
@@ -161,6 +227,8 @@ function fillPerson(p) {
   $("#fUid").value = p.uid || ""; $("#fName").value = p.name || ""; $("#fClub").value = p.club || "";
   $("#fAge").value = p.age || ""; $("#fNat").value = p.nationality || ""; $("#fNewgen").checked = !!p.newgen;
   if (p.kind) setKind(p.kind);
+  S.decoTextDirty = false;
+  syncDecoText();
   updateCard();
 }
 function pickPerson(p) {
@@ -171,27 +239,31 @@ function pickPerson(p) {
   autoPrompt();
 }
 $("#btnClear").onclick = () => { S.selUid = null; fillPerson({}); renderResults(); S.promptDirty = false; autoPrompt(); };
-["#fName", "#fClub", "#fAge", "#fNat"].forEach((s) => $(s).addEventListener("input", () => { updateCard(); autoPromptSoon(); }));
+["#fClub", "#fAge", "#fNat"].forEach((s) => $(s).addEventListener("input", () => { updateCard(); autoPromptSoon(); }));
+$("#fName").addEventListener("input", () => { syncDecoText(); updateCard(); autoPromptSoon(); });
 $("#fNewgen").onchange = updateCard;
 $("#fUid").addEventListener("input", async () => {
-  $("#fUid").value = $("#fUid").value.replace(/\D/g, "");
-  if (S.selUid && $("#fUid").value !== S.selUid) { S.selUid = null; renderResults(); }
-  if (!S.selUid && $("#fUid").value.length >= 10) $("#fNewgen").checked = !!(await call("guess_newgen", $("#fUid").value));
+  const raw = $("#fUid").value;
+  const cleaned = raw.replace(/^\s*[rR]\s*-\s*/, "r-").replace(/[^0-9r-]/g, "");
+  if (cleaned !== raw) $("#fUid").value = cleaned;
+  if (S.selUid && cleaned.replace(/^r-/, "") !== S.selUid) { S.selUid = null; renderResults(); }
+  if (/^r-/.test(cleaned)) $("#fNewgen").checked = true;
+  else if (!S.selUid && cleaned.length >= 10) $("#fNewgen").checked = !!(await call("guess_newgen", cleaned));
   updateCard();
 });
 function updateCard() {
   const p = person();
   $("#pvName").textContent = p.name || "이름 없음";
-  $("#pvSub").textContent = [p.club || "소속 없음", p.age ? p.age + "세" : "", p.nationality].filter(Boolean).join(" · ");
-  $("#pvTags").innerHTML = (p.uid ? `<span class="badge uid">${esc(p.uid)}</span>` : "") +
+  $("#pvSub").textContent = [p.club || "소속 없음", p.age ? p.age + "세" : ""].filter(Boolean).join(" · ");
+  const uid = p.uid.replace(/^r-/, "");
+  $("#pvTags").innerHTML = (uid ? `<span class="badge uid">${esc(uid)}</span>` : "") +
     (p.newgen ? '<span class="badge ng">뉴젠</span>' : "") +
     `<span class="badge face">${S.kind === "player" ? "선수" : "스태프"}</span>`;
 }
 
-/* ------------------------------------------------------------------ 2. 사진 편집기 */
+/* ------------------------------------------------------------------ 2. 편집기 (틀 고정, 사진 이동) */
 const cv = $("#cv"), ctx = cv.getContext("2d");
-const pv = $("#pv"), pctx = pv.getContext("2d");
-let view = { s: 1, ox: 0, oy: 0 };
+let view = { s: 1, fx: 0, fy: 0, F: 0 };
 
 function setPhoto(payload, keepBox = false) {
   return new Promise((res) => {
@@ -199,7 +271,8 @@ function setPhoto(payload, keepBox = false) {
     img.onload = () => {
       const old = S.photo;
       S.photo = {
-        img, w: payload.w, h: payload.h, nobg: payload.nobg, isOriginal: payload.is_original ?? (old ? old.isOriginal : true),
+        img, w: payload.w, h: payload.h, nobg: payload.nobg,
+        isOriginal: payload.is_original ?? (old ? old.isOriginal : true),
         box: keepBox && old ? old.box : payload.box, auto: payload.box || (old && old.auto),
       };
       $("#drop").style.display = "none";
@@ -207,7 +280,7 @@ function setPhoto(payload, keepBox = false) {
       $("#btnRevert").disabled = S.photo.isOriginal;
       $("#btnNobg").classList.toggle("on", !!S.photo.nobg);
       $("#pvBox").classList.toggle("checker", !!S.photo.nobg);
-      pv.hidden = false; $("#pvBox .ph0").style.display = "none";
+      S.photo.box = clampBox(S.photo.box);
       syncZoom(); drawStage(); res();
       if (!S.promptDirty) autoPrompt();
     };
@@ -216,10 +289,15 @@ function setPhoto(payload, keepBox = false) {
 }
 function clampBox([cx, cy, side]) {
   const { w, h } = S.photo;
-  side = Math.max(16, Math.min(side, Math.max(w, h)));
-  cx = side <= w ? Math.min(Math.max(cx, side / 2), w - side / 2) : w / 2;
-  cy = side <= h ? Math.min(Math.max(cy, side / 2), h - side / 2) : h / 2;
+  side = Math.max(16, Math.min(side, Math.min(w, h)));
+  cx = Math.min(Math.max(cx, side / 2), w - side / 2);
+  cy = Math.min(Math.max(cy, side / 2), h - side / 2);
   return [cx, cy, side];
+}
+function framePath(x, y, d) {
+  const r = S.deco.rounded ? d * S.deco.radius / 100 : 0;
+  ctx.beginPath();
+  if (r > 0 && ctx.roundRect) ctx.roundRect(x, y, d, d, r); else ctx.rect(x, y, d, d);
 }
 function drawStage() {
   const st = $("#stage"), dpr = window.devicePixelRatio || 1;
@@ -230,68 +308,78 @@ function drawStage() {
   ctx.clearRect(0, 0, W, H);
   const P = S.photo;
   if (!P) return;
-  const pad = 18, s = Math.min((W - pad * 2) / P.w, (H - pad * 2) / P.h);
-  view = { s, ox: (W - P.w * s) / 2, oy: (H - P.h * s) / 2 };
-  if (P.nobg) { // 투명 표시용 체크무늬
-    const c = 10; ctx.save(); ctx.beginPath(); ctx.rect(view.ox, view.oy, P.w * s, P.h * s); ctx.clip();
-    for (let y = 0; y < P.h * s; y += c) for (let x = 0; x < P.w * s; x += c) {
-      ctx.fillStyle = ((x + y) / c) % 2 ? "#2c3653" : "#3a4566"; ctx.fillRect(view.ox + x, view.oy + y, c, c);
+  const F = Math.min(W, H) - 48, fx = (W - F) / 2, fy = (H - F) / 2;
+  const [cx, cy, side] = P.box, s = F / side;
+  view = { s, fx, fy, F };
+  const ox = fx - (cx - side / 2) * s, oy = fy - (cy - side / 2) * s;
+  if (P.nobg) {   // 투명 표시용 체크무늬 (틀 안)
+    ctx.save(); framePath(fx, fy, F); ctx.clip();
+    const c = 12;
+    for (let y = 0; y < F; y += c) for (let x = 0; x < F; x += c) {
+      ctx.fillStyle = ((x + y) / c) % 2 ? "#2c3653" : "#3a4566"; ctx.fillRect(fx + x, fy + y, c, c);
     }
     ctx.restore();
   }
   ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(P.img, view.ox, view.oy, P.w * s, P.h * s);
-  const [cx, cy, side] = P.box;
-  const x = view.ox + (cx - side / 2) * s, y = view.oy + (cy - side / 2) * s, d = side * s;
+  ctx.drawImage(P.img, ox, oy, P.w * s, P.h * s);
+  // 틀 바깥 어둡게
   ctx.save();
-  ctx.fillStyle = "rgba(5,8,18,.62)";
-  ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.rect(x, y, d, d); ctx.fill("evenodd");
-  ctx.strokeStyle = "rgba(255,255,255,.28)"; ctx.lineWidth = 1; ctx.setLineDash([4, 5]);
+  ctx.fillStyle = "rgba(5,8,18,.7)";
+  ctx.beginPath(); ctx.rect(0, 0, W, H);
+  const r = S.deco.rounded ? F * S.deco.radius / 100 : 0;
+  if (r > 0 && ctx.roundRect) ctx.roundRect(fx, fy, F, F, r); else ctx.rect(fx, fy, F, F);
+  ctx.fill("evenodd");
+  // 삼등분 선
+  ctx.save(); framePath(fx, fy, F); ctx.clip();
+  ctx.strokeStyle = "rgba(255,255,255,.22)"; ctx.lineWidth = 1; ctx.setLineDash([4, 5]);
   for (const k of [1, 2]) {
-    ctx.beginPath(); ctx.moveTo(x + d * k / 3, y); ctx.lineTo(x + d * k / 3, y + d); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(x, y + d * k / 3); ctx.lineTo(x + d, y + d * k / 3); ctx.stroke();
-  }
-  ctx.setLineDash([]);
-  const g = ctx.createLinearGradient(x, y, x + d, y + d);
-  g.addColorStop(0, "#9a85ff"); g.addColorStop(1, "#1fd1a5");
-  ctx.strokeStyle = g; ctx.lineWidth = 2.5; ctx.strokeRect(x, y, d, d);
-  const L = Math.min(18, d / 5);
-  ctx.strokeStyle = "#fff"; ctx.lineWidth = 4; ctx.lineCap = "round";
-  for (const [px, py, dx, dy] of [[x, y, 1, 1], [x + d, y, -1, 1], [x, y + d, 1, -1], [x + d, y + d, -1, -1]]) {
-    ctx.beginPath(); ctx.moveTo(px + dx * L, py); ctx.lineTo(px, py); ctx.lineTo(px, py + dy * L); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(fx + F * k / 3, fy); ctx.lineTo(fx + F * k / 3, fy + F); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(fx, fy + F * k / 3); ctx.lineTo(fx + F, fy + F * k / 3); ctx.stroke();
   }
   ctx.restore();
-  drawPreview();
+  ctx.setLineDash([]);
+  const g = ctx.createLinearGradient(fx, fy, fx + F, fy + F);
+  g.addColorStop(0, "#9a85ff"); g.addColorStop(1, "#1fd1a5");
+  ctx.strokeStyle = g; ctx.lineWidth = 2.5; framePath(fx, fy, F); ctx.stroke();
+  ctx.restore();
+  requestPreview();
 }
-function drawPreview() {
-  const P = S.photo; if (!P) return;
-  const [cx, cy, side] = P.box, k = P.img.naturalWidth / P.w;
-  pctx.clearRect(0, 0, 300, 300);
-  pctx.imageSmoothingQuality = "high";
-  pctx.drawImage(P.img, (cx - side / 2) * k, (cy - side / 2) * k, side * k, side * k, 0, 0, 300, 300);
+// 오른쪽 미리보기: 꾸미기까지 적용된 실제 결과 (파이썬이 그림)
+let pvBusy = false, pvAgain = false;
+async function requestPreview() {
+  if (!S.photo) return;
+  if (pvBusy) { pvAgain = true; return; }
+  pvBusy = true;
+  const url = await API.preview(S.photo.box, S.deco, 300).catch(() => "");
+  pvBusy = false;
+  if (typeof url === "string" && url) {
+    $("#pvImg").src = url; $("#pvImg").hidden = false; $("#pvBox .ph0").style.display = "none";
+  }
+  if (pvAgain) { pvAgain = false; requestPreview(); }
 }
-// 줌 슬라이더: 로그 스케일
-function zoomRange() { const P = S.photo; return [Math.log(24), Math.log(Math.max(P.w, P.h))]; }
+// 확대 슬라이더 (로그 스케일): 오른쪽일수록 확대
+function zoomRange() { const P = S.photo, mx = Math.min(P.w, P.h); return [Math.log(mx), Math.log(Math.max(16, mx * 0.08))]; }
 function syncZoom() {
   if (!S.photo) return;
   const [a, b] = zoomRange(), v = (Math.log(S.photo.box[2]) - a) / (b - a);
-  $("#zoom").value = Math.round((1 - v) * 1000);
-  $("#zoomTxt").textContent = Math.round(S.photo.box[2] / Math.max(S.photo.w, S.photo.h) * 100) + "%";
+  $("#zoom").value = Math.round(Math.max(0, Math.min(1, v)) * 1000);
+  $("#zoomTxt").textContent = Math.round(Math.min(S.photo.w, S.photo.h) / S.photo.box[2] * 100) + "%";
 }
 $("#zoom").addEventListener("input", () => {
   if (!S.photo) return;
-  const [a, b] = zoomRange(), v = 1 - $("#zoom").value / 1000;
+  const [a, b] = zoomRange(), v = $("#zoom").value / 1000;
   const [cx, cy] = S.photo.box;
   S.photo.box = clampBox([cx, cy, Math.exp(a + (b - a) * v)]);
-  $("#zoomTxt").textContent = Math.round(S.photo.box[2] / Math.max(S.photo.w, S.photo.h) * 100) + "%";
+  $("#zoomTxt").textContent = Math.round(Math.min(S.photo.w, S.photo.h) / S.photo.box[2] * 100) + "%";
   drawStage();
 });
 let drag = null;
-cv.addEventListener("mousedown", (e) => { if (S.photo) drag = { x: e.clientX, y: e.clientY, box: [...S.photo.box] }; });
+cv.addEventListener("mousedown", (e) => { if (S.photo) { drag = { x: e.clientX, y: e.clientY, box: [...S.photo.box] }; $("#stage").focus(); } });
 window.addEventListener("mousemove", (e) => {
   if (!drag) return;
   const [cx, cy, side] = drag.box;
-  S.photo.box = clampBox([cx + (e.clientX - drag.x) / view.s, cy + (e.clientY - drag.y) / view.s, side]);
+  // 사진이 마우스를 따라 움직임 = 자르기 영역은 반대로
+  S.photo.box = clampBox([cx - (e.clientX - drag.x) / view.s, cy - (e.clientY - drag.y) / view.s, side]);
   drawStage();
 });
 window.addEventListener("mouseup", () => drag = null);
@@ -299,11 +387,26 @@ cv.addEventListener("wheel", (e) => {
   if (!S.photo) return;
   e.preventDefault();
   const [cx, cy, side] = S.photo.box;
-  S.photo.box = clampBox([cx, cy, side * (e.deltaY < 0 ? 0.94 : 1.06)]);
+  S.photo.box = clampBox([cx, cy, side * (e.deltaY < 0 ? 0.93 : 1.075)]);
   syncZoom(); drawStage();
 }, { passive: false });
-cv.addEventListener("dblclick", () => { if (S.photo && S.photo.auto) { S.photo.box = clampBox([...S.photo.auto]); syncZoom(); drawStage(); } });
+cv.addEventListener("dblclick", () => autoFit());
+$("#stage").addEventListener("keydown", (e) => {
+  if (!S.photo) return;
+  const step = (e.shiftKey ? 10 : 2) / view.s;
+  const d = { ArrowLeft: [step, 0], ArrowRight: [-step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] }[e.key];
+  if (!d) return;
+  e.preventDefault();
+  const [cx, cy, side] = S.photo.box;
+  S.photo.box = clampBox([cx + d[0], cy + d[1], side]);
+  drawStage();
+});
 new ResizeObserver(() => drawStage()).observe($("#stage"));
+async function autoFit() {
+  if (!S.photo) return;
+  const r = await call("auto_box");
+  if (Array.isArray(r)) { S.photo.box = clampBox(r); S.photo.auto = r; syncZoom(); drawStage(); }
+}
 
 // 사진 넣기
 function readFile(file) {
@@ -339,19 +442,66 @@ $("#btnPaste").onclick = async () => {
   busy(false);
   if (r) setPhoto(r);
 };
-$("#btnAuto").onclick = () => cv.dispatchEvent(new Event("dblclick"));
+$("#btnAuto").onclick = autoFit;
 $("#btnRevert").onclick = async () => { const r = await call("revert_original"); if (r) setPhoto(r); };
 $("#btnNobg").onclick = async () => {
   if (!S.photo) return;
-  if (!S.rembg) { toast("배경 제거 기능이 아직 설치되지 않았어요.\n프로그램 폴더의 '배경제거_설치.bat'을 실행해 주세요.", "err"); return; }
   const on = !S.photo.nobg;
-  busy(true, on ? "배경 지우는 중…" : "되돌리는 중…", on ? "처음 한 번은 모델을 받느라 오래 걸려요" : "");
+  if (on && !S.bgReady && !await confirmBox("배경 제거 모델 받기", "배경 제거를 처음 쓰려면 AI 모델(약 170MB)을 한 번 내려받아야 해요.\n받은 뒤에는 인터넷 없이도 바로 작동해요.\n\n지금 받을까요?", "받기")) return;
+  busy(true, on ? "배경 지우는 중…" : "되돌리는 중…");
   const r = await call("set_nobg", on);
   busy(false);
-  if (r) setPhoto(r, true);
+  if (r) { if (on) S.bgReady = true; setPhoto(r, true); }
 };
 
+/* ------------------------------------------------------------------ 꾸미기 */
+function renderDeco() {
+  const d = S.deco;
+  $("#dCaption").checked = d.caption; $("#dRound").checked = d.rounded; $("#dBorder").checked = d.border;
+  $("#dRadius").value = d.radius; $("#dRadius").disabled = !d.rounded;
+  $(".deco").classList.toggle("off-cap", !d.caption);
+  $("#dStyle").innerHTML = Object.entries(S.styles).map(([k, v]) => `<button class="chip ${d.style === k ? "on" : ""}" data-k="${k}">${esc(v)}</button>`).join("");
+  $$("#dStyle .chip").forEach((b) => b.onclick = () => { S.deco.style = b.dataset.k; decoChanged(); });
+}
+function syncDecoText() {
+  if (!S.decoTextDirty) { $("#dText").value = $("#fName").value.trim(); S.deco.text = $("#dText").value; requestPreview(); }
+}
+let decoSaveTimer;
+function decoChanged() {
+  renderDeco(); drawStage();
+  clearTimeout(decoSaveTimer);
+  decoSaveTimer = setTimeout(() => call("save_settings", { deco: S.deco }), 600);
+}
+$("#dCaption").onchange = () => { S.deco.caption = $("#dCaption").checked; decoChanged(); };
+$("#dRound").onchange = () => { S.deco.rounded = $("#dRound").checked; decoChanged(); };
+$("#dBorder").onchange = () => { S.deco.border = $("#dBorder").checked; decoChanged(); };
+$("#dRadius").addEventListener("input", () => { S.deco.radius = +$("#dRadius").value; drawStage(); clearTimeout(decoSaveTimer); decoSaveTimer = setTimeout(() => call("save_settings", { deco: S.deco }), 600); });
+$("#dText").addEventListener("input", () => { S.decoTextDirty = true; S.deco.text = $("#dText").value; requestPreview(); });
+
 /* ------------------------------------------------------------------ AI */
+function curAI() { return S.ai.find((a) => a.id === S.settings.ai_provider) || S.ai[0]; }
+function renderAISel() {
+  const sel = $("#aiSel");
+  sel.innerHTML = Object.entries(GROUPS).map(([g, label]) => {
+    const items = S.ai.filter((a) => a.group === g);
+    return `<optgroup label="${esc(label)}">` + items.map((a) => `<option value="${a.id}">${esc(a.name)}${a.group === "free_web" ? "" : " · " + esc(a.status)}</option>`).join("") + "</optgroup>";
+  }).join("");
+  sel.value = curAI().id;
+  updateAIButton();
+}
+function updateAIButton() {
+  const a = curAI();
+  const web = a.group === "free_web";
+  $("#btnAIText").textContent = web ? "사이트 열기" : "AI 생성";
+  $("#aiNote").textContent = web ? "프롬프트가 복사돼요 → 사이트에 붙여넣기 → 완성 사진을 복사해서 여기서 Ctrl+V"
+    : (!a.ref ? "이 방식은 참고 사진을 못 보내요" : a.status === "키 없음" || a.status === "설치 안 됨" ? "설정(⚙)에서 연결해 주세요" : "");
+}
+$("#aiSel").onchange = () => {
+  S.settings.ai_provider = $("#aiSel").value;
+  call("save_settings", { ai_provider: S.settings.ai_provider });
+  updateAIButton();
+  if (!S.promptDirty) autoPrompt();
+};
 let pTimer;
 function autoPromptSoon() { clearTimeout(pTimer); pTimer = setTimeout(autoPrompt, 300); }
 async function autoPrompt(force = false) {
@@ -361,23 +511,30 @@ async function autoPrompt(force = false) {
 }
 $("#prompt").addEventListener("input", () => S.promptDirty = true);
 $("#btnPrompt").onclick = () => autoPrompt(true);
-$("#sendPhoto").onchange = async () => {
+$("#sendPhoto").onchange = () => {
   S.settings.send_photo = $("#sendPhoto").checked;
-  call("save_settings", S.settings);
+  call("save_settings", { send_photo: S.settings.send_photo });
   if (!S.promptDirty) autoPrompt();
 };
 $("#btnAI").onclick = async () => {
   let prompt = $("#prompt").value.trim();
   if (!prompt) { await autoPrompt(true); prompt = $("#prompt").value.trim(); }
+  const a = curAI();
   const send = $("#sendPhoto").checked && !!S.photo;
-  busy(true, "AI가 사진을 만드는 중…", S.settings.gemini_model + " · 보통 10~40초");
+  if (a.group === "free_web") {
+    const ok = await copyText(prompt);
+    const r = await call("ai_web", a.id, send);
+    if (r) toast((ok ? "프롬프트를 복사했어요. " : "") + `${a.name}을 열었어요.` + (r.ref ? "\n참고 사진 파일도 열어 뒀어요 — 사이트에 끌어다 놓으세요." : "") + "\n완성된 사진을 복사해서 여기서 Ctrl+V 하면 돼요.", "ok", 8000);
+    return;
+  }
+  busy(true, "AI가 사진을 만드는 중…", a.name + " · 보통 10초~1분");
   $("#btnAI").disabled = true;
-  const r = await call("ai_generate", prompt, send);
+  const r = await call("ai_generate", a.id, prompt, send);
   busy(false); $("#btnAI").disabled = false;
   if (!r) return;
-  if (r.error === "need_key") { toast("설정에서 제미나이 API 키를 먼저 입력해 주세요.", "err"); openSettings(); $("#sKey").focus(); return; }
+  if (r.error === "need_key") { toast(`${a.name} 연결 정보가 없어요. 설정에서 넣어 주세요.`, "err"); openSettings(a.id); return; }
   await setPhoto(r);
-  toast("AI 사진 완성! 자르기 위치를 확인하고 대기열에 추가하세요.", "ok");
+  toast("AI 사진 완성! 위치를 맞추고 대기열에 추가하세요.", "ok");
 };
 
 /* ------------------------------------------------------------------ 3. 대기열 */
@@ -398,12 +555,12 @@ function renderQueue() {
 }
 $("#btnAdd").onclick = async () => {
   const p = person();
-  if (!/^\d+$/.test(p.uid)) { toast("UID(숫자)를 입력하거나 검색 결과에서 인물을 골라 주세요.", "err"); $("#fUid").focus(); return; }
+  if (!/^(r-)?\d+$/.test(p.uid)) { toast("UID(숫자)를 입력하거나 검색 결과에서 인물을 골라 주세요.", "err"); $("#fUid").focus(); return; }
   if (!S.photo) { toast("먼저 사진을 넣거나 AI로 만들어 주세요.", "err"); return; }
-  let r = await call("add_to_queue", p, S.photo.box, false);
+  let r = await call("add_to_queue", p, S.photo.box, S.deco, false);
   if (r && r.confirm === "duplicate") {
     if (!await confirmBox("이미 대기열에 있어요", `UID ${p.uid}가 대기열에 있어요.\n새 사진으로 바꿀까요?`, "바꾸기")) return;
-    r = await call("add_to_queue", p, S.photo.box, true);
+    r = await call("add_to_queue", p, S.photo.box, S.deco, true);
   }
   if (r && r.queue) { S.queue = r.queue; renderQueue(); toast(`${p.name || p.uid} 대기열에 추가`, "ok", 2000); }
 };
@@ -494,27 +651,57 @@ $("#btnConflict").onclick = async () => {
 };
 
 /* ------------------------------------------------------------------ 설정 */
-function openSettings() {
+let setAI = {}, setSel = null, setUse = null;
+function openSettings(focusId) {
   const s = S.settings;
-  $("#sG").value = s.graphics_dir || ""; $("#sP").value = s.people_file || ""; $("#sSize").value = s.output_size || 250;
-  $("#sKey").value = s.gemini_key || ""; $("#sModel").value = s.gemini_model || ""; $("#sTpl").value = s.prompt_template || "";
-  $("#models").innerHTML = S.models.map((m) => `<option value="${esc(m)}">`).join("");
+  $("#sG").value = s.graphics_dir || ""; $("#sSize").value = s.output_size || 512; $("#sTpl").value = s.prompt_template || "";
+  setAI = {};
+  S.ai.forEach((a) => setAI[a.id] = { key: a.key, account: a.account, model: a.model });
+  setUse = s.ai_provider;
+  setSel = focusId || s.ai_provider;
+  renderAIList();
   $("#mSettings").classList.add("on");
 }
-$("#btnSettings").onclick = openSettings;
+function renderAIList() {
+  $("#aiList").innerHTML = Object.entries(GROUPS).map(([g, label]) =>
+    `<div class="aigrp">${esc(label)}</div>` + S.ai.filter((a) => a.group === g).map((a) => {
+      const ok = ["바로 사용", "키 있음", "설치됨"].includes(a.status);
+      return `<div class="airow ${a.id === setSel ? "on" : ""} ${a.id === setUse ? "use" : ""}" data-id="${a.id}"><span class="rd"></span>
+        <span class="nm">${esc(a.name)}</span><span class="st ${ok ? "ok" : ""}">${esc(a.status)}</span></div>`;
+    }).join("")).join("");
+  $$("#aiList .airow").forEach((r) => r.onclick = () => { setSel = r.dataset.id; setUse = r.dataset.id; renderAIList(); });
+  renderAIDetail();
+}
+function renderAIDetail() {
+  const a = S.ai.find((x) => x.id === setSel);
+  if (!a) return;
+  const c = setAI[a.id] || {};
+  const [tc, tl] = TAG[a.group];
+  let fields = "";
+  if (a.group === "api" || a.id === "cloudflare") {
+    if (a.id === "cloudflare") fields += `<div><span class="lbl">계정 ID (Account ID)</span><label class="field"><input data-f="account" value="${esc(c.account || "")}"></label></div>`;
+    fields += `<div><span class="lbl">${a.id === "cloudflare" ? "토큰 (API Token)" : "API 키"}</span><div class="rowf"><label class="field"><input data-f="key" type="password" value="${esc(c.key || "")}"></label><button class="btn" id="btnShowKey">보기</button></div></div>`;
+    fields += `<div><span class="lbl">모델 <span class="hint">· 비우면 기본값 ${esc(a.default_model)}</span></span><label class="field"><input data-f="model" value="${esc(c.model || "")}" placeholder="${esc(a.default_model)}"></label></div>`;
+    if (KEY_URL[a.id]) fields += `<div class="hint"><a data-url="${KEY_URL[a.id]}">발급 페이지 열기</a></div>`;
+  }
+  $("#aiDetail").innerHTML = `<h4>${esc(a.name)}<span class="tag ${tc}">${tl}</span></h4>
+    <div class="muted" style="font-size:12px">${esc(a.desc)}</div>
+    <ol>${(HOWTO[a.id] || []).map((t) => `<li>${esc(t)}</li>`).join("")}</ol>${fields}`;
+  $$("#aiDetail [data-f]").forEach((inp) => inp.addEventListener("input", () => {
+    setAI[a.id] = setAI[a.id] || {}; setAI[a.id][inp.dataset.f] = inp.value;
+  }));
+  const sk = $("#btnShowKey");
+  if (sk) sk.onclick = () => { const k = $('#aiDetail [data-f="key"]'); k.type = k.type === "password" ? "text" : "password"; };
+  $$("#aiDetail [data-url]").forEach((l) => l.onclick = () => call("open_url", l.dataset.url));
+}
+$("#btnSettings").onclick = () => openSettings();
 $$("[data-close]").forEach((b) => b.onclick = () => b.closest(".modal").classList.remove("on"));
-$("#btnShowKey").onclick = () => { const k = $("#sKey"); k.type = k.type === "password" ? "text" : "password"; };
-$("#lnkStudio").onclick = () => call("open_url", "https://aistudio.google.com/apikey");
 $("#lnkDefault").onclick = () => $("#sTpl").value = S.defaultPrompt;
-$$("[data-pick]").forEach((b) => b.onclick = async () => {
-  const r = b.dataset.pick === "folder" ? await call("pick_folder", $("#sG").value) : await call("pick_file", "json");
-  if (r) (b.dataset.pick === "folder" ? $("#sG") : $("#sP")).value = r;
-});
+$("#btnPickG").onclick = async () => { const r = await call("pick_folder", $("#sG").value); if (r) $("#sG").value = r; };
 $("#btnSaveSettings").onclick = async () => {
   const r = await call("save_settings", {
-    graphics_dir: $("#sG").value, people_file: $("#sP").value, output_size: +$("#sSize").value || 250,
-    gemini_key: $("#sKey").value, gemini_model: $("#sModel").value, prompt_template: $("#sTpl").value,
-    send_photo: $("#sendPhoto").checked,
+    graphics_dir: $("#sG").value, output_size: +$("#sSize").value || 512, prompt_template: $("#sTpl").value,
+    ai_provider: setUse, ai_cfg: setAI,
   });
   if (!r) return;
   applyState(r);
@@ -527,18 +714,19 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") $$(".modal
 
 /* ------------------------------------------------------------------ 시작 */
 function applyState(st) {
-  S.settings = st.settings; S.models = st.models; S.defaultPrompt = st.default_prompt; S.rembg = st.rembg;
-  S.people = st.people; S.queue = st.queue;
-  $("#aiModel").textContent = st.settings.gemini_model;
+  S.settings = st.settings; S.ai = st.ai; S.styles = st.styles; S.defaultPrompt = st.default_prompt;
+  S.people = st.people; S.queue = st.queue; S.bgReady = st.bg_ready;
+  S.deco = { ...S.deco, ...(st.settings.deco || {}), text: S.deco.text };
+  $("#ver").textContent = "v" + st.version;
   $("#sendPhoto").checked = !!st.settings.send_photo;
-  if (!S.rembg) $("#btnNobg").title = "'배경제거_설치.bat' 실행 후 사용 가능";
-  renderPeopleInfo(); renderQueue();
+  if (!st.face_ai) $("#btnAuto").title = "얼굴 인식 모델이 없어 기본 위치로 맞춰요";
+  renderSaveBox(); renderQueue(); renderDeco(); renderAISel();
 }
 (async () => {
   API = await ready();
   const st = await call("get_state");
   const boot = $("#boot");
-  boot.classList.add("done"); setTimeout(() => boot.remove(), 400);
+  if (boot) { boot.classList.add("done"); setTimeout(() => boot.remove(), 400); }
   if (!st) return;
   applyState(st);
   updateCard();

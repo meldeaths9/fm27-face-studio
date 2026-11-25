@@ -44,6 +44,7 @@
     <button class="tab" data-page="pageApplied"><svg class="i"><use href="#i-layers"/></svg>적용된 얼굴 <span class="cnt" id="appliedCnt">0</span></button>
   </nav>
   <div class="sp"></div>
+  <span class="ver" id="ver"></span>
   <button class="btn ghost" id="btnFolder"><svg class="i"><use href="#i-folder"/></svg>얼굴 폴더</button>
   <button class="btn icon" id="btnSettings" title="설정"><svg class="i"><use href="#i-gear"/></svg></button>
 </header>
@@ -52,20 +53,23 @@
 <main class="page on" id="pageMake">
   <!-- 1. 대상 -->
   <section class="panel">
-    <div class="ph"><span class="step">1</span><h2>대상 선택</h2><div class="sp"></div>
-      <button class="btn icon sm" id="btnReload" title="세이브 목록 새로고침"><svg class="i"><use href="#i-refresh"/></svg></button></div>
+    <div class="ph"><span class="step">1</span><h2>대상 선택</h2></div>
     <div class="pb grow">
+      <div id="saveBox"></div>
       <div class="seg" id="kindSeg"><button class="on" data-kind="player">선수</button><button data-kind="staff">스태프</button></div>
-      <label class="field"><svg class="i"><use href="#i-search"/></svg><input id="q" placeholder="이름 또는 팀으로 검색" autocomplete="off"></label>
-      <div id="peopleInfo"></div>
+      <label class="field"><svg class="i"><use href="#i-search"/></svg><input id="qName" placeholder="이름" autocomplete="off"></label>
+      <div class="rowf2">
+        <label class="field grow"><svg class="i"><use href="#i-shield"/></svg><input id="qTeam" placeholder="팀" autocomplete="off"></label>
+        <button class="btn" id="btnMyTeam" title="내가 맡은 팀만 보기">내 팀</button>
+      </div>
       <div class="list grow" id="results"></div>
       <div class="sel-box">
         <div class="form">
-          <div class="full"><span class="lbl">UID</span><label class="field"><input id="fUid" placeholder="게임 프로필에서 확인한 번호" inputmode="numeric"></label></div>
+          <div class="full"><span class="lbl">UID <span class="hint">· 생성 인물은 r- 붙여도 돼요</span></span><label class="field"><input id="fUid" placeholder="게임 프로필의 고유번호"></label></div>
           <div class="full"><span class="lbl">이름</span><label class="field"><input id="fName" placeholder="표시용 이름"></label></div>
           <div class="full"><span class="lbl">소속</span><label class="field"><input id="fClub"></label></div>
           <div><span class="lbl">나이</span><label class="field"><input id="fAge"></label></div>
-          <div><span class="lbl">국적</span><label class="field"><input id="fNat" placeholder="예: Korea"></label></div>
+          <div><span class="lbl">국적 <span class="hint">· AI용</span></span><label class="field"><input id="fNat" placeholder="예: Korea"></label></div>
         </div>
         <div style="display:flex;align-items:center;margin-top:11px">
           <label class="switch"><input type="checkbox" id="fNewgen"><i></i>뉴젠 · 생성 인물</label>
@@ -91,32 +95,43 @@
     <div class="pb grow">
       <div class="editor">
         <div style="display:flex;flex-direction:column;gap:10px;min-height:0">
-          <div class="stage grow" id="stage">
+          <div class="stage grow" id="stage" tabindex="0">
             <canvas id="cv"></canvas>
             <div class="drop" id="drop"><div><svg class="i"><use href="#i-image"/></svg><b>사진을 끌어다 놓으세요</b>클릭해서 고르거나 <span style="color:#cfc5ff">Ctrl+V</span>로 붙여넣기</div></div>
             <div class="busy" id="busy"><div><div class="spin"></div><div id="busyText" style="font-weight:700">처리 중…</div><div class="hint" id="busySub"></div></div></div>
           </div>
-          <div class="zoom"><svg class="i"><use href="#i-search"/></svg><input type="range" id="zoom" min="0" max="1000" value="500" disabled><span id="zoomTxt" style="width:44px;text-align:right">-</span></div>
+          <div class="zoom"><svg class="i"><use href="#i-search"/></svg><input type="range" id="zoom" min="0" max="1000" value="0" disabled><span id="zoomTxt" style="width:48px;text-align:right">-</span></div>
         </div>
         <div class="pv">
           <div class="pvcard">
-            <div class="pvimg" id="pvBox"><canvas id="pv" width="300" height="300" hidden></canvas><svg class="i ph0" style="width:42px;height:42px;stroke-width:1.3"><use href="#i-users"/></svg></div>
+            <div class="pvimg" id="pvBox"><img id="pvImg" alt="" hidden><svg class="i ph0" style="width:42px;height:42px;stroke-width:1.3"><use href="#i-users"/></svg></div>
             <div class="pvname" id="pvName">이름 없음</div>
-            <div class="pvsub" id="pvSub">소속 · 나이</div>
+            <div class="pvsub" id="pvSub">소속</div>
             <div class="pvtags" id="pvTags"></div>
           </div>
-          <div class="tip"><kbd>드래그</kbd> 위치 이동<br><kbd>휠</kbd> 크기 조절<br><kbd>더블클릭</kbd> 얼굴 맞춤</div>
+          <div class="deco">
+            <div class="dh">꾸미기</div>
+            <label class="switch"><input type="checkbox" id="dCaption"><i></i>이름 넣기</label>
+            <label class="field sm"><input id="dText" placeholder="넣을 이름"></label>
+            <div class="chips" id="dStyle"></div>
+            <label class="switch"><input type="checkbox" id="dRound"><i></i>둥근 모서리</label>
+            <input type="range" id="dRadius" min="2" max="50" value="14">
+            <label class="switch"><input type="checkbox" id="dBorder"><i></i>테두리</label>
+          </div>
         </div>
       </div>
 
       <div class="ai">
-        <div class="hd"><svg class="i spark"><use href="#i-spark"/></svg>AI로 만들기 <small id="aiModel">Gemini</small></div>
-        <textarea id="prompt" rows="4" placeholder="프롬프트 — 인물을 고르면 자동으로 채워져요"></textarea>
-        <div class="row">
-          <label class="switch"><input type="checkbox" id="sendPhoto" checked><i></i>현재 사진도 함께 보내기</label>
+        <div class="hd"><svg class="i spark"><use href="#i-spark"/></svg>AI로 만들기
           <div class="sp"></div>
+          <select id="aiSel"></select>
+        </div>
+        <textarea id="prompt" rows="3" placeholder="프롬프트 — 인물을 고르면 자동으로 채워져요"></textarea>
+        <div class="row">
+          <label class="switch"><input type="checkbox" id="sendPhoto" checked><i></i>현재 사진 참고</label>
+          <span class="hint grow" id="aiNote"></span>
           <button class="btn sm" id="btnPrompt"><svg class="i"><use href="#i-wand"/></svg>자동 작성</button>
-          <button class="btn sm primary" id="btnAI"><svg class="i"><use href="#i-spark"/></svg>AI 생성</button>
+          <button class="btn sm primary" id="btnAI"><svg class="i"><use href="#i-spark"/></svg><span id="btnAIText">AI 생성</span></button>
         </div>
       </div>
 
@@ -150,26 +165,29 @@
   <div class="gridwrap"><div class="grid" id="agrid"></div></div>
 </main>
 
-<!-- =========================== 모달 =========================== -->
-<div class="modal" id="mSettings"><div class="dlg">
+<!-- =========================== 설정 =========================== -->
+<div class="modal" id="mSettings"><div class="dlg wide">
   <div class="dh"><svg class="i"><use href="#i-gear"/></svg><h3>설정</h3></div>
   <div class="db">
-    <div class="sec">FM27 폴더</div>
-    <div><span class="lbl">graphics 폴더</span><div class="rowf"><label class="field"><input id="sG"></label><button class="btn" data-pick="folder">찾기</button></div>
+    <div class="sec">FM27</div>
+    <div><span class="lbl">graphics 폴더</span><div class="rowf"><label class="field"><input id="sG"></label><button class="btn" id="btnPickG">찾기</button></div>
       <div class="hint" style="margin-top:5px">얼굴은 이 폴더 안 <b>FacePicker</b> 폴더에만 저장돼요.</div></div>
-    <div><span class="lbl">세이브 인물 목록 (2단계 플러그인이 만들어요)</span><div class="rowf"><label class="field"><input id="sP"></label><button class="btn" data-pick="json">찾기</button></div></div>
-    <div><span class="lbl">결과 사진 크기 (px)</span><label class="field" style="width:120px"><input id="sSize" type="number" min="100" max="512" step="10"></label></div>
-    <div class="sec">제미나이</div>
-    <div><span class="lbl">API 키</span><div class="rowf"><label class="field"><input id="sKey" type="password" placeholder="AIza…"></label><button class="btn" id="btnShowKey">보기</button></div>
-      <div class="hint" style="margin-top:5px"><a id="lnkStudio">Google AI Studio</a>에서 발급받아요. 키는 이 PC에만 저장돼요.</div></div>
-    <div><span class="lbl">이미지 모델</span><label class="field"><input id="sModel" list="models"></label><datalist id="models"></datalist></div>
-    <div><span class="lbl">프롬프트 틀 <a id="lnkDefault" style="margin-left:6px">기본값으로</a></span><textarea id="sTpl" rows="6"></textarea>
+    <div><span class="lbl">결과 사진 크기 (px)</span><label class="field" style="width:120px"><input id="sSize" type="number" min="128" max="1024" step="32"></label></div>
+
+    <div class="sec">AI 연결</div>
+    <div class="aigrid">
+      <div class="ailist" id="aiList"></div>
+      <div class="aidetail" id="aiDetail"></div>
+    </div>
+
+    <div class="sec">프롬프트</div>
+    <div><span class="lbl">프롬프트 틀 <a id="lnkDefault" style="margin-left:6px">기본값으로</a></span><textarea id="sTpl" rows="5"></textarea>
       <div class="hint" style="margin-top:5px">쓸 수 있는 칸: {ref} {role} {age_text} {nationality_text} {name} {club} {age} {nationality}</div></div>
   </div>
   <div class="df"><button class="btn" data-close>취소</button><button class="btn primary" id="btnSaveSettings">저장</button></div>
 </div></div>
 
-<div class="modal" id="mConfirm"><div class="dlg" style="width:440px">
+<div class="modal" id="mConfirm"><div class="dlg" style="width:460px">
   <div class="dh"><svg class="i" style="color:var(--warn)"><use href="#i-alert"/></svg><h3 id="cTitle">확인</h3></div>
   <div class="db" id="cBody"></div>
   <div class="df"><button class="btn" id="cNo">취소</button><button class="btn primary" id="cYes">확인</button></div>

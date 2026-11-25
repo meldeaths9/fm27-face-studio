@@ -67,11 +67,16 @@ def build_html() -> str:
 def selftest() -> int:
     """빌드 서버에서 exe가 제대로 묶였는지 확인 (창은 띄우지 않음)."""
     try:
-        from facepicker import imaging
+        from facepicker import ai_models, style
         from facepicker.api import Api
         import webview  # noqa: F401
+        import fmsave  # noqa: F401
+        import fmsave._layouts.fm27_27_0_0  # noqa: F401  (FM27 세이브 구조)
+        from PIL import Image
         assert len(build_html()) > 20000, "ui 없음"
-        assert imaging._CASCADE is not None and not imaging._CASCADE.empty(), "얼굴 인식 데이터 없음"
+        assert ai_models.face_available(), "얼굴 인식 모델 없음"
+        ai_models.detect_face(Image.new("RGB", (320, 240), (128, 128, 128)))
+        style.decorate(Image.new("RGBA", (128, 128)), style.Deco(caption=True, text="테스트", rounded=True, border=True))
         if sys.platform == "win32":
             import webview.platforms.winforms  # noqa: F401  (.NET/WebView2 연결 확인)
         Api().get_state()

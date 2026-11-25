@@ -9,6 +9,7 @@ from pathlib import Path
 APP_NAME = "FM27FacePicker"
 PACK_FOLDER_NAME = "FacePicker"          # graphics 폴더 안에 만들 이 프로그램 전용 폴더
 FM_FOLDER_NAME = "Football Manager 27"
+SETTINGS_VERSION = 3
 
 GEMINI_MODELS = [
     "gemini-3.1-flash-image",
@@ -61,13 +62,15 @@ class Settings:
 
     def __init__(self) -> None:
         fm = default_fm_user_dir()
+        self.settings_version: int = SETTINGS_VERSION
         self.graphics_dir: str = str(fm / "graphics")
-        self.people_file: str = str(fm / "FacePicker" / "people.json")
-        self.output_size: int = 250
-        self.gemini_key: str = ""
-        self.gemini_model: str = GEMINI_MODELS[0]
+        self.last_save: str = ""
+        self.output_size: int = 512
         self.prompt_template: str = DEFAULT_PROMPT
         self.send_photo: bool = True
+        self.ai_provider: str = "web_gemini"
+        self.ai_cfg: dict = {}          # {provider_id: {"key":..., "model":..., "account":...}}
+        self.deco: dict = {"caption": False, "style": "gold", "rounded": False, "radius": 14, "border": False}
         self.load()
 
     @property
@@ -79,14 +82,24 @@ class Settings:
             data = json.loads(self.path.read_text(encoding="utf-8"))
         except Exception:
             return
+        old_version = data.get("settings_version", 1)
         for k, v in data.items():
             if hasattr(self, k) and not k.startswith("_"):
                 setattr(self, k, v)
+        # 예전 버전 설정 옮기기
+        if old_version < 3:
+            if data.get("gemini_key"):
+                self.ai_cfg.setdefault("gemini", {})["key"] = data["gemini_key"]
+                self.ai_cfg["gemini"]["model"] = data.get("gemini_model", "")
+            if self.output_size == 250:
+                self.output_size = 512
+            self.settings_version = SETTINGS_VERSION
+            self.save()
 
     def save(self) -> None:
-        data = {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
+        keep = {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
         tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.write_text(json.dumps(keep, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(self.path)
 
     @property

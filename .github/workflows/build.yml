@@ -23,6 +23,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
 
+      - name: Get face model
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force models | Out-Null
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Linzaer/Ultra-Light-Fast-Generic-Face-Detector-1MB/master/models/onnx/version-RFB-320.onnx" -OutFile models/ultraface-rfb-320.onnx
+          Get-Item models/ultraface-rfb-320.onnx | Select-Object Name, Length
+
       - name: Build exe
         run: >
           pyinstaller --noconfirm --clean --onefile --windowed
@@ -30,7 +37,10 @@ jobs:
           --icon assets/icon.ico
           --add-data "ui;ui"
           --add-data "assets/icon.png;assets"
-          --collect-data cv2
+          --add-data "models;models"
+          --add-data "THIRD_PARTY_NOTICES.txt;."
+          --collect-submodules fmsave
+          --collect-all backports.zstd
           --splash assets/splash.png
           main.py
 
@@ -41,7 +51,10 @@ jobs:
           --icon assets/icon.ico
           --add-data "ui;ui"
           --add-data "assets/icon.png;assets"
-          --collect-data cv2
+          --add-data "models;models"
+          --add-data "THIRD_PARTY_NOTICES.txt;."
+          --collect-submodules fmsave
+          --collect-all backports.zstd
           main.py
 
       - name: Self test

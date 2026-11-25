@@ -7,23 +7,26 @@ from __future__ import annotations
 import base64
 import io
 import json
+import logging
 import os
 import sys
 import threading
 import traceback
 import uuid
+import webbrowser
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageOps
 
-from . import imaging
-from .gemini import GeminiError, generate
+from . import ai_models, imaging, providers, savedata
 from .pack import FaceEntry, FacePack, find_conflicts, fm_running, looks_like_newgen
 from .people import People
-from .settings import DEFAULT_PROMPT, GEMINI_MODELS, REF_SENTENCE, Settings, app_data_dir
+from .settings import DEFAULT_PROMPT, REF_SENTENCE, Settings, app_data_dir
+from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "0.3.2"
-DISPLAY_MAX = 1400   # 화면에 보낼 편집용 사진 최대 크기
+VERSION = "0.4.0"
+DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
+log = logging.getLogger("api")
 
 
 def _data_url(im: Image.Image, fmt: str = "PNG", quality: int = 90) -> str:
@@ -41,7 +44,6 @@ def _from_data_url(data: str) -> Image.Image:
     if "," in data[:100]:
         data = data.split(",", 1)[1]
     im = Image.open(io.BytesIO(base64.b64decode(data)))
-    from PIL import ImageOps
     return ImageOps.exif_transpose(im).convert("RGBA")
 
 
@@ -52,15 +54,24 @@ def _thumb_url(path: Path, size: int = 96) -> str:
         return ""
 
 
+def _clean_uid(raw) -> tuple[str, bool]:
+    """'r-2002042946' 같은 입력 → ('2002042946', True)."""
+    s = str(raw or "").strip().lower().replace(" ", "")
+    prefixed = s.startswith("r-")
+    if prefixed:
+        s = s[2:]
+    return "".join(c for c in s if c.isdigit()), prefixed
+
+
 def _safe(fn):
     """예외를 {'error': ...}로 바꿔 화면에 전달."""
     def wrap(self, *a, **k):
         try:
             return fn(self, *a, **k)
-        except GeminiError as e:
+        except providers.ProviderError as e:
             return {"error": str(e)}
         except Exception as e:  # noqa: BLE001
-            traceback.print_exc()
+            log.error("%s 실패\n%s", fn.__name__, traceback.format_exc())
             return {"error": f"{type(e).__name__}: {e}"}
     wrap.__name__ = fn.__name__
     return wrap
@@ -70,15 +81,16 @@ class Api:
     def __init__(self) -> None:
         self._cfg = Settings()
         self._people = People()
+        self._people.set(savedata.load_cache(self._cfg.last_save) if self._cfg.last_save else None)
         self._lock = threading.Lock()
         self._orig: Image.Image | None = None
         self._work: Image.Image | None = None
         self._nobg: Image.Image | None = None
+        self._progress = {"task": "", "done": 0, "total": 0}
         self._window = None
         self._qdir = app_data_dir() / "queue"
         self._qdir.mkdir(exist_ok=True)
         self._queue: list[dict] = self._load_queue()
-        self._load_people()
 
     def _set_window(self, w) -> None:
         self._window = w
@@ -87,20 +99,19 @@ class Api:
     def _pack(self) -> FacePack:
         return FacePack(self._cfg.pack_dir)
 
-    def _load_people(self) -> str:
-        p = Path(self._cfg.people_file)
-        if not p.exists():
-            self._people = People()
-            return "missing"
-        try:
-            self._people.load(p)
-            return "ok"
-        except Exception as e:  # noqa: BLE001
-            return f"error: {e}"
-
     def _people_info(self) -> dict:
-        n = len(self._people.items)
-        return {"loaded": n > 0, "count": n, "path": self._cfg.people_file}
+        return {"loaded": bool(self._people.items), "count": len(self._people.items),
+                "save": self._people.save, "save_name": Path(self._people.save).stem if self._people.save else "",
+                "my_clubs": [c["name"] for c in self._people.my_clubs]}
+
+    def _ai_view(self) -> list[dict]:
+        out = []
+        for p in providers.PROVIDERS:
+            cfg = self._cfg.ai_cfg.get(p["id"], {})
+            out.append({**p, "status": providers.status(p["id"], cfg),
+                        "key": cfg.get("key", ""), "account": cfg.get("account", ""),
+                        "model": cfg.get("model", ""), "default_model": providers.DEFAULT_MODELS.get(p["id"], "")})
+        return out
 
     @_safe
     def get_state(self) -> dict:
@@ -108,34 +119,45 @@ class Api:
         return {
             "version": VERSION,
             "settings": {
-                "graphics_dir": c.graphics_dir, "people_file": c.people_file, "output_size": c.output_size,
-                "gemini_key": c.gemini_key, "gemini_model": c.gemini_model,
+                "graphics_dir": c.graphics_dir, "output_size": c.output_size,
                 "prompt_template": c.prompt_template, "send_photo": c.send_photo,
+                "ai_provider": c.ai_provider, "deco": c.deco,
             },
-            "models": GEMINI_MODELS,
+            "ai": self._ai_view(),
+            "styles": STYLE_LABELS,
             "default_prompt": DEFAULT_PROMPT,
             "people": self._people_info(),
             "queue": self._queue_view(),
-            "rembg": imaging.rembg_available(),
+            "face_ai": ai_models.face_available(),
+            "bg_ready": ai_models.bg_ready(),
             "pack_dir": str(c.pack_dir),
         }
 
     @_safe
     def save_settings(self, s: dict) -> dict:
         c = self._cfg
-        c.graphics_dir = str(s.get("graphics_dir", c.graphics_dir)).strip()
-        c.people_file = str(s.get("people_file", c.people_file)).strip()
-        try:
-            c.output_size = max(100, min(512, int(s.get("output_size", c.output_size))))
-        except (TypeError, ValueError):
-            c.output_size = 250
-        c.gemini_key = str(s.get("gemini_key", "")).strip()
-        c.gemini_model = str(s.get("gemini_model", "")).strip() or GEMINI_MODELS[0]
-        c.prompt_template = str(s.get("prompt_template", "")).strip() or DEFAULT_PROMPT
+        if "graphics_dir" in s:
+            c.graphics_dir = str(s["graphics_dir"]).strip() or c.graphics_dir
+        if "output_size" in s:
+            try:
+                c.output_size = max(128, min(1024, int(s["output_size"])))
+            except (TypeError, ValueError):
+                c.output_size = 512
+        if "prompt_template" in s:
+            c.prompt_template = str(s["prompt_template"]).strip() or DEFAULT_PROMPT
         if "send_photo" in s:
             c.send_photo = bool(s["send_photo"])
+        if s.get("ai_provider") in providers.BY_ID:
+            c.ai_provider = s["ai_provider"]
+        if isinstance(s.get("ai_cfg"), dict):
+            for pid, v in s["ai_cfg"].items():
+                if pid in providers.BY_ID and isinstance(v, dict):
+                    c.ai_cfg[pid] = {k: str(v.get(k, "")).strip() for k in ("key", "model", "account")}
+        if isinstance(s.get("deco"), dict):
+            d = Deco.from_dict(s["deco"]).to_dict()
+            d.pop("text", None)          # 글자는 인물마다 다르므로 저장하지 않음
+            c.deco = d
         c.save()
-        self._load_people()
         return self.get_state()
 
     @_safe
@@ -144,15 +166,6 @@ class Api:
             return None
         import webview
         r = self._window.create_file_dialog(webview.FileDialog.FOLDER, directory=initial or "")
-        return r[0] if r else None
-
-    @_safe
-    def pick_file(self, kind: str = "json") -> str | None:
-        if not self._window:
-            return None
-        import webview
-        types = ("JSON (*.json)",) if kind == "json" else ("이미지 (*.png;*.jpg;*.jpeg;*.webp;*.bmp)",)
-        r = self._window.create_file_dialog(webview.FileDialog.OPEN, file_types=types)
         return r[0] if r else None
 
     @_safe
@@ -165,49 +178,87 @@ class Api:
 
     @_safe
     def open_url(self, url: str) -> bool:
-        import webbrowser
-        if url.startswith("https://"):
+        if str(url).startswith("https://"):
             webbrowser.open(url)
         return True
 
-    # ---------------------------------------------------------------- 검색
     @_safe
-    def reload_people(self) -> dict:
-        status = self._load_people()
+    def progress(self) -> dict:
+        return dict(self._progress)
+
+    # ---------------------------------------------------------------- 세이브
+    @_safe
+    def pick_save(self) -> dict | None:
+        if not self._window:
+            return {"error": "창이 준비되지 않았어요."}
+        import webview
+        start = Path(self._cfg.last_save).parent if self._cfg.last_save else savedata.default_games_dir()
+        r = self._window.create_file_dialog(webview.FileDialog.OPEN, directory=str(start) if start.exists() else "",
+                                            file_types=("FM 세이브 (*.fm)", "모든 파일 (*.*)"))
+        if not r:
+            return None
+        return self.load_save(r[0])
+
+    @_safe
+    def load_save(self, path: str) -> dict:
+        p = Path(path)
+        if not p.exists():
+            return {"error": f"세이브 파일이 없어요: {p}"}
+        data = savedata.load_cache(p)
+        cached = data is not None
+        if data is None:
+            data = savedata.read_save(p)
+        self._people.set(data)
+        self._cfg.last_save = str(p)
+        self._cfg.save()
         info = self._people_info()
-        info["status"] = status
+        info["cached"] = cached
+        info["seconds"] = data.get("read_seconds")
         return info
 
     @_safe
-    def search(self, query: str, kind: str) -> list[dict]:
+    def reload_save(self) -> dict:
+        if not self._cfg.last_save:
+            return {"error": "먼저 세이브를 불러와 주세요."}
+        p = Path(self._cfg.last_save)
+        if not p.exists():
+            return {"error": f"세이브 파일이 없어요: {p}"}
+        self._people.set(savedata.read_save(p))
+        return self._people_info()
+
+    @_safe
+    def search(self, name: str, team: str, kind: str) -> list[dict]:
         pack = self._pack()
         applied = {e.uid for e in pack.entries()}
         res = []
-        for p in self._people.search(query, kind, limit=150):
-            d = {"uid": p.uid, "name": p.name, "club": p.club, "age": p.age,
-                 "nationality": p.nationality, "kind": p.kind, "newgen": p.newgen, "face": ""}
-            if p.uid in applied:
-                d["face"] = _thumb_url(pack.image_path(p.uid), 72)
+        for p in self._people.search(name, team, kind):
+            d = dict(p)
+            d["face"] = _thumb_url(pack.image_path(p["uid"]), 72) if p["uid"] in applied else ""
             res.append(d)
         return res
 
     @_safe
     def guess_newgen(self, uid: str) -> bool:
-        return looks_like_newgen(str(uid).strip())
+        clean, prefixed = _clean_uid(uid)
+        return prefixed or looks_like_newgen(clean)
 
     # ---------------------------------------------------------------- 사진
-    def _photo_payload(self) -> dict:
-        src = self._nobg if self._nobg is not None else self._work
+    def _src(self) -> Image.Image | None:
+        return self._nobg if self._nobg is not None else self._work
+
+    def _photo_payload(self, with_box: bool = True) -> dict:
+        src = self._src()
         disp = src.copy()
         disp.thumbnail((DISPLAY_MAX, DISPLAY_MAX), Image.LANCZOS)
         transparent = self._nobg is not None
-        return {
+        out = {
             "url": _data_url(disp) if transparent else _data_url(disp, "JPEG", 90),
-            "w": src.width, "h": src.height,
-            "box": list(imaging.auto_box(self._work)),
-            "nobg": transparent,
+            "w": src.width, "h": src.height, "nobg": transparent,
             "is_original": self._work is self._orig,
         }
+        if with_box:
+            out["box"] = list(imaging.auto_box(self._work))
+        return out
 
     def _set_photo(self, im: Image.Image, original: bool) -> dict:
         with self._lock:
@@ -242,21 +293,40 @@ class Api:
         return self._set_photo(self._orig, original=True)
 
     @_safe
+    def auto_box(self) -> list:
+        if self._work is None:
+            return {"error": "사진이 없어요."}
+        return list(imaging.auto_box(self._work))
+
+    @_safe
     def set_nobg(self, on: bool) -> dict:
         if self._work is None:
             return {"error": "사진이 없어요."}
         if on and self._nobg is None:
-            if not imaging.rembg_available():
-                return {"error": "배경 제거 기능이 설치되지 않았어요. '배경제거_설치.bat'을 실행해 주세요."}
+            if not ai_models.bg_ready():
+                self._progress = {"task": "배경 제거 모델 내려받는 중", "done": 0, "total": 0}
+
+                def prog(done, total):
+                    self._progress = {"task": "배경 제거 모델 내려받는 중", "done": done, "total": total}
+                try:
+                    ai_models.download_bg_model(prog)
+                finally:
+                    self._progress = {"task": "", "done": 0, "total": 0}
             work = self._work
-            out = imaging.remove_background(work)
+            out = ai_models.remove_background(work)
             if work is self._work:
                 self._nobg = out
         elif not on:
             self._nobg = None
-        payload = self._photo_payload()
-        payload.pop("box")   # 자르기 위치는 화면이 가진 값 유지
-        return payload
+        return self._photo_payload(with_box=False)
+
+    @_safe
+    def preview(self, box: list, deco: dict, size: int = 300) -> str:
+        src = self._src()
+        if src is None:
+            return ""
+        im = imaging.render(src, tuple(float(v) for v in box), int(size))
+        return _data_url(decorate(im, Deco.from_dict(deco)))
 
     # ---------------------------------------------------------------- AI
     @_safe
@@ -283,14 +353,30 @@ class Api:
         return text.strip()
 
     @_safe
-    def ai_generate(self, prompt: str, send_photo: bool) -> dict:
-        c = self._cfg
-        if not c.gemini_key.strip():
-            return {"error": "need_key"}
+    def ai_web(self, pid: str, send_photo: bool) -> dict:
+        """무료 웹 연동: 사이트 열기 + (참고 사진이 있으면) 파일로 저장해서 탐색기로 보여주기."""
+        p = providers.BY_ID.get(pid)
+        if not p or p["group"] != "free_web":
+            return {"error": "웹 연동 방식이 아니에요."}
+        ref = None
+        if send_photo and self._work is not None:
+            ref = providers.save_reference(self._work)
+            providers.reveal(ref)
+        webbrowser.open(p["url"])
+        return {"ok": True, "ref": str(ref) if ref else ""}
+
+    @_safe
+    def ai_generate(self, pid: str, prompt: str, send_photo: bool) -> dict:
+        cfg = self._cfg.ai_cfg.get(pid, {})
         photo = self._work if (send_photo and self._work is not None) else None
-        if not send_photo:
+        if photo is None or not providers.BY_ID.get(pid, {}).get("ref"):
             prompt = prompt.replace(REF_SENTENCE, "").replace(REF_SENTENCE.strip(), "").strip()
-        im = generate(c.gemini_key, c.gemini_model, prompt, photo)
+        try:
+            im = providers.generate(pid, cfg, prompt, photo)
+        except providers.ProviderError as e:
+            if str(e) == "need_key":
+                return {"error": "need_key"}
+            raise
         return self._set_photo(im, original=False)
 
     # ---------------------------------------------------------------- 대기열
@@ -316,11 +402,11 @@ class Api:
         return out
 
     @_safe
-    def add_to_queue(self, person: dict, box: list, replace: bool = False) -> dict:
-        uid = str(person.get("uid", "")).strip()
-        if not uid.isdigit():
+    def add_to_queue(self, person: dict, box: list, deco: dict, replace: bool = False) -> dict:
+        uid, prefixed = _clean_uid(person.get("uid"))
+        if not uid:
             return {"error": "UID(숫자)를 입력하거나 검색 결과에서 인물을 선택해 주세요."}
-        src = self._nobg if self._nobg is not None else self._work
+        src = self._src()
         if src is None:
             return {"error": "먼저 사진을 불러오거나 AI로 만들어 주세요."}
         dup = [it for it in self._queue if it["uid"] == uid]
@@ -329,16 +415,15 @@ class Api:
         for it in dup:
             Path(it["png"]).unlink(missing_ok=True)
             self._queue.remove(it)
-        cx, cy, side = (float(v) for v in box)
-        b = imaging.clamp_box(src, cx, cy, side)
-        out = imaging.render(src, b, int(self._cfg.output_size or 250))
+        b = imaging.clamp_box(src, *(float(v) for v in box))
+        out = decorate(imaging.render(src, b, int(self._cfg.output_size or 512)), Deco.from_dict(deco))
         iid = uuid.uuid4().hex
         png = self._qdir / f"{iid}.png"
         out.save(png, "PNG", optimize=True)
         self._queue.append({
             "id": iid, "uid": uid, "name": str(person.get("name", "")).strip(),
             "club": str(person.get("club", "")).strip(), "kind": person.get("kind", "player"),
-            "newgen": bool(person.get("newgen")), "png": str(png),
+            "newgen": bool(person.get("newgen")) or prefixed, "png": str(png),
         })
         self._save_queue()
         return {"queue": self._queue_view()}

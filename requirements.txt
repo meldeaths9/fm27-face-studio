@@ -1,4 +1,5 @@
 pillow>=10
 numpy
-opencv-python-headless>=4.8,<5
+onnxruntime>=1.18
+fmsave>=0.14
 pywebview>=6
