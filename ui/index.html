@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>FM27 Face Studio</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-4-4L5 21"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4m0 0-4 4m4-4 4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/></symbol>
+  <symbol id="i-scan" viewBox="0 0 24 24"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="11" r="3"/><path d="M8 17c1-2 2.5-3 4-3s3 1 4 3"/></symbol>
+  <symbol id="i-eraser" viewBox="0 0 24 24"><path d="m7 21-4-4a2 2 0 0 1 0-2.8L13.2 4a2 2 0 0 1 2.8 0l4 4a2 2 0 0 1 0 2.8L11 21Z"/><path d="M22 21H7M5 11l9 9"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8Z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8Z"/></symbol>
+  <symbol id="i-wand" viewBox="0 0 24 24"><path d="m15 4 5 5M3 21l12-12M14 3v2M19 8h2M17 5l1.5-1.5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v5h1"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2 20h20Z"/><path d="M12 10v4M12 17h.01"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5Z"/><path d="m3 13 9 5 9-5"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.6c1.8.7 3 2.6 3.5 5.4"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5M3 21v-5h5"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.4 8 8 9 4.6-1 8-4 8-9V6Z"/><path d="m9 12 2 2 4-4"/></symbol>
+</svg>
+
+<header class="top">
+  <div class="brand">
+    <div class="logo">FM</div>
+    <div><b>FACE STUDIO</b><small>FOOTBALL MANAGER 27</small></div>
+  </div>
+  <nav class="tabs">
+    <button class="tab on" data-page="pageMake"><svg class="i"><use href="#i-wand"/></svg>얼굴 만들기</button>
+    <button class="tab" data-page="pageApplied"><svg class="i"><use href="#i-layers"/></svg>적용된 얼굴 <span class="cnt" id="appliedCnt">0</span></button>
+  </nav>
+  <div class="sp"></div>
+  <button class="btn ghost" id="btnFolder"><svg class="i"><use href="#i-folder"/></svg>얼굴 폴더</button>
+  <button class="btn icon" id="btnSettings" title="설정"><svg class="i"><use href="#i-gear"/></svg></button>
+</header>
+
+<!-- =========================== 얼굴 만들기 =========================== -->
+<main class="page on" id="pageMake">
+  <!-- 1. 대상 -->
+  <section class="panel">
+    <div class="ph"><span class="step">1</span><h2>대상 선택</h2><div class="sp"></div>
+      <button class="btn icon sm" id="btnReload" title="세이브 목록 새로고침"><svg class="i"><use href="#i-refresh"/></svg></button></div>
+    <div class="pb grow">
+      <div class="seg" id="kindSeg"><button class="on" data-kind="player">선수</button><button data-kind="staff">스태프</button></div>
+      <label class="field"><svg class="i"><use href="#i-search"/></svg><input id="q" placeholder="이름 또는 팀으로 검색" autocomplete="off"></label>
+      <div id="peopleInfo"></div>
+      <div class="list grow" id="results"></div>
+      <div class="sel-box">
+        <div class="form">
+          <div class="full"><span class="lbl">UID</span><label class="field"><input id="fUid" placeholder="게임 프로필에서 확인한 번호" inputmode="numeric"></label></div>
+          <div class="full"><span class="lbl">이름</span><label class="field"><input id="fName" placeholder="표시용 이름"></label></div>
+          <div class="full"><span class="lbl">소속</span><label class="field"><input id="fClub"></label></div>
+          <div><span class="lbl">나이</span><label class="field"><input id="fAge"></label></div>
+          <div><span class="lbl">국적</span><label class="field"><input id="fNat" placeholder="예: Korea"></label></div>
+        </div>
+        <div style="display:flex;align-items:center;margin-top:11px">
+          <label class="switch"><input type="checkbox" id="fNewgen"><i></i>뉴젠 · 생성 인물</label>
+          <div style="flex:1"></div>
+          <button class="btn sm ghost" id="btnClear">비우기</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. 사진 -->
+  <section class="panel">
+    <div class="ph"><span class="step">2</span><h2>사진 편집</h2><div class="sp"></div>
+      <div class="toolbar">
+        <button class="btn sm" id="btnOpen"><svg class="i"><use href="#i-upload"/></svg>불러오기</button>
+        <button class="btn sm" id="btnPaste"><svg class="i"><use href="#i-clip"/></svg>붙여넣기</button>
+        <button class="btn sm" id="btnAuto" disabled><svg class="i"><use href="#i-scan"/></svg>얼굴 맞춤</button>
+        <button class="btn sm" id="btnNobg" disabled><svg class="i"><use href="#i-eraser"/></svg>배경 제거</button>
+        <button class="btn sm" id="btnRevert" disabled title="AI 생성 전 원본으로"><svg class="i"><use href="#i-undo"/></svg>원본</button>
+      </div>
+      <input type="file" id="file" accept="image/*" hidden>
+    </div>
+    <div class="pb grow">
+      <div class="editor">
+        <div style="display:flex;flex-direction:column;gap:10px;min-height:0">
+          <div class="stage grow" id="stage">
+            <canvas id="cv"></canvas>
+            <div class="drop" id="drop"><div><svg class="i"><use href="#i-image"/></svg><b>사진을 끌어다 놓으세요</b>클릭해서 고르거나 <span style="color:#cfc5ff">Ctrl+V</span>로 붙여넣기</div></div>
+            <div class="busy" id="busy"><div><div class="spin"></div><div id="busyText" style="font-weight:700">처리 중…</div><div class="hint" id="busySub"></div></div></div>
+          </div>
+          <div class="zoom"><svg class="i"><use href="#i-search"/></svg><input type="range" id="zoom" min="0" max="1000" value="500" disabled><span id="zoomTxt" style="width:44px;text-align:right">-</span></div>
+        </div>
+        <div class="pv">
+          <div class="pvcard">
+            <div class="pvimg" id="pvBox"><canvas id="pv" width="300" height="300" hidden></canvas><svg class="i ph0" style="width:42px;height:42px;stroke-width:1.3"><use href="#i-users"/></svg></div>
+            <div class="pvname" id="pvName">이름 없음</div>
+            <div class="pvsub" id="pvSub">소속 · 나이</div>
+            <div class="pvtags" id="pvTags"></div>
+          </div>
+          <div class="tip"><kbd>드래그</kbd> 위치 이동<br><kbd>휠</kbd> 크기 조절<br><kbd>더블클릭</kbd> 얼굴 맞춤</div>
+        </div>
+      </div>
+
+      <div class="ai">
+        <div class="hd"><svg class="i spark"><use href="#i-spark"/></svg>AI로 만들기 <small id="aiModel">Gemini</small></div>
+        <textarea id="prompt" rows="4" placeholder="프롬프트 — 인물을 고르면 자동으로 채워져요"></textarea>
+        <div class="row">
+          <label class="switch"><input type="checkbox" id="sendPhoto" checked><i></i>현재 사진도 함께 보내기</label>
+          <div class="sp"></div>
+          <button class="btn sm" id="btnPrompt"><svg class="i"><use href="#i-wand"/></svg>자동 작성</button>
+          <button class="btn sm primary" id="btnAI"><svg class="i"><use href="#i-spark"/></svg>AI 생성</button>
+        </div>
+      </div>
+
+      <button class="btn big primary" id="btnAdd"><svg class="i"><use href="#i-plus"/></svg>대기열에 추가</button>
+    </div>
+  </section>
+
+  <!-- 3. 대기열 -->
+  <section class="panel">
+    <div class="ph"><span class="step">3</span><h2>대기열</h2><div class="sp"></div>
+      <button class="btn sm ghost danger" id="btnQClear"><svg class="i"><use href="#i-trash"/></svg>비우기</button></div>
+    <div class="pb grow"><div class="list grow" id="queue"></div></div>
+    <div class="qfoot">
+      <div class="qstat"><span class="muted">적용 대기</span><span><b id="qCount">0</b> <span class="muted">명</span></span></div>
+      <button class="btn big go" id="btnApply"><svg class="i"><use href="#i-check"/></svg>한 번에 적용</button>
+      <div class="hint">적용 후 FM27을 완전히 껐다 켜야 바뀐 사진이 보여요.</div>
+    </div>
+  </section>
+</main>
+
+<!-- =========================== 적용된 얼굴 =========================== -->
+<main class="page" id="pageApplied">
+  <div class="bar">
+    <label class="field"><svg class="i"><use href="#i-search"/></svg><input id="aq" placeholder="이름 · 팀 · UID"></label>
+    <button class="btn" id="btnSelAll">전체 선택</button>
+    <button class="btn danger" id="btnADel"><svg class="i"><use href="#i-trash"/></svg>선택 삭제</button>
+    <div class="sp"></div>
+    <span class="muted" id="aStat"></span>
+    <button class="btn" id="btnConflict"><svg class="i"><use href="#i-shield"/></svg>충돌 검사</button>
+  </div>
+  <div class="gridwrap"><div class="grid" id="agrid"></div></div>
+</main>
+
+<!-- =========================== 모달 =========================== -->
+<div class="modal" id="mSettings"><div class="dlg">
+  <div class="dh"><svg class="i"><use href="#i-gear"/></svg><h3>설정</h3></div>
+  <div class="db">
+    <div class="sec">FM27 폴더</div>
+    <div><span class="lbl">graphics 폴더</span><div class="rowf"><label class="field"><input id="sG"></label><button class="btn" data-pick="folder">찾기</button></div>
+      <div class="hint" style="margin-top:5px">얼굴은 이 폴더 안 <b>FacePicker</b> 폴더에만 저장돼요.</div></div>
+    <div><span class="lbl">세이브 인물 목록 (2단계 플러그인이 만들어요)</span><div class="rowf"><label class="field"><input id="sP"></label><button class="btn" data-pick="json">찾기</button></div></div>
+    <div><span class="lbl">결과 사진 크기 (px)</span><label class="field" style="width:120px"><input id="sSize" type="number" min="100" max="512" step="10"></label></div>
+    <div class="sec">제미나이</div>
+    <div><span class="lbl">API 키</span><div class="rowf"><label class="field"><input id="sKey" type="password" placeholder="AIza…"></label><button class="btn" id="btnShowKey">보기</button></div>
+      <div class="hint" style="margin-top:5px"><a id="lnkStudio">Google AI Studio</a>에서 발급받아요. 키는 이 PC에만 저장돼요.</div></div>
+    <div><span class="lbl">이미지 모델</span><label class="field"><input id="sModel" list="models"></label><datalist id="models"></datalist></div>
+    <div><span class="lbl">프롬프트 틀 <a id="lnkDefault" style="margin-left:6px">기본값으로</a></span><textarea id="sTpl" rows="6"></textarea>
+      <div class="hint" style="margin-top:5px">쓸 수 있는 칸: {ref} {role} {age_text} {nationality_text} {name} {club} {age} {nationality}</div></div>
+  </div>
+  <div class="df"><button class="btn" data-close>취소</button><button class="btn primary" id="btnSaveSettings">저장</button></div>
+</div></div>
+
+<div class="modal" id="mConfirm"><div class="dlg" style="width:440px">
+  <div class="dh"><svg class="i" style="color:var(--warn)"><use href="#i-alert"/></svg><h3 id="cTitle">확인</h3></div>
+  <div class="db" id="cBody"></div>
+  <div class="df"><button class="btn" id="cNo">취소</button><button class="btn primary" id="cYes">확인</button></div>
+</div></div>
+
+<div class="toasts" id="toasts"></div>
+<script src="app.js"></script>
+</body>
+</html>
