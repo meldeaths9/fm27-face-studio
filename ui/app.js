@@ -171,7 +171,7 @@ function cardHtml(p, i) {
   return `<div class="pcard2" data-i="${i}">${tag}${tag2}
     <div class="ph2">${p.face ? `<img src="${p.face}" loading="lazy">` : "사진 없음"}</div>
     <div class="nm">${esc(p.name)}</div>
-    <div class="sub">${esc(p.club || "무소속")}${sq}${p.age ? " · " + esc(p.age) + "세" : ""}${p.job && !p.me ? " · " + esc(p.job) : ""}</div></div>`;
+    <div class="sub">${esc(p.club || "무소속")}${p.alt ? ` <span class="alt">(${esc(p.alt)})</span>` : ""}${sq}${p.age ? " · " + esc(p.age) + "세" : ""}${p.job && !p.me ? " · " + esc(p.job) : ""}</div></div>`;
 }
 function renderBrowse(reset = true) {
   const g = $("#bgrid"), more = $("#bmore"), sv = (ST && ST.save) || {};

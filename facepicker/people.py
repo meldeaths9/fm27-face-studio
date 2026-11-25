@@ -54,5 +54,5 @@ class People:
             if all(t in nk for t in n_toks) and all(t in tk for t in t_toks):
                 res.append(p)
         # 내 감독 → 내 팀 → 이름순
-        res.sort(key=lambda p: (not p.get("me"), not p.get("mine"), norm(p.get("name"))))
+        res.sort(key=lambda p: (not p.get("me"), not p.get("mine"), bool(p.get("alt")), norm(p.get("name"))))
         return res[:limit]

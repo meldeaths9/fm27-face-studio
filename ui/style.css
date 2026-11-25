@@ -379,3 +379,4 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px;
 .step2{display:flex;align-items:center;gap:8px;padding:8px 10px;margin-bottom:8px;border-radius:10px;background:rgba(124,92,255,.14);border:1px solid rgba(124,92,255,.45);font-size:12.5px}
 .step2 .x{margin-left:auto;background:none;border:0;color:var(--muted);cursor:pointer}
 .capnote{grid-column:1/-1;text-align:center;color:var(--muted);font-size:12.5px;padding:14px}
+.pcard2 .sub .alt{color:var(--warn);font-weight:600}

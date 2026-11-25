@@ -16,7 +16,7 @@ from .pack import looks_like_newgen
 from .settings import app_data_dir, default_fm_user_dir
 
 log = logging.getLogger("savedata")
-CACHE_VERSION = 3
+CACHE_VERSION = 4
 
 JOB_KO = {
     "COACH": "코치", "CHAIRPERSON": "회장", "DIRECTOR": "이사", "MANAGING_DIRECTOR": "대표이사",
@@ -97,6 +97,31 @@ def _label_squads(players: list[dict], keys: list[tuple]) -> None:
         p["squad"] = label.get(k, "")
 
 
+def _mark_same_name_clubs(people: list[dict], my_club_uids: set) -> None:
+    """이름이 같은 다른 클럽(예: 잉글랜드 Liverpool / 우루과이 Liverpool)을 구분한다.
+    내 클럽, 없으면 평판이 가장 높은 클럽이 '본' 클럽이고 나머지에 표시를 붙인다."""
+    from collections import defaultdict
+    clubs: dict[str, dict] = defaultdict(dict)       # name -> {uid: (rep, nation)}
+    for p in people:
+        if p.get("club") and p.get("cuid") is not None:
+            cur = clubs[p["club"]].get(p["cuid"], (0, None))
+            clubs[p["club"]][p["cuid"]] = (max(cur[0], p.get("crep") or 0), cur[1] if cur[1] is not None else p.get("cnat"))
+    main: dict[str, tuple] = {}
+    for name, m in clubs.items():
+        if len(m) < 2:
+            continue
+        mine = [u for u in m if u in my_club_uids]
+        uid = mine[0] if mine else max(m, key=lambda u: m[u][0])
+        main[name] = (uid, m[uid][1])
+    for p in people:
+        p["alt"] = ""
+        mm = main.get(p.get("club", ""))
+        if not mm or p.get("cuid") is None or p["cuid"] == mm[0]:
+            continue
+        nat = p.get("cnat")
+        p["alt"] = "다른 나라" if (nat is not None and mm[1] is not None and nat != mm[1]) else "동명 클럽"
+
+
 def read_save(path: str | Path) -> dict:
     """세이브를 읽어 인물 목록을 만들고 캐시에 저장."""
     import fmsave  # 무거운 import는 필요할 때만
@@ -112,7 +137,7 @@ def read_save(path: str | Path) -> dict:
             for m in s.managed_clubs():
                 my_clubs.append({"uid": m.club_uid, "name": m.club_name, "short": m.club_short_name,
                                  "manager": m.manager_name, "manager_staff_uid": m.manager_staff_uid})
-            my_club_names = {c["name"] for c in my_clubs}
+            my_club_uids = {c["uid"] for c in my_clubs}
 
             squad_keys: list[tuple] = []
             for pl in s.players():
@@ -127,7 +152,9 @@ def read_save(path: str | Path) -> dict:
                 people.append({
                     "uid": str(uid), "name": _name(pl), "club": club, "age": pl.age or "",
                     "kind": "player", "newgen": looks_like_newgen(str(uid)), "job": "",
-                    "mine": club in my_club_names, "me": False, "squad": "",
+                    "mine": cuid is not None and cuid in my_club_uids, "me": False, "squad": "",
+                    "cuid": cuid, "crep": getattr(pl, "club_reputation", None) or 0,
+                    "cnat": getattr(pl, "club_nation_id", None),
                 })
             _label_squads([p for p in people if p["kind"] == "player"], squad_keys)
             for st in s.staff():
@@ -138,12 +165,19 @@ def read_save(path: str | Path) -> dict:
                 if st.job is not None and getattr(st.job, "label", None) is not None:
                     job = JOB_KO.get(st.job.label.name, "")
                 club = st.club_name or ""
+                scuid = getattr(st, "club_uid", None)
                 people.append({
                     "uid": str(uid), "name": _name(st), "club": club, "age": st.age or "",
                     "kind": "staff", "newgen": bool(st.is_human_manager) or looks_like_newgen(str(uid)),
                     "job": "내 감독" if st.is_human_manager else job,
-                    "mine": club in my_club_names, "me": bool(st.is_human_manager),
+                    "mine": scuid is not None and scuid in my_club_uids, "me": bool(st.is_human_manager),
+                    "cuid": scuid, "crep": 0, "cnat": None,
                 })
+    if my_clubs and not any(p["mine"] for p in people):       # 클럽 번호가 안 맞으면 예전처럼 이름으로
+        names = {c["name"] for c in my_clubs}
+        for p in people:
+            p["mine"] = p["club"] in names
+    _mark_same_name_clubs(people, my_club_uids)
     data = {
         "version": CACHE_VERSION, **_stamp(p),
         "game": f"{getattr(getattr(info, 'version', None), 'major', '')}",
