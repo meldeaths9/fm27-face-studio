@@ -22,11 +22,16 @@ class People:
         self.my_clubs = list(data.get("my_clubs", []))
         self.save = data.get("save", "")
         self._keys = [(norm(p.get("name")) + " " + p.get("uid", ""), norm(p.get("club"))) for p in self.items]
+        self.version = getattr(self, "version", 0) + 1
 
-    def search(self, name: str, team: str, kind: str, limit: int = 200) -> list[dict]:
+    def search(self, name: str, team: str, kind: str, limit: int = 200, mine_if_empty: bool = False) -> list[dict]:
         n_toks, t_toks = norm(name).split(), norm(team).split()
         if not n_toks and not t_toks:
-            return []
+            if not mine_if_empty:
+                return []
+            res = [p for p in self.items if p.get("mine") and (not kind or p.get("kind") == kind)]
+            res.sort(key=lambda p: (not p.get("me"), norm(p.get("name"))))
+            return res[:limit]
         res = []
         for p, (nk, tk) in zip(self.items, self._keys):
             if kind and p.get("kind") != kind:

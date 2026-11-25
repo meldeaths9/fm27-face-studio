@@ -121,3 +121,42 @@ def read_save(path: str | Path) -> dict:
     os.replace(tmp, cache_path())
     log.info("세이브 읽음: %s명, %.1f초", len(people), time.time() - t0)
     return data
+
+
+# ------------------------------------------------------------------ 현재 세이브 찾기
+def preferences_dir() -> Path:
+    base = os.environ.get("LOCALAPPDATA")
+    root = Path(base) if base else Path.home() / "AppData" / "Local"
+    return root / "Sports Interactive" / "Football Manager 27" / "Preferences"
+
+
+_FM_PATH_RX = None
+
+
+def last_saved_game() -> str:
+    """게임이 기억하는 '가장 최근 세이브' 경로 (Preferences\\version N\\last_saved_game.xml).
+    없으면 games 폴더에서 가장 최근에 저장된 .fm."""
+    import re
+    global _FM_PATH_RX
+    if _FM_PATH_RX is None:
+        _FM_PATH_RX = re.compile(r'(?:"|>)([^"<>|\r\n]+?\.fm)(?="|<)', re.I)
+    pref = preferences_dir()
+    candidates: list[tuple[float, str]] = []
+    if pref.is_dir():
+        for xml in pref.rglob("last_save*.xml"):
+            try:
+                text = xml.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            for m in _FM_PATH_RX.finditer(text):
+                p = Path(m.group(1).strip())
+                if p.exists():
+                    candidates.append((xml.stat().st_mtime, str(p)))
+    if candidates:
+        return max(candidates)[1]
+    games = default_games_dir()
+    if games.is_dir():
+        fms = sorted(games.glob("*.fm"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if fms:
+            return str(fms[0])
+    return ""

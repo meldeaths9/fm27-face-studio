@@ -55,7 +55,7 @@ internal static class Bridge
     public static void WriteJson(string path, object value)
     {
         var tmp = path + ".tmp";
-        File.WriteAllText(tmp, JsonSerializer.Serialize(value, new JsonSerializerOptions { WriteIndented = true }), Encoding.UTF8);
+        File.WriteAllText(tmp, JsonSerializer.Serialize(value, new JsonSerializerOptions { WriteIndented = true }), new UTF8Encoding(false));
         File.Move(tmp, path, true);
     }
 }

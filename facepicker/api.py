@@ -18,13 +18,13 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-from . import ai_models, clipboard, gamesetup, imaging, providers, savedata
+from . import ai_models, clipboard, faceindex, gamesetup, imaging, providers, savedata
 from .pack import FaceEntry, FacePack, find_conflicts, fm_running, looks_like_newgen
 from .people import People
-from .settings import DEFAULT_PROMPT, REF_SENTENCE, Settings, app_data_dir
+from .settings import DEFAULT_PROMPT, REF_SENTENCE, UNIFORM_PROMPT, Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "0.5.1"
+VERSION = "0.6.0"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -86,11 +86,18 @@ class Api:
         self._orig: Image.Image | None = None
         self._work: Image.Image | None = None
         self._nobg: Image.Image | None = None
+        self._kit: Image.Image | None = None      # 유니폼 참고 사진
         self._progress = {"task": "", "done": 0, "total": 0}
         self._window = None
         self._qdir = app_data_dir() / "queue"
         self._qdir.mkdir(exist_ok=True)
         self._queue: list[dict] = self._load_queue()
+        self._reading = {"active": False, "path": "", "started": 0.0, "error": ""}
+        self._last_check = 0.0
+        self._index = faceindex.FaceIndex()
+        self._thumbs: dict[str, str] = {}
+        threading.Thread(target=lambda: self._index.build(self._cfg.graphics_dir), daemon=True).start()
+        threading.Thread(target=self._maybe_reload, daemon=True).start()
 
     def _set_window(self, w) -> None:
         self._window = w
@@ -186,6 +193,115 @@ class Api:
     def progress(self) -> dict:
         return dict(self._progress)
 
+    # ---------------------------------------------------------------- 세이브 자동 연결
+    def _target_save(self) -> str:
+        if self._cfg.follow_save:
+            return savedata.last_saved_game() or self._cfg.last_save
+        return self._cfg.last_save
+
+    def _maybe_reload(self) -> None:
+        """현재 세이브(게임이 마지막으로 저장/불러온 것)에 연결하고, 바뀌었으면 백그라운드로 다시 읽는다."""
+        import time as _t
+        if self._reading["active"]:
+            return
+        self._last_check = _t.time()
+        try:
+            target = self._target_save()
+        except Exception:  # noqa: BLE001
+            return
+        if not target or not Path(target).exists():
+            return
+        p = Path(target)
+        try:
+            if _t.time() - p.stat().st_mtime < 4:      # 게임이 아직 저장 중일 수 있음
+                return
+        except OSError:
+            return
+        cache = savedata.load_cache(p)
+        if cache is not None:
+            if self._people.save != str(p) or not self._people.items:
+                self._people.set(cache)
+                self._cfg.last_save = str(p)
+                self._cfg.save()
+            return
+        self._reading = {"active": True, "path": str(p), "started": _t.time(), "error": ""}
+        try:
+            data = savedata.read_save(p)
+            self._people.set(data)
+            self._cfg.last_save = str(p)
+            self._cfg.save()
+            self._reading["error"] = ""
+        except Exception as e:  # noqa: BLE001
+            log.error("세이브 자동 읽기 실패: %s\n%s", p, traceback.format_exc())
+            self._reading["error"] = f"{type(e).__name__}: {e}"
+        finally:
+            self._reading["active"] = False
+
+    # ---------------------------------------------------------------- 첫 화면 (선수 카드)
+    def _face_thumb(self, path: str, size: int = 200) -> str:
+        try:
+            st = os.stat(path)
+        except OSError:
+            return ""
+        key = f"{path}|{st.st_mtime}|{size}"
+        if key in self._thumbs:
+            return self._thumbs[key]
+        try:
+            im = Image.open(path)
+            im.draft("RGB", (size * 2, size * 2))
+            url = _data_url(imaging.thumbnail(im.convert("RGBA"), size))
+        except Exception:
+            url = ""
+        if len(self._thumbs) > 800:
+            self._thumbs.clear()
+        self._thumbs[key] = url
+        return url
+
+    @_safe
+    def browse(self, name: str, team: str, kind: str, filt: str = "all", offset: int = 0, limit: int = 40) -> dict:
+        idx = self._index
+        items = self._people.search(name, team, kind, limit=100000, mine_if_empty=True)
+        def face_of(p):
+            return idx.get(p["uid"])
+        if filt == "none":
+            items = [p for p in items if not face_of(p)]
+        elif filt == "has":
+            items = [p for p in items if face_of(p)]
+        elif filt == "ours":
+            items = [p for p in items if (face_of(p) or {}).get("ours")]
+        page = []
+        for p in items[int(offset):int(offset) + int(limit)]:
+            f = face_of(p)
+            d = dict(p)
+            d["face"] = self._face_thumb(f["path"]) if f else ""
+            d["face_state"] = "ours" if f and f.get("ours") else "has" if f else "none"
+            d["pack"] = f["pack"] if f else ""
+            page.append(d)
+        return {"total": len(items), "items": page, "offset": int(offset),
+                "index": {"building": idx.building, "count": len(idx.map), "configs": idx.configs},
+                "empty_query": not (name.strip() or team.strip())}
+
+    @_safe
+    def current_face(self, uid: str) -> dict:
+        clean, _ = _clean_uid(uid)
+        f = self._index.get(clean)
+        if not f:
+            return {"face": "", "pack": "", "ours": False}
+        return {"face": self._face_thumb(f["path"], 300), "pack": f["pack"], "ours": f.get("ours", False)}
+
+    @_safe
+    def load_existing(self, uid: str) -> dict:
+        clean, _ = _clean_uid(uid)
+        f = self._index.get(clean)
+        if not f:
+            return {"error": "지금 쓰이는 사진이 없어요."}
+        return self.load_image_path(f["path"])
+
+    @_safe
+    def rebuild_index(self) -> dict:
+        threading.Thread(target=lambda: self._index.build(self._cfg.graphics_dir, force=True), daemon=True).start()
+        return {"ok": True}
+
     # ---------------------------------------------------------------- 상태 배지
     @_safe
     def status_all(self) -> dict:
@@ -214,6 +330,13 @@ class Api:
             for p in self._people.items:
                 kinds[p.get("kind", "")] = kinds.get(p.get("kind", ""), 0) + 1
             save["counts"] = kinds
+        import time as _t
+        if not self._reading["active"] and _t.time() - self._last_check > 5:
+            threading.Thread(target=self._maybe_reload, daemon=True).start()
+        save["reading"] = dict(self._reading)
+        save["index"] = {"building": self._index.building, "count": len(self._index.map)}
+        save["follow"] = c.follow_save
+        save["version"] = getattr(self._people, "version", 0)
         return {"save": save, "game": g, "graphics_dir": c.graphics_dir, "auto_refresh": c.auto_refresh,
                 "bepinex_url": gamesetup.BEPINEX_URL}
 
@@ -264,6 +387,10 @@ class Api:
     def set_option(self, key: str, value) -> bool:
         if key == "auto_refresh":
             self._cfg.auto_refresh = bool(value)
+        elif key == "follow_save":
+            self._cfg.follow_save = bool(value)
+            if value:
+                threading.Thread(target=self._maybe_reload, daemon=True).start()
         elif key == "game_dir" and gamesetup.valid_game(value):
             self._cfg.game_dir = str(value)
         else:
@@ -295,6 +422,9 @@ class Api:
             data = savedata.read_save(p)
         self._people.set(data)
         self._cfg.last_save = str(p)
+        current = savedata.last_saved_game()
+        if current and Path(current) != p:
+            self._cfg.follow_save = False     # 게임의 현재 세이브와 다른 걸 직접 골랐음
         self._cfg.save()
         info = self._people_info()
         info["cached"] = cached
@@ -415,7 +545,38 @@ class Api:
 
     # ---------------------------------------------------------------- AI
     @_safe
-    def build_prompt(self, person: dict, send_photo: bool) -> str:
+    def set_kit(self, data_url: str) -> dict:
+        self._kit = _from_data_url(data_url)
+        t = self._kit.copy()
+        t.thumbnail((160, 160))
+        return {"thumb": _data_url(t)}
+
+    @_safe
+    def set_kit_path(self, path: str) -> dict:
+        self._kit = imaging.load_image(path)
+        t = self._kit.copy()
+        t.thumbnail((160, 160))
+        return {"thumb": _data_url(t)}
+
+    @_safe
+    def clear_kit(self) -> bool:
+        self._kit = None
+        return True
+
+    def _uniform_prompt(self, person: dict) -> str:
+        club = str(person.get("club", "")).strip()
+        if self._kit is not None:
+            kit = "the football kit shown in the second attached image (same colours, pattern, collar, badge and sponsor)"
+        elif club:
+            kit = f"the current home football kit of {club}"
+        else:
+            kit = "a plain dark football training top"
+        return UNIFORM_PROMPT.format(kit_text=kit)
+
+    @_safe
+    def build_prompt(self, person: dict, send_photo: bool, mode: str = "face") -> str:
+        if mode == "uniform":
+            return self._uniform_prompt(person)
         age = str(person.get("age", "")).strip()
         nat = str(person.get("nationality", "")).strip()
         kind = person.get("kind", "player")
@@ -439,29 +600,51 @@ class Api:
         return text.strip()
 
     @_safe
-    def ai_web(self, pid: str, prompt: str, send_photo: bool) -> dict:
+    def ai_web(self, pid: str, prompt: str, send_photo: bool, mode: str = "face") -> dict:
         """무료 웹 연동: 참고 사진+프롬프트를 클립보드에 함께 넣고 사이트 열기 (입력칸에 Ctrl+V 한 번)."""
         p = providers.BY_ID.get(pid)
         if not p or p["group"] != "free_web":
             return {"error": "웹 연동 방식이 아니에요."}
         ref = None
-        if send_photo and self._work is not None:
+        files = []
+        if mode == "uniform":
+            if self._work is None:
+                return {"error": "유니폼을 바꿀 선수 사진을 먼저 넣어 주세요."}
+            ref = providers.save_reference(self._work, "선수사진")
+            files = [ref]
+            if self._kit is not None:
+                files.append(providers.save_reference(self._kit, "유니폼"))
+        elif send_photo and self._work is not None:
             ref = providers.save_reference(self._work)
+            files = [ref]
         else:
             prompt = prompt.replace(REF_SENTENCE, "").replace(REF_SENTENCE.strip(), "").strip()
         clip = False
         try:
-            clip = clipboard.set_files_and_text([ref] if ref else [], prompt)
+            clip = clipboard.set_files_and_text(files, prompt)
         except Exception as e:  # noqa: BLE001
             log.warning("클립보드 실패: %s", e)
         if ref and not clip:
             providers.reveal(ref)
         webbrowser.open(p["url"])
-        return {"ok": True, "clip": clip, "with_photo": bool(ref)}
+        return {"ok": True, "clip": clip, "with_photo": bool(ref), "files": len(files)}
 
     @_safe
-    def ai_generate(self, pid: str, prompt: str, send_photo: bool) -> dict:
+    def ai_generate(self, pid: str, prompt: str, send_photo: bool, mode: str = "face") -> dict:
         cfg = self._cfg.ai_cfg.get(pid, {})
+        if mode == "uniform":
+            if self._work is None:
+                return {"error": "유니폼을 바꿀 선수 사진을 먼저 넣어 주세요."}
+            if not providers.BY_ID.get(pid, {}).get("ref"):
+                return {"error": "이 방식은 사진을 보낼 수 없어서 유니폼 바꾸기를 못 해요. 제미나이·챗GPT 등 다른 방식을 골라 주세요."}
+            photos = [self._work] + ([self._kit] if self._kit is not None else [])
+            try:
+                im = providers.generate(pid, cfg, prompt, photos)
+            except providers.ProviderError as e:
+                if str(e) == "need_key":
+                    return {"error": "need_key"}
+                raise
+            return self._set_photo(im, original=False)
         photo = self._work if (send_photo and self._work is not None) else None
         if photo is None or not providers.BY_ID.get(pid, {}).get("ref"):
             prompt = prompt.replace(REF_SENTENCE, "").replace(REF_SENTENCE.strip(), "").strip()
@@ -549,6 +732,10 @@ class Api:
                             it.get("kind", "player")), Path(it["png"])) for it in items]
         self._pack().apply(pairs)
         conflicts = find_conflicts(gdir, self._cfg.pack_dir, {it["uid"] for it in items})
+        pack = self._pack()
+        for it in items:
+            self._index.map[it["uid"]] = {"path": str(pack.image_path(it["uid"])), "pack": pack.dir.name,
+                                          "ours": True, "regen": bool(it["newgen"])}
         names = {it["uid"]: it.get("name") or it["uid"] for it in items}
         for it in items:
             Path(it["png"]).unlink(missing_ok=True)
@@ -577,6 +764,10 @@ class Api:
     @_safe
     def applied_remove(self, uids: list[str]) -> list[dict]:
         self._pack().remove([str(u) for u in uids])
+        for u in uids:
+            if (self._index.map.get(str(u)) or {}).get("ours"):
+                self._index.map.pop(str(u), None)
+        threading.Thread(target=lambda: self._index.build(self._cfg.graphics_dir, force=True), daemon=True).start()
         return self.applied_list()
 
     @_safe

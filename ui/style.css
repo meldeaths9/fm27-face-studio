@@ -332,3 +332,40 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px;
 .pop .note { margin-top: 12px; font-size: 11.5px; color: var(--dim); line-height: 1.6; }
 .pop hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
 .seg3 { grid-template-columns: 1fr 1fr 1.25fr; }
+
+/* ---------- v0.6 첫 화면 / 편집 화면 ---------- */
+#pageMake { grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; }
+.makeMain { min-height: 0; min-width: 0; display: flex; }
+.view { display: none; flex: 1; min-width: 0; min-height: 0; }
+.view.on { display: flex; }
+#viewEdit.on { display: grid; grid-template-columns: 300px minmax(480px, 1fr); gap: 14px; }
+#viewBrowse { flex-direction: column; }
+.btool { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.btool .seg { width: 260px; }
+.btool .field { width: 190px; }
+.bgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; padding: 2px; }
+.pcard2 { background: var(--panel2); border: 1px solid var(--line); border-radius: 14px; padding: 8px 8px 10px; cursor: pointer; transition: .12s; position: relative; }
+.pcard2:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0,0,0,.3); }
+.pcard2 .ph2 { aspect-ratio: 1; border-radius: 10px; overflow: hidden; background: #1a2440; display: grid; place-items: center; color: #4b5a85; font-size: 12px; font-weight: 700; }
+.pcard2 .ph2 img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pcard2 .nm { font-weight: 800; text-align: center; margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pcard2 .sub { color: var(--muted); font-size: 11.5px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pcard2 .tag { position: absolute; top: 14px; left: 14px; font-size: 10.5px; font-weight: 800; padding: 2px 7px; border-radius: 6px; max-width: calc(100% - 28px);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: rgba(7,11,22,.75); color: #cfd7ec; }
+.pcard2 .tag.ours { background: #128a68; color: #eafff7; }
+.pcard2 .tag.none { background: #b7791f; color: #fff7e6; }
+.pcard2 .tag2 { position: absolute; top: 14px; right: 14px; font-size: 10.5px; font-weight: 800; padding: 2px 7px; border-radius: 6px; background: rgba(123,97,255,.85); color: #fff; }
+#bmore { text-align: center; padding: 14px; }
+.who { display: flex; gap: 12px; align-items: flex-start; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.whoimg { width: 112px; height: 112px; border-radius: 14px; overflow: hidden; flex: none; display: grid; place-items: center; background: #1a2440; color: #4b5a85; }
+.whoimg svg.i { width: 36px; height: 36px; stroke-width: 1.3; }
+.whoimg img { width: 100%; height: 100%; object-fit: cover; }
+.whotx { min-width: 0; flex: 1; }
+.whotx .nm { font-weight: 800; font-size: 15px; word-break: break-all; }
+.whotx .sub { color: var(--muted); font-size: 12px; margin: 2px 0 6px; }
+.ai .hd .chips .chip { font-size: 11px; padding: 2px 9px; }
+.kitrow { display: flex; gap: 10px; align-items: center; background: rgba(255,255,255,.03); border: 1px dashed var(--line2); border-radius: 10px; padding: 8px; }
+.kitimg { width: 48px; height: 48px; border-radius: 8px; overflow: hidden; background: #1a2440; display: grid; place-items: center; flex: none; color: var(--dim); font-size: 10px; text-align: center; line-height: 1.2; }
+.kitimg img { width: 100%; height: 100%; object-fit: cover; }
+.kitrow .hint { flex: 1; line-height: 1.5; }
+[hidden]{display:none!important}

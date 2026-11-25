@@ -132,94 +132,142 @@ $$(".tab").forEach((b) => b.onclick = () => {
   else requestAnimationFrame(drawStage);
 });
 
-/* ------------------------------------------------------------------ 1. 세이브·검색 */
-function renderSaveBox() {
-  const el = $("#saveBox"), P = S.people;
-  if (P.loaded) {
-    el.innerHTML = `<div class="savebox"><div class="ic">${ico("folder")}</div>
-      <div class="tx"><div class="nm">${esc(P.save_name)}</div><div class="sub">인물 ${P.count.toLocaleString()}명${P.my_clubs && P.my_clubs.length ? " · 내 팀 " + esc(P.my_clubs.join(", ")) : ""}</div></div>
-      <button class="btn icon sm" id="btnSaveReload" title="세이브 다시 읽기">${ico("refresh")}</button>
-      <button class="btn sm" id="btnSavePick">바꾸기</button></div>`;
-    $("#btnSaveReload").onclick = reloadSave;
-    $("#btnSavePick").onclick = pickSave;
-  } else {
-    el.innerHTML = `<div class="savebox empty" id="btnSavePick"><div class="ic">${ico("upload")}</div>
-      <div class="tx"><div class="nm">세이브 불러오기</div><div class="sub">세이브를 고르면 이름·팀으로 검색할 수 있어요</div></div></div>`;
-    $("#btnSavePick").onclick = pickSave;
-  }
-  $("#btnMyTeam").disabled = !(P.my_clubs && P.my_clubs.length);
-  renderResults();
-}
+/* ------------------------------------------------------------------ 1. 첫 화면: 선수 카드 */
+S.filter = "all"; S.bItems = []; S.bTotal = 0; S.bEmpty = true; S.bIndex = {}; S.peopleVer = -1; S.indexCount = -1;
 async function pickSave() {
-  busySave(true);
+  toast("세이브를 고르면 읽는 데 시간이 걸릴 수 있어요…", "info", 4000);
   const r = await call("pick_save");
-  busySave(false);
   if (r) afterSave(r);
 }
 async function reloadSave() {
-  busySave(true);
+  toast("세이브를 다시 읽는 중이에요…", "info", 4000);
   const r = await call("reload_save");
-  busySave(false);
   if (r) { afterSave(r); toast("세이브를 다시 읽었어요.", "ok", 2000); }
-}
-function busySave(on) {
-  const el = $("#saveBox .savebox");
-  if (el) el.style.opacity = on ? .55 : 1;
-  if (on) toast("세이브를 읽는 중이에요. 처음엔 수십 초 걸릴 수 있어요…", "info", 6000);
 }
 function afterSave(r) {
   S.people = r;
-  renderSaveBox();
   if (r.loaded) toast(`인물 ${r.count.toLocaleString()}명을 불러왔어요${r.cached ? " (저장된 목록 사용)" : r.seconds ? ` (${r.seconds}초)` : ""}.`, "ok");
-  doSearch();
+  doSearch(true);
   pollStatus();
 }
-function renderResults() {
-  const el = $("#results");
-  if (!S.people.loaded) {
-    el.innerHTML = `<div class="empty"><div>${ico("search")}<br>세이브를 불러오면 검색할 수 있어요.<br>지금은 아래에 <b style="color:var(--muted)">UID를 직접 입력</b>해도 돼요.</div></div>`;
-    return;
-  }
-  if (!$("#qName").value.trim() && !$("#qTeam").value.trim()) {
-    el.innerHTML = `<div class="empty"><div>${ico("search")}<br>이름이나 팀을 입력해 보세요</div></div>`;
-    return;
-  }
-  if (!S.results.length) {
-    el.innerHTML = S.kind === "support"
-      ? `<div class="empty"><div>${ico("users")}<br>지원 스태프(개인 비서·언론 담당자·선수 연락 담당자)<br>목록은 다음 버전에서 채워져요.<br>지금은 아래 UID 칸에 <b style="color:var(--muted)">r-번호</b>로 직접 넣어 주세요.</div></div>`
-      : `<div class="empty"><div>${ico("search")}<br>검색 결과가 없어요</div></div>`;
-    return;
-  }
-  el.innerHTML = S.results.map((p, i) => `
-    <div class="rrow ${p.uid === S.selUid ? "sel" : ""}" data-i="${i}">
-      ${avatar(p)}
-      <div class="nm">${esc(p.name)}</div>
-      ${p.me ? '<span class="badge me">내 감독</span>' : p.job ? `<span class="badge job">${esc(p.job)}</span>` : ""}
-      ${p.newgen && !p.me ? '<span class="badge ng">뉴젠</span>' : ""}${p.face ? '<span class="badge face">적용됨</span>' : ""}
-      <div class="club">${esc(p.club || "무소속")}</div>
-    </div>`).join("") + (S.results.length >= 200 ? '<div class="more">200명까지만 보여요. 더 좁혀서 검색해 보세요.</div>' : "");
-  $$(".rrow", el).forEach((c) => c.onclick = () => pickPerson(S.results[+c.dataset.i]));
-}
-let qTimer;
-["#qName", "#qTeam"].forEach((s) => $(s).addEventListener("input", () => { clearTimeout(qTimer); qTimer = setTimeout(doSearch, 160); }));
-async function doSearch() {
+let bLoading = false;
+async function doSearch(reset = true) {
+  if (bLoading && !reset) return;
+  bLoading = true;
   const n = $("#qName").value.trim(), t = $("#qTeam").value.trim();
-  S.results = S.people.loaded && (n || t) ? (await call("search", n, t, S.kind)) || [] : [];
-  renderResults();
+  const r = await call("browse", n, t, S.kind, S.filter, reset ? 0 : S.bItems.length, 40);
+  bLoading = false;
+  if (!r) return;
+  S.bTotal = r.total; S.bEmpty = r.empty_query; S.bIndex = r.index;
+  S.bItems = reset ? r.items : S.bItems.concat(r.items);
+  renderBrowse(reset);
 }
+function cardHtml(p, i) {
+  const tag = p.face_state === "ours" ? '<span class="tag ours">내가 넣은 사진</span>' : p.face_state === "none" ? '<span class="tag none">사진 없음</span>' : `<span class="tag">${esc(p.pack)}</span>`;
+  const tag2 = p.me ? '<span class="tag2">내 감독</span>' : p.newgen ? '<span class="tag2" style="background:rgba(31,209,165,.85);color:#03261c">뉴젠</span>' : "";
+  return `<div class="pcard2" data-i="${i}">${tag}${tag2}
+    <div class="ph2">${p.face ? `<img src="${p.face}" loading="lazy">` : "사진 없음"}</div>
+    <div class="nm">${esc(p.name)}</div>
+    <div class="sub">${esc(p.club || "무소속")}${p.age ? " · " + esc(p.age) + "세" : ""}${p.job && !p.me ? " · " + esc(p.job) : ""}</div></div>`;
+}
+function renderBrowse(reset = true) {
+  const g = $("#bgrid"), more = $("#bmore"), sv = (ST && ST.save) || {};
+  const loaded = S.people.loaded || (sv.loaded);
+  const reading = sv.reading && sv.reading.active;
+  const idxTxt = S.bIndex && S.bIndex.building ? " · 기존 사진 찾는 중…" : S.bIndex && S.bIndex.count ? ` · 기존 사진 ${S.bIndex.count.toLocaleString()}장` : "";
+  $("#bStat").textContent = loaded ? `${S.bEmpty ? "내 팀 " : ""}${S.bTotal.toLocaleString()}명${idxTxt}` : "";
+  if (!loaded) {
+    g.innerHTML = `<div class="empty" style="grid-column:1/-1;padding:70px 20px">${reading
+      ? `<div><div class="spin"></div><b style="color:var(--text);font-size:14px">세이브를 읽는 중이에요</b><br>${esc((sv.reading.path || "").split(/[\\\\/]/).pop())}<br>처음엔 수십 초 걸릴 수 있어요.</div>`
+      : `<div>${ico("folder")}<br><b style="color:var(--text);font-size:14px">연결된 세이브가 없어요</b><br>FM27에서 세이브를 한 번 불러오거나 저장하면 자동으로 연결돼요.<br><br><button class="btn primary" id="btnPickSave2">세이브 직접 고르기</button>&nbsp;<button class="btn" id="btnManual2">UID로 직접 편집</button></div>`}</div>`;
+    more.innerHTML = "";
+    const b1 = $("#btnPickSave2"), b2 = $("#btnManual2");
+    if (b1) b1.onclick = pickSave;
+    if (b2) b2.onclick = () => openManual();
+    return;
+  }
+  if (!S.bItems.length) {
+    g.innerHTML = `<div class="empty" style="grid-column:1/-1;padding:70px 20px"><div>${ico(S.kind === "support" ? "users" : "search")}<br>${S.kind === "support"
+      ? "지원 스태프(개인 비서·언론 담당자·선수 연락 담당자) 목록은 다음 버전에서 채워져요.<br>지금은 'UID로 직접 편집'에서 <b>r-번호</b>로 넣어 주세요."
+      : S.bEmpty ? "이름이나 팀으로 검색해 보세요." : "조건에 맞는 인물이 없어요."}</div></div>`;
+    more.innerHTML = "";
+    return;
+  }
+  g.innerHTML = S.bItems.map(cardHtml).join("");
+  $$(".pcard2", g).forEach((c) => c.onclick = () => pickPerson(S.bItems[+c.dataset.i]));
+  more.innerHTML = S.bItems.length < S.bTotal ? `<button class="btn" id="btnMore">더 보기 (${S.bItems.length} / ${S.bTotal.toLocaleString()})</button>` : "";
+  const bm = $("#btnMore");
+  if (bm) bm.onclick = () => doSearch(false);
+  if (reset) $("#bwrap").scrollTop = 0;
+}
+$("#bwrap").addEventListener("scroll", () => {
+  const w = $("#bwrap");
+  if (w.scrollTop + w.clientHeight > w.scrollHeight - 300 && S.bItems.length < S.bTotal) doSearch(false);
+});
+let qTimer;
+["#qName", "#qTeam"].forEach((s) => $(s).addEventListener("input", () => { clearTimeout(qTimer); qTimer = setTimeout(() => doSearch(true), 200); }));
+$$("#fChips .chip").forEach((c) => c.onclick = () => {
+  S.filter = c.dataset.f;
+  $$("#fChips .chip").forEach((x) => x.classList.toggle("on", x === c));
+  doSearch(true);
+});
 $("#btnMyTeam").onclick = () => {
   const clubs = S.people.my_clubs || [];
-  if (!clubs.length) return;
+  if (!clubs.length) { $("#qTeam").value = ""; doSearch(true); return; }
   const cur = $("#qTeam").value.trim();
   const i = clubs.indexOf(cur);
   $("#qTeam").value = i >= 0 && clubs.length > 1 ? clubs[(i + 1) % clubs.length] : clubs[0];
-  doSearch();
+  doSearch(true);
 };
-$$("#kindSeg button").forEach((b) => b.onclick = () => {
-  setKind(b.dataset.kind);
-  if (b.dataset.kind === "support" && !S.selUid && !$("#fUid").value.trim()) $("#fNewgen").checked = true;
-  doSearch(); updateCard(); autoPrompt();
-});
+$$("#kindSeg button").forEach((b) => b.onclick = () => { setKind(b.dataset.kind); doSearch(true); });
+
+/* 화면 전환 */
+function showView(v) {
+  $("#viewBrowse").classList.toggle("on", v === "browse");
+  $("#viewEdit").classList.toggle("on", v === "edit");
+  if (v === "edit") requestAnimationFrame(drawStage);
+}
+$("#btnBack").onclick = () => { showView("browse"); doSearch(true); };
+function openManual() {
+  S.selUid = null;
+  fillPerson({ kind: S.kind, newgen: S.kind === "support" });
+  resetEditor();
+  showCurrent(null);
+  showView("edit");
+  S.promptDirty = false; autoPrompt();
+  $("#fUid").focus();
+}
+$("#btnManual").onclick = openManual;
+function resetEditor() {
+  S.photo = null;
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  $("#drop").style.display = "";
+  ["#btnAuto", "#btnNobg", "#zoom"].forEach((s) => $(s).disabled = true);
+  $("#btnRevert").disabled = true;
+  $("#pvImg").hidden = true; $("#pvBox .ph0").style.display = "";
+  $("#zoomTxt").textContent = "-";
+}
+function showCurrent(r) {
+  const box = $("#curFace");
+  if (r && r.face) {
+    box.innerHTML = `<img src="${r.face}">`;
+    $("#curFrom").textContent = "지금 쓰이는 사진 · " + (r.ours ? "내가 넣은 사진" : r.pack);
+    $("#btnUseCur").hidden = false;
+  } else {
+    box.innerHTML = ico("users");
+    $("#curFrom").textContent = r ? "지금은 사진이 없어요 (게임 기본 얼굴)" : "";
+    $("#btnUseCur").hidden = true;
+  }
+}
+$("#btnUseCur").onclick = async () => {
+  const uid = $("#fUid").value.trim();
+  if (!uid) return;
+  busy(true, "사진 불러오는 중…");
+  const r = await call("load_existing", uid);
+  busy(false);
+  if (r) setPhoto(r);
+};
+
 function setKind(k) {
   S.kind = k;
   $$("#kindSeg button").forEach((x) => x.classList.toggle("on", x.dataset.kind === k));
@@ -238,14 +286,24 @@ function fillPerson(p) {
   syncDecoText();
   updateCard();
 }
-function pickPerson(p) {
+async function pickPerson(p) {
   S.selUid = p.uid;
   fillPerson(p);
-  renderResults();
+  showView("edit");
   S.promptDirty = false;
+  const cur = await call("current_face", p.uid);
+  showCurrent(cur || { face: "" });
+  if (cur && cur.face) {
+    busy(true, "지금 사진 불러오는 중…");
+    const r = await call("load_existing", p.uid);
+    busy(false);
+    if (r) await setPhoto(r);
+  } else {
+    resetEditor();
+  }
   autoPrompt();
 }
-$("#btnClear").onclick = () => { S.selUid = null; fillPerson({ kind: S.kind, newgen: S.kind === "support" }); renderResults(); S.promptDirty = false; autoPrompt(); };
+$("#btnClear").onclick = () => { S.selUid = null; fillPerson({ kind: S.kind, newgen: S.kind === "support" }); showCurrent(null); S.promptDirty = false; autoPrompt(); };
 ["#fClub", "#fAge", "#fNat"].forEach((s) => $(s).addEventListener("input", () => { updateCard(); autoPromptSoon(); }));
 $("#fName").addEventListener("input", () => { syncDecoText(); updateCard(); autoPromptSoon(); });
 $("#fNewgen").onchange = updateCard;
@@ -253,17 +311,19 @@ $("#fUid").addEventListener("input", async () => {
   const raw = $("#fUid").value;
   const cleaned = raw.replace(/^\s*[rR]\s*-\s*/, "r-").replace(/[^0-9r-]/g, "");
   if (cleaned !== raw) $("#fUid").value = cleaned;
-  if (S.selUid && cleaned.replace(/^r-/, "") !== S.selUid) { S.selUid = null; renderResults(); }
+  if (S.selUid && cleaned.replace(/^r-/, "") !== S.selUid) { S.selUid = null; }
   if (/^r-/.test(cleaned)) $("#fNewgen").checked = true;
   else if (!S.selUid && cleaned.length >= 10) $("#fNewgen").checked = !!(await call("guess_newgen", cleaned));
   updateCard();
 });
 function updateCard() {
   const p = person();
+  $("#whoName").textContent = p.name || "이름 없음";
+  $("#whoSub").textContent = [p.club || "소속 없음", p.age ? p.age + "세" : ""].filter(Boolean).join(" · ");
   $("#pvName").textContent = p.name || "이름 없음";
   $("#pvSub").textContent = [p.club || "소속 없음", p.age ? p.age + "세" : ""].filter(Boolean).join(" · ");
   const uid = p.uid.replace(/^r-/, "");
-  $("#pvTags").innerHTML = (uid ? `<span class="badge uid">${esc(uid)}</span>` : "") +
+  $("#whoTags").innerHTML = $("#pvTags").innerHTML = (uid ? `<span class="badge uid">${esc(uid)}</span>` : "") +
     (p.newgen ? '<span class="badge ng">뉴젠</span>' : "") +
     `<span class="badge face">${({ player: "선수", staff: "스태프", support: "지원 스태프" })[S.kind]}</span>`;
 }
@@ -513,7 +573,7 @@ let pTimer;
 function autoPromptSoon() { clearTimeout(pTimer); pTimer = setTimeout(autoPrompt, 300); }
 async function autoPrompt(force = false) {
   if (S.promptDirty && !force) return;
-  const t = await call("build_prompt", person(), $("#sendPhoto").checked);
+  const t = await call("build_prompt", person(), $("#sendPhoto").checked, S.aiMode || "face");
   if (typeof t === "string") { $("#prompt").value = t; if (force) S.promptDirty = false; }
 }
 $("#prompt").addEventListener("input", () => S.promptDirty = true);
@@ -523,16 +583,49 @@ $("#sendPhoto").onchange = () => {
   call("save_settings", { send_photo: S.settings.send_photo });
   if (!S.promptDirty) autoPrompt();
 };
+S.aiMode = "face";
+$$("#aiMode .chip").forEach((c) => c.onclick = () => {
+  S.aiMode = c.dataset.m;
+  $$("#aiMode .chip").forEach((x) => x.classList.toggle("on", x === c));
+  $("#kitRow").hidden = S.aiMode !== "uniform";
+  $("#sendPhotoWrap").style.display = S.aiMode === "uniform" ? "none" : "";
+  S.promptDirty = false; autoPrompt(true);
+  if (S.aiMode === "uniform" && !S.photo) toast("유니폼을 바꿀 선수 사진을 먼저 넣어 주세요.", "info", 3500);
+});
+function setKitThumb(r) {
+  if (!r || !r.thumb) return;
+  $("#kitImg").innerHTML = `<img src="${r.thumb}">`;
+  $("#btnKitX").hidden = false;
+  if (!S.promptDirty) autoPrompt(true);
+}
+$("#btnKit").onclick = () => $("#kitFile").click();
+$("#kitFile").onchange = () => {
+  const f = $("#kitFile").files[0];
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = async () => setKitThumb(await call("set_kit", rd.result));
+  rd.readAsDataURL(f);
+  $("#kitFile").value = "";
+};
+$("#btnKitX").onclick = async () => {
+  await call("clear_kit");
+  $("#kitImg").innerHTML = "<span>유니폼<br>사진</span>";
+  $("#btnKitX").hidden = true;
+  if (!S.promptDirty) autoPrompt(true);
+};
 $("#btnAI").onclick = async () => {
   let prompt = $("#prompt").value.trim();
   if (!prompt) { await autoPrompt(true); prompt = $("#prompt").value.trim(); }
   const a = curAI();
+  const mode = S.aiMode || "face";
+  if (mode === "uniform" && !S.photo) { toast("유니폼을 바꿀 선수 사진을 먼저 넣어 주세요.", "err"); return; }
   const send = $("#sendPhoto").checked && !!S.photo;
   if (a.group === "free_web") {
-    const r = await call("ai_web", a.id, prompt, send);
+    const r = await call("ai_web", a.id, prompt, send, mode);
     if (!r) return;
     if (!r.clip) await copyText(prompt);
-    const how = r.clip && r.with_photo ? "참고 사진과 프롬프트를 함께 복사했어요.\n사이트 입력칸을 누르고 Ctrl+V 한 번이면 같이 들어가요."
+    const how = r.clip && r.files > 1 ? "선수 사진·유니폼 사진·프롬프트를 함께 복사했어요.\n사이트 입력칸을 누르고 Ctrl+V 한 번이면 같이 들어가요."
+      : r.clip && r.with_photo ? "참고 사진과 프롬프트를 함께 복사했어요.\n사이트 입력칸을 누르고 Ctrl+V 한 번이면 같이 들어가요."
       : r.with_photo ? "프롬프트를 복사했어요. 참고 사진 파일이 있는 폴더도 열었으니 입력칸에 끌어다 놓아 주세요."
       : "프롬프트를 복사했어요. 사이트 입력칸에 Ctrl+V 하세요.";
     toast(`${a.name}을 열었어요.\n${how}\n완성된 사진을 복사해서 여기서 Ctrl+V 하면 편집기로 들어와요.`, "ok", 9000);
@@ -540,7 +633,7 @@ $("#btnAI").onclick = async () => {
   }
   busy(true, "AI가 사진을 만드는 중…", a.name + " · 보통 10초~1분");
   $("#btnAI").disabled = true;
-  const r = await call("ai_generate", a.id, prompt, send);
+  const r = await call("ai_generate", a.id, prompt, send, mode);
   busy(false); $("#btnAI").disabled = false;
   if (!r) return;
   if (r.error === "need_key") { toast(`${a.name} 연결 정보가 없어요. 설정에서 넣어 주세요.`, "err"); openSettings(a.id); return; }
@@ -652,6 +745,8 @@ async function editApplied(uid) {
   $$(".tab")[0].click();
   S.selUid = null;
   fillPerson(r.person);
+  showView("edit");
+  showCurrent(await call("current_face", r.person.uid));
   if (r.photo) await setPhoto(r.photo);
   S.promptDirty = false; autoPrompt();
 }
@@ -739,6 +834,17 @@ async function pollStatus() {
   setPill("#bGame", g.running ? (g.connected ? "ok" : "warn") : "", g.running ? (g.connected ? "FM27 실행 중 · 연결됨" : "FM27 실행 중") : (g.game_found ? "FM27 꺼짐" : "FM27 못 찾음"));
   const pOk = g.plugin_installed && g.plugin_up_to_date && g.bepinex;
   setPill("#bPlugin", pOk ? "ok" : (g.game_found ? "warn" : ""), pOk ? "플러그인" : g.plugin_installed ? "플러그인 업데이트" : "플러그인 설치 필요");
+  $("#applyHint").textContent = g.connected && ST.auto_refresh
+    ? "게임과 연결돼 있어요. 적용하면 게임에 바로 반영돼요."
+    : "적용 후 FM27을 완전히 껐다 켜야 바뀐 사진이 보여요. (플러그인이 있으면 바로 반영)";
+  const ver = sv.version || 0, ic = (sv.index && sv.index.count) || 0;
+  const readingNow = !!(sv.reading && sv.reading.active);
+  if (ver !== S.peopleVer || ic !== S.indexCount || readingNow !== S.wasReading) {
+    const first = S.peopleVer === -1;
+    S.peopleVer = ver; S.indexCount = ic; S.wasReading = readingNow;
+    if (sv.loaded && (!S.people.loaded || !first)) { const st = await call("get_state"); if (st) S.people = st.people; }
+    if (!first || sv.loaded) { if ($("#viewBrowse").classList.contains("on")) doSearch(true); }
+  }
   if (popKind) renderPop();
 }
 function row(k, v, cls = "") { return `<div class="k">${esc(k)}</div><div class="v ${cls}">${esc(v)}</div>`; }
@@ -752,7 +858,9 @@ function renderPop() {
       <div class="kv">${sv.loaded ? row("이 세이브", sv.name) + row("위치", sv.path, "dim") + row("선수", (c.player || 0).toLocaleString() + "명")
         + row("스태프", (c.staff || 0).toLocaleString() + "명") + row("읽은 시각", fmtTime(sv.read_at))
         + row("상태", !sv.exists ? "세이브 파일이 없어졌어요" : sv.changed ? "게임에서 새로 저장됐어요 — 다시 읽어 주세요" : "최신", !sv.exists || sv.changed ? "warn" : "ok")
-        : row("안내", "세이브를 고르면 이름·팀으로 선수와 스태프를 검색할 수 있어요.")}</div>
+        : row("안내", sv.reading && sv.reading.active ? "세이브를 읽는 중이에요…" : "FM27에서 세이브를 불러오거나 저장하면 자동으로 연결돼요.")}
+        ${sv.reading && sv.reading.active ? row("읽는 중", (sv.reading.path || "").split(/[\\/]/).pop(), "warn") : ""}</div>
+      <div style="margin-top:10px"><label class="switch"><input type="checkbox" id="optFollow" ${sv.follow ? "checked" : ""}><i></i>게임에서 마지막으로 쓴 세이브 자동으로 따라가기</label></div>
       <div class="acts">${sv.loaded ? `<button class="btn" data-act="reload">${ico("refresh")}다시 읽기</button>` : ""}<button class="btn ${sv.loaded ? "" : "primary"}" data-act="pick">${ico("folder")}${sv.loaded ? "다른 세이브" : "세이브 고르기"}</button></div>`;
   } else if (popKind === "game") {
     html = `<h4><i class="${g.running ? (g.connected ? "ok" : "warn") : ""}"></i>${g.running ? "FM27이 켜져 있어요" : g.game_found ? "FM27이 꺼져 있어요" : "FM27을 찾지 못했어요"}</h4>
@@ -781,6 +889,8 @@ function renderPop() {
   const b = $(`.pill[data-pop="${popKind}"]`).getBoundingClientRect();
   el.style.left = Math.max(12, Math.min(window.innerWidth - 372, b.right - 360)) + "px";
   $$("[data-act]", el).forEach((x) => x.onclick = () => popAction(x.dataset.act, x));
+  const of = $("#optFollow", el);
+  if (of) of.onchange = async () => { await call("set_option", "follow_save", of.checked); pollStatus(); };
   const oa = $("#optAuto", el);
   if (oa) oa.onchange = async () => { await call("set_option", "auto_refresh", oa.checked); pollStatus(); };
 }
@@ -829,7 +939,7 @@ function applyState(st) {
   $("#ver").textContent = "v" + st.version;
   $("#sendPhoto").checked = !!st.settings.send_photo;
   if (!st.face_ai) $("#btnAuto").title = "얼굴 인식 모델이 없어 기본 위치로 맞춰요";
-  renderSaveBox(); renderQueue(); renderDeco(); renderAISel();
+  renderQueue(); renderDeco(); renderAISel();
 }
 (async () => {
   API = await ready();
@@ -841,6 +951,7 @@ function applyState(st) {
   updateCard();
   autoPrompt();
   refreshAppliedCount();
+  doSearch(true);
   pollStatus();
   setInterval(pollStatus, 3000);
 })();

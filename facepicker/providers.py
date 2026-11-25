@@ -115,15 +115,22 @@ def _images_response(j: dict) -> Image.Image:
 
 
 # ------------------------------------------------------------------ 자동 방식들
-def gen_openai(cfg: dict, prompt: str, photo: Image.Image | None) -> Image.Image:
+def _photos(photo) -> list:
+    if photo is None:
+        return []
+    return [p for p in (photo if isinstance(photo, (list, tuple)) else [photo]) if p is not None]
+
+
+def gen_openai(cfg: dict, prompt: str, photo) -> Image.Image:
     key = cfg.get("key", "").strip()
     if not key:
         raise ProviderError("need_key")
     model = cfg.get("model") or DEFAULT_MODELS["openai"]
     headers = {"Authorization": f"Bearer {key}"}
-    if photo is not None:
+    photos = _photos(photo)
+    if photos:
         body, ctype = _multipart({"model": model, "prompt": prompt, "size": "1024x1024"},
-                                 [("image[]", "ref.png", _png_bytes(photo), "image/png")])
+                                 [("image[]", f"ref{i}.png", _png_bytes(ph), "image/png") for i, ph in enumerate(photos)])
         headers["Content-Type"] = ctype
         return _images_response(_http("https://api.openai.com/v1/images/edits", body, headers))
     headers["Content-Type"] = "application/json"
@@ -174,15 +181,15 @@ def codex_path() -> str | None:
     return shutil.which("codex") or shutil.which("codex.cmd")
 
 
-def gen_codex(cfg: dict, prompt: str, photo: Image.Image | None) -> Image.Image:
+def gen_codex(cfg: dict, prompt: str, photo) -> Image.Image:
     exe = codex_path()
     if not exe:
         raise ProviderError("Codex CLI를 찾지 못했어요. 'npm i -g @openai/codex' 설치 후 'codex login'으로 로그인해 주세요.")
     work = Path(tempfile.mkdtemp(prefix="fs_codex_"))
     args = [exe, "exec", "--skip-git-repo-check", "--full-auto", "-C", str(work)]
-    if photo is not None:
-        ref = work / "reference.png"
-        ref.write_bytes(_png_bytes(photo))
+    for i, ph in enumerate(_photos(photo)):
+        ref = work / f"reference{i}.png"
+        ref.write_bytes(_png_bytes(ph))
         args += ["-i", str(ref)]
     task = ("Use $imagegen to create one square image for this request, then save the final PNG as "
             f"result.png in the current directory. Request: {prompt}")
@@ -193,7 +200,7 @@ def gen_codex(cfg: dict, prompt: str, photo: Image.Image | None) -> Image.Image:
                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except subprocess.TimeoutExpired:
         raise ProviderError("Codex 응답이 너무 오래 걸려요(7분 초과).") from None
-    pngs = sorted((p for p in work.rglob("*.png") if p.name != "reference.png" and p.stat().st_mtime >= start - 1),
+    pngs = sorted((p for p in work.rglob("*.png") if not p.name.startswith("reference") and p.stat().st_mtime >= start - 1),
                   key=lambda p: p.stat().st_mtime, reverse=True)
     if not pngs:
         tail = (proc.stderr or proc.stdout or "").strip()[-500:]
@@ -205,7 +212,7 @@ GENERATORS = {"openai": gen_openai, "xai": gen_xai, "cloudflare": gen_cloudflare
               "gemini": gen_gemini, "codex": gen_codex}
 
 
-def generate(pid: str, cfg: dict, prompt: str, photo: Image.Image | None) -> Image.Image:
+def generate(pid: str, cfg: dict, prompt: str, photo) -> Image.Image:
     if pid not in GENERATORS:
         raise ProviderError("이 방식은 자동 생성이 아니에요.")
     if photo is not None and not BY_ID[pid]["ref"]:
@@ -225,11 +232,11 @@ def status(pid: str, cfg: dict) -> str:
     return "키 있음" if cfg.get("key") else "키 없음"
 
 
-def save_reference(photo: Image.Image) -> Path:
-    """웹 연동용: 참고 사진을 임시 파일로 저장 (사이트에 끌어다 놓기 쉽게)."""
+def save_reference(photo: Image.Image, name: str = "참고사진") -> Path:
+    """웹 연동용: 참고 사진을 임시 파일로 저장 (사이트에 붙여넣기 쉽게)."""
     d = Path(tempfile.gettempdir()) / "FM27FaceStudio"
     d.mkdir(exist_ok=True)
-    p = d / "참고사진.png"
+    p = d / f"{name}.png"
     p.write_bytes(_png_bytes(photo, 1536))
     return p
 

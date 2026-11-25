@@ -43,13 +43,14 @@ def _post(url: str, key: str, body: dict, timeout: int) -> dict:
         raise GeminiError(f"연결 실패: {e.reason}") from None
 
 
-def generate(key: str, model: str, prompt: str, photo: Image.Image | None = None,
-             timeout: int = 180) -> Image.Image:
+def generate(key: str, model: str, prompt: str, photo=None, timeout: int = 180) -> Image.Image:
+    """photo: 사진 한 장 또는 여러 장(list)."""
     if not key.strip():
         raise GeminiError("설정에서 제미나이 API 키를 먼저 입력하세요.")
     parts: list[dict] = [{"text": prompt}]
-    if photo is not None:
-        parts.append(_encode(photo))
+    for ph in (photo if isinstance(photo, (list, tuple)) else [photo]):
+        if ph is not None:
+            parts.append(_encode(ph))
     body = {
         "contents": [{"role": "user", "parts": parts}],
         "generationConfig": {"responseModalities": ["TEXT", "IMAGE"], "imageConfig": {"aspectRatio": "1:1"}},

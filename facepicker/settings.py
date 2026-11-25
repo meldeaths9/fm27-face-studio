@@ -24,6 +24,12 @@ DEFAULT_PROMPT = (
     "head centered with a little space above the hair, shoulders visible. "
     "No text, no logos, no watermark."
 )
+UNIFORM_PROMPT = (
+    "Edit the first attached photo. Keep the person exactly the same: face, identity, expression, hairstyle, "
+    "skin tone, pose, head size and position, framing, background and lighting. Only replace the visible clothing "
+    "with {kit_text}. Make the new shirt look like a real photo with natural fabric folds that fit the body and pose. "
+    "Do not add any other text, watermark or logo."
+)
 REF_SENTENCE = (
     "Use the attached photo as the reference: keep this person's face, identity, "
     "skin tone and hairstyle. "
@@ -67,6 +73,7 @@ class Settings:
         self.last_save: str = ""
         self.game_dir: str = ""
         self.auto_refresh: bool = True
+        self.follow_save: bool = True     # 게임의 '가장 최근 세이브'를 자동으로 따라가기
         self.output_size: int = 512
         self.prompt_template: str = DEFAULT_PROMPT
         self.send_photo: bool = True

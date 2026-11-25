@@ -97,7 +97,7 @@ def bridge_dir() -> Path:
 def heartbeat() -> dict | None:
     """플러그인이 2초마다 쓰는 상태. 6초 안에 갱신됐으면 연결된 것."""
     try:
-        data = json.loads((bridge_dir() / "status.json").read_text(encoding="utf-8"))
+        data = json.loads((bridge_dir() / "status.json").read_text(encoding="utf-8-sig"))
     except Exception:
         return None
     data["alive"] = (time.time() - float(data.get("time", 0))) < 6.5
@@ -199,7 +199,7 @@ def install_any(game_dir: str) -> list[str]:
     if code is None:
         raise RuntimeError("게임 폴더에 쓸 권한이 없어요. 관리자 권한 창에서 '예'를 눌러야 설치돼요.")
     try:
-        data = json.loads(result.read_text(encoding="utf-8"))
+        data = json.loads(result.read_text(encoding="utf-8-sig"))
     except Exception:
         raise RuntimeError(f"관리자 권한 설치 결과를 확인하지 못했어요 (코드 {code}).") from None
     if not data.get("ok"):
@@ -238,7 +238,7 @@ def command(cmd: str, timeout: float = 20.0, **extra) -> dict:
     while time.time() < end:
         time.sleep(0.25)
         try:
-            r = json.loads((d / "result.json").read_text(encoding="utf-8"))
+            r = json.loads((d / "result.json").read_text(encoding="utf-8-sig"))
         except Exception:
             continue
         if r.get("id") == cid:
