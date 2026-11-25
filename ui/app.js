@@ -537,6 +537,8 @@ function applyState(st) {
 (async () => {
   API = await ready();
   const st = await call("get_state");
+  const boot = $("#boot");
+  boot.classList.add("done"); setTimeout(() => boot.remove(), 400);
   if (!st) return;
   applyState(st);
   updateCard();

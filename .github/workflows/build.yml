@@ -31,7 +31,7 @@ jobs:
           --add-data "ui;ui"
           --add-data "assets/icon.png;assets"
           --collect-data cv2
-          --exclude-module tkinter
+          --splash assets/splash.png
           main.py
 
       - name: Self test

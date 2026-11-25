@@ -23,6 +23,15 @@ def selftest() -> int:
         return 1
 
 
+def close_splash(*_a) -> None:
+    """exe 스플래시 화면 닫기 (exe가 아닐 때는 아무 일 없음)."""
+    try:
+        import pyi_splash  # type: ignore
+        pyi_splash.close()
+    except Exception:
+        pass
+
+
 def main() -> None:
     import webview
     from facepicker.api import Api, VERSION
@@ -36,10 +45,13 @@ def main() -> None:
         background_color="#0a0f1d",
     )
     api._set_window(window)
+    window.events.shown += close_splash
+    window.events.loaded += close_splash
     webview.start(private_mode=False, icon=str(BASE / "assets" / "icon.png"))
 
 
 if __name__ == "__main__":
     if "--selftest" in sys.argv:
+        close_splash()
         sys.exit(selftest())
     main()
