@@ -18,13 +18,13 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-from . import ai_models, clipboard, faceindex, gamesetup, imaging, prompts, providers, savedata
+from . import ai_models, appearance, clipboard, faceindex, gamesetup, imaging, prompts, providers, savedata
 from .pack import FaceEntry, FacePack, find_conflicts, fm_running, looks_like_newgen
 from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "0.8.1"
+VERSION = "0.8.2"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -374,7 +374,7 @@ class Api:
     def current_face(self, uid: str) -> dict:
         clean, _ = _clean_uid(uid)
         f = self._index.get(clean)
-        look = gamesetup.appearance(clean)
+        look = appearance.summary(gamesetup.appearance(clean))
         if not f:
             return {"face": "", "pack": "", "ours": False, "look": look}
         return {"face": self._face_thumb(f["path"], 300), "pack": f["pack"], "ours": f.get("ours", False), "look": look}
@@ -677,6 +677,9 @@ class Api:
     def build_prompt(self, person: dict, send_photo: bool, mode: str = "face", expression: str = "") -> str:
         if mode == "uniform":
             return prompts.uniform_prompt(person, lang=self._lang(), has_kit=self._kit is not None, club_hint=self._hint(person))
+        clean, _ = _clean_uid(str(person.get("uid", "")))
+        if clean and not person.get("look"):
+            person = {**person, "look": gamesetup.appearance(clean)}
         text, _ = prompts.face_prompt(
             person, lang=self._lang(), template=self._cfg.prompt_template,
             has_ref=bool(send_photo) and self._work is not None, has_kit=self._kit is not None,

@@ -61,6 +61,18 @@ FEATURES = {
 }
 
 
+def _features(person: dict, age: str, lang: str, has_ref: bool, ref_mode: str) -> str:
+    """게임에 정해진 외모가 있으면 그것(인종·피부색·머리·키·체형)을 먼저 쓰고, 얼굴 세부만 랜덤으로 섞는다."""
+    from . import appearance
+    look = appearance.describe(str(person.get("look", "")), lang)
+    if has_ref and ref_mode == "photo":
+        return ""
+    if look:
+        head = (f"게임에 정해진 외모: {look}. " if lang == "ko" else f"Appearance set in the game: {look}. ")
+        return head + random_features(age, lang, with_hair=False)
+    return random_features(age, lang, with_hair=not has_ref)
+
+
 def random_features(age: str, lang: str, with_hair: bool = True) -> str:
     """with_hair=False: 게임 얼굴을 참고할 때 (머리는 그림을 따르고 얼굴 생김새만 섞는다)"""
     i = 1 if lang == "en" else 0
@@ -171,8 +183,7 @@ def face_prompt(person: dict, *, lang: str, template: str, has_ref: bool, has_ki
     outfit, badge_ok = outfit_text(kind, plain_club, kit_index, manager_outfit, lang)
     vars_ = {
         "ref": ((REF_GAME if ref_mode == "game" else REF)[lang]) if has_ref else "",
-        "features": ("" if ref_mode == "photo" else random_features(age, lang, with_hair=False)) if has_ref
-                    else random_features(age, lang),
+        "features": _features(person, age, lang, has_ref, ref_mode),
         "realism": REALISM[lang],
         "subject": subject, "outfit": outfit, "expression": EXPRESSIONS[expr][lang],
         "badge_note": (" (유니폼의 엠블럼과 스폰서는 괜찮아요)" if lang == "ko" else " (the kit's badge and sponsor are fine)") if badge_ok else "",

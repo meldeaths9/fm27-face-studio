@@ -303,7 +303,7 @@ function showCurrent(r) {
   }
   const lk = $("#curLook");
   lk.hidden = !(r && r.look);
-  if (r && r.look) lk.textContent = "게임 외모 기록 있음 · " + r.look;
+  if (r && r.look) lk.textContent = "게임 외모 · " + r.look;
   if (S.selUid == null) updatePN();
 }
 $("#btnUseCur").onclick = async () => {
