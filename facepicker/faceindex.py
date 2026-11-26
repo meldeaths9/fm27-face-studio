@@ -67,6 +67,7 @@ class FaceIndex:
     def __init__(self) -> None:
         self.map: dict[str, dict] = {}      # uid -> {"path", "pack", "ours"}
         self.root = ""
+        self.ours_name = ""          # 내 폴더 이름 (설정에서 바꿀 수 있음)
         self.building = False
         self.built_at = 0.0
         self.configs = 0
@@ -140,7 +141,8 @@ class FaceIndex:
                         return
                 except Exception:
                     pass
-            ours_dirs = {(root / n).resolve() for n in (PACK_FOLDER_NAME, *OLD_PACK_FOLDER_NAMES)}
+            ours_name = self.ours_name or PACK_FOLDER_NAME
+            ours_dirs = {(root / n).resolve() for n in (ours_name, *OLD_PACK_FOLDER_NAMES)}
             result: dict[str, dict] = {}
             ours_entries: dict[str, dict] = {}
             for cfg, uid, entry in iter_records(root, cfgs):
@@ -151,7 +153,7 @@ class FaceIndex:
                 else:
                     result[uid] = entry          # 뒤에 읽은 팩이 이긴다 (게임과 같게)
             # 우리 폴더는 이름이 맨 뒤라 보통 이긴다. 그래도 우리보다 뒤 폴더가 같은 사람을 지정하면 그쪽이 보인다
-            ours_key = pack_sort_key(PACK_FOLDER_NAME)
+            ours_key = pack_sort_key(ours_name)
             for uid, e in ours_entries.items():
                 cur = result.get(uid)
                 top = Path(cur["path"]).relative_to(root).parts[0] if cur else ""

@@ -1,5 +1,5 @@
 ; FM Face Studio 설치 파일 (Inno Setup 6)
-; ISCC /DAppVersion=0.13.0 installer\FMFaceStudio.iss
+; ISCC /DAppVersion=1.0.0 installer\FMFaceStudio.iss
 #ifndef AppVersion
   #define AppVersion "0.0.0"
 #endif

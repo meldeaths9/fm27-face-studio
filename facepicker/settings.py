@@ -15,6 +15,10 @@ PACK_FOLDER_NAME = "zzz_FMFaceStudio"    # graphics 폴더 안에 만들 이 프
 OLD_PACK_FOLDER_NAMES = ("FacePicker",)
 
 
+def valid_pack_name(name: str) -> bool:
+    import re
+    return bool(name) and len(name) <= 60 and not re.search(r'[\\/:*?"<>|]', name) and name.strip(". ") == name
+
 def pack_sort_key(name: str) -> str:
     return str(name).casefold()
 FM_FOLDER_NAME = "Football Manager 27"
@@ -82,6 +86,7 @@ class Settings:
         self.last_save: str = ""
         self.game_dir: str = ""
         self.auto_refresh: bool = True
+        self.pack_folder: str = PACK_FOLDER_NAME   # graphics 안 내 폴더 이름 (이름순으로 뒤일수록 이긴다)
         self.bulk_crop: str = "face"      # 대량·끌어다 놓기 자르기: face(얼굴 맞춤) / keep(그대로, 위쪽 맞춤)
         self.bulk_deco: str = "follow"    # 대량·끌어다 놓기 꾸미기: follow(편집 화면 설정) / none
         self.check_updates: bool = True   # 켤 때 GitHub에서 새 버전 확인
@@ -149,9 +154,14 @@ class Settings:
             os.replace(tmp, self.path)
 
     @property
+    def pack_name(self) -> str:
+        n = str(getattr(self, "pack_folder", "") or "").strip()
+        return n if valid_pack_name(n) else PACK_FOLDER_NAME
+
+    @property
     def pack_dir(self) -> Path:
         g = Path(self.graphics_dir)
-        new = g / PACK_FOLDER_NAME
+        new = g / self.pack_name
         if not new.exists():
             for o in OLD_PACK_FOLDER_NAMES:      # 옮기기에 실패했으면(게임이 잡고 있음 등) 예전 폴더를 계속 쓴다
                 if (g / o / "config.xml").exists():
@@ -161,7 +171,7 @@ class Settings:
     def migrate_pack_dir(self) -> str:
         """예전 폴더(FacePicker)를 맨 뒤로 오는 이름으로 옮긴다. 돌려주는 값: 'moved' / 'failed' / ''."""
         g = Path(self.graphics_dir)
-        new = g / PACK_FOLDER_NAME
+        new = g / self.pack_name
         for o in OLD_PACK_FOLDER_NAMES:
             old = g / o
             if old.is_dir() and (old / "config.xml").exists() and not new.exists():

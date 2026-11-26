@@ -24,7 +24,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "0.15.0"
+VERSION = "1.0.0"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -148,6 +148,7 @@ class Api:
         except Exception as e:  # noqa: BLE001
             self._pack_moved = ""
             log.warning("우리 폴더 옮기기 실패: %s", e)
+        self._index.ours_name = self._cfg.pack_name
         self._index.load_cached(self._cfg.graphics_dir)
 
         def _later_index():          # 화면이 먼저 뜨고 업데이트 확인이 끝난 뒤에 색인 (켤 때 렉 줄이기)
@@ -226,6 +227,41 @@ class Api:
             self._window.destroy()
         return True
 
+    @_safe
+    def pack_folder_info(self) -> dict:
+        """graphics 안 폴더들을 FM이 읽는 순서대로 (내 폴더가 몇 번째인지)."""
+        from .settings import pack_sort_key
+        g = Path(self._cfg.graphics_dir)
+        try:
+            names = sorted((d.name for d in g.iterdir() if d.is_dir()), key=pack_sort_key)
+        except OSError:
+            names = []
+        return {"name": self._cfg.pack_name, "folders": names}
+
+    @_safe
+    def rename_pack_folder(self, new: str) -> dict:
+        """내 폴더 이름 바꾸기 (안의 사진·config.xml도 함께 옮겨짐)."""
+        from .settings import valid_pack_name, PACK_FOLDER_NAME
+        new = str(new or "").strip() or PACK_FOLDER_NAME
+        if not valid_pack_name(new):
+            return {"error": '폴더 이름에 \\ / : * ? " < > | 는 쓸 수 없고, 60자 이하여야 해요.'}
+        old_dir = self._cfg.pack_dir
+        new_dir = Path(self._cfg.graphics_dir) / new
+        if new_dir.resolve() == old_dir.resolve():
+            return {"ok": True, "name": new}
+        if new_dir.exists():
+            return {"error": f"graphics 안에 '{new}' 폴더가 이미 있어요. 다른 이름을 써 주세요."}
+        if old_dir.exists():
+            try:
+                old_dir.rename(new_dir)
+            except OSError as e:
+                return {"error": f"폴더 이름을 바꾸지 못했어요. FM27을 끄고 다시 해 주세요.\n({e})"}
+        self._cfg.pack_folder = new
+        self._cfg.save()
+        self._index.ours_name = new
+        threading.Thread(target=lambda: self._index.build(self._cfg.graphics_dir, force=True), daemon=True).start()
+        return {"ok": True, "name": new}
+
     # ---------------------------------------------------------------- 자동 업데이트 (GitHub 릴리스)
     @_safe
     def check_update(self, manual: bool = False) -> dict:
@@ -282,7 +318,7 @@ class Api:
         return {
             "version": VERSION, "pack_moved": getattr(self, "_pack_moved", ""),
             "settings": {
-                "graphics_dir": c.graphics_dir, "output_size": c.output_size, "check_updates": c.check_updates, "bulk_crop": c.bulk_crop, "bulk_deco": c.bulk_deco,
+                "graphics_dir": c.graphics_dir, "output_size": c.output_size, "check_updates": c.check_updates, "pack_folder": c.pack_name, "bulk_crop": c.bulk_crop, "bulk_deco": c.bulk_deco,
                 "prompt_template": c.prompt_template, "send_photo": c.send_photo,
                 "ai_provider": c.ai_provider, "deco": c.deco, "prompt_lang": c.prompt_lang,
                 "expression": c.expression, "manager_outfit": c.manager_outfit, "ref_mode": c.ref_mode, "club_hints": c.club_hints,
@@ -1306,7 +1342,7 @@ class Api:
     @_safe
     def conflict_report(self) -> dict:
         """내 사진과 같은 사람을 지정한 다른 팩을 모두 찾아, 팩별로 이김/짐을 묶는다."""
-        from .settings import pack_sort_key, PACK_FOLDER_NAME
+        from .settings import pack_sort_key
         root = Path(self._cfg.graphics_dir)
         pack = self._pack()
         mine = {e.uid: e for e in pack.entries()}
@@ -1335,7 +1371,7 @@ class Api:
         out.sort(key=lambda g: (g["win"], -len(g["items"])))
         hit = {i["uid"] for g in out for i in g["items"]}
         lost = {i["uid"] for g in out if not g["win"] for i in g["items"]}
-        return {"total": len(mine), "overlap": len(hit), "lost": len(lost), "groups": out, "ours": PACK_FOLDER_NAME}
+        return {"total": len(mine), "overlap": len(hit), "lost": len(lost), "groups": out, "ours": pack.dir.name}
 
     @_safe
     def thumbs(self, paths: list[str]) -> dict:

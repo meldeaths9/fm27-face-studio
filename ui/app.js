@@ -961,7 +961,7 @@ async function showConflicts(list) {
 let setAI = {}, setSel = null, setUse = null;
 function openSettings(focusId) {
   const s = S.settings;
-  $("#sG").value = s.graphics_dir || ""; $("#sSize").value = s.output_size || 512; $("#sTpl").value = s.prompt_template || ""; $("#sLang").value = s.prompt_lang || "ko"; $("#sUpd").checked = s.check_updates !== false; $("#updVer").textContent = "";
+  $("#sG").value = s.graphics_dir || ""; $("#sSize").value = s.output_size || 512; $("#sTpl").value = s.prompt_template || ""; $("#sLang").value = s.prompt_lang || "ko"; $("#sUpd").checked = s.check_updates !== false; $("#updVer").textContent = ""; $("#sPack").value = s.pack_folder || "zzz_FMFaceStudio"; packOrder();
   setAI = {};
   S.ai.forEach((a) => setAI[a.id] = { key: a.key, account: a.account, model: a.model });
   setUse = s.ai_provider;
@@ -1187,6 +1187,21 @@ $("#updGo").onclick = async () => {
   clearInterval(t);
   if (r && r.ok) { $("#updFill").style.width = "100%"; $("#updMsg").textContent = "다 받았어요. 설치를 시작해요"; $("#updSub").textContent = "프로그램이 잠깐 꺼졌다가 설치가 끝나면 다시 켜져요 (10~20초)"; }
   else $("#updModal").classList.remove("on");
+};
+async function packOrder() {
+  const r = await call("pack_folder_info");
+  if (!r || !r.folders) return;
+  const i = r.folders.indexOf(r.name), n = r.folders.length;
+  const after = i >= 0 ? r.folders.slice(i + 1) : [];
+  $("#packOrder").textContent = i < 0 ? "FM은 graphics 안 폴더를 이름순으로 읽고, 뒤에 오는 폴더가 이겨요."
+    : after.length ? `지금 ${n}개 폴더 중 ${i + 1}번째예요. 뒤에 있는 ${after.slice(0, 3).join(", ")}${after.length > 3 ? " 등" : ""}은(는) 내 사진을 이길 수 있어요.`
+    : `지금 ${n}개 폴더 중 맨 뒤라서 다른 페이스팩보다 내 사진이 보여요.`;
+}
+$("#btnPack").onclick = async () => {
+  const v = $("#sPack").value.trim();
+  if (!await confirmBox("폴더 이름 바꾸기", `내 사진 폴더 이름을 '${v || "zzz_FMFaceStudio"}'(으)로 바꿀까요?\n안의 사진도 함께 옮겨져요. 게임은 꺼 두는 게 좋아요.\n\n이름순으로 뒤에 올수록 다른 페이스팩을 이겨요.`, "바꾸기")) return;
+  const r = await call("rename_pack_folder", v);
+  if (r && r.ok) { S.settings.pack_folder = r.name; $("#sPack").value = r.name; toast(`폴더 이름을 ${r.name}(으)로 바꿨어요. FM27을 껐다 켜면 반영돼요.`, "ok", 4500); packOrder(); }
 };
 $("#btnUpdNow").onclick = () => checkUpdate(true);
 $("#sUpd").onchange = (e) => call("set_option", "check_updates", e.target.checked);
