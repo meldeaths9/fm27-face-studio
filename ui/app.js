@@ -1133,7 +1133,7 @@ $("#wClose").onclick = () => call("win_close");
     if (busyR || !pending) return;
     busyR = true;
     const p = pending; pending = null;
-    await call("win_resize", p.w, p.h);
+    await call("win_resize", p.w, p.h, p.k);
     busyR = false;
     if (pending) flush();
   }
@@ -1145,11 +1145,10 @@ $("#wClose").onclick = () => call("win_close");
   }));
   window.addEventListener("mousemove", (e) => {
     if (!drag) return;
-    const dx = e.screenX - drag.x, dy = e.screenY - drag.y;
-    pending = {
-      w: Math.max(1240, drag.w + (drag.kind.includes("r") ? dx : 0)),
-      h: Math.max(760, drag.h + (drag.kind.includes("b") ? dy : 0)),
-    };
+    const dx = e.screenX - drag.x, dy = e.screenY - drag.y, k = drag.kind;
+    const dw = k.includes("r") ? dx : k.includes("l") ? -dx : 0;
+    const dh = k.includes("b") ? dy : k.includes("t") ? -dy : 0;
+    pending = { w: Math.max(1240, drag.w + dw), h: Math.max(760, drag.h + dh), k };
     flush();
   });
   window.addEventListener("mouseup", () => { drag = null; });

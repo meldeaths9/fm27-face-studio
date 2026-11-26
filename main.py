@@ -97,6 +97,7 @@ def main() -> None:
 
     api = Api()
     log.info("Api 준비됨")
+    webview.settings["DRAG_REGION_DIRECT_TARGET_ONLY"] = True   # 헤더의 빈 곳만 잡히게 (버튼은 그대로 눌림)
     window = webview.create_window(
         f"FM27 Face Studio v{VERSION}",
         html=build_html(),

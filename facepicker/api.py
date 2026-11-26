@@ -24,7 +24,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "0.8.0"
+VERSION = "0.8.1"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -136,9 +136,12 @@ class Api:
             self._maxed = True
         return self._maxed
 
-    def win_resize(self, width: int, height: int) -> bool:
+    def win_resize(self, width: int, height: int, edge: str = "rb") -> bool:
+        """edge: 잡은 가장자리(l/r/t/b 조합). 반대쪽 모서리를 고정하고 크기를 바꾼다."""
         if self._window and not getattr(self, "_maxed", False):
-            self._window.resize(max(1240, int(width)), max(760, int(height)))
+            from webview.window import FixPoint
+            fix = (FixPoint.EAST if "l" in edge else FixPoint.WEST) | (FixPoint.SOUTH if "t" in edge else FixPoint.NORTH)
+            self._window.resize(max(1240, int(width)), max(760, int(height)), fix)
         return True
 
     def win_close(self) -> bool:
