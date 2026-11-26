@@ -528,3 +528,6 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 7px; border-radius: 6
 .cfi .nm small { color: var(--muted); }
 .logo.logoimg.plain { border-radius: 0; overflow: visible; }
 .logo.logoimg.plain img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 2px 6px rgba(124,92,255,.35)); }
+
+.updprog { height: 8px; border-radius: 6px; background: var(--bg2); overflow: hidden; margin: 14px 0 8px; }
+.updprog i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #7c5cff, #29b6f6); transition: width .3s; }

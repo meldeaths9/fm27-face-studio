@@ -97,11 +97,32 @@ class FaceIndex:
                 pass
         return sorted(st)
 
+    def load_cached(self, graphics_dir: str) -> None:
+        """지난번 색인을 바로 쓴다 (확인은 나중에 build가 한다) → 켤 때 카드 사진이 바로 보이게."""
+        try:
+            cached = json.loads(self._cache_path().read_text(encoding="utf-8"))
+            if cached.get("version") == VERSION and cached.get("root") == str(Path(graphics_dir)):
+                self.map, self.root = cached["map"], str(Path(graphics_dir))
+        except Exception:  # noqa: BLE001
+            pass
+
     def build(self, graphics_dir: str, force: bool = False) -> None:
         with self._lock:
-            if self.building:
+            if self.building:          # 도는 중이면 끝나고 한 번 더 (지우기·적용 직후 옛 사진이 남지 않게)
+                self._again = (graphics_dir, force or getattr(self, "_again", (None, False))[1])
                 return
             self.building = True
+            self._again = None
+        try:
+            self._build(graphics_dir, force)
+        finally:
+            with self._lock:
+                self.building = False
+                again, self._again = self._again, None
+            if again:
+                self.build(*again)
+
+    def _build(self, graphics_dir: str, force: bool = False) -> None:
         try:
             root = Path(graphics_dir)
             if not root.is_dir():
@@ -145,7 +166,7 @@ class FaceIndex:
                 pass
             log.info("얼굴 색인: config %d개, 사진 %d개, %.1f초", len(cfgs), len(result), time.time() - t0)
         finally:
-            self.building = False
+            pass
 
     def get(self, uid: str) -> dict | None:
         return self.map.get(str(uid))

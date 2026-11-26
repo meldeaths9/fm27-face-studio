@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass, asdict
 from pathlib import Path
@@ -25,6 +26,7 @@ CONFIG_HEAD = (
     '  <list id="maps">\n'
 )
 CONFIG_TAIL = "  </list>\n</record>\n"
+_WRITE_LOCK = threading.RLock()     # config.xml·applied.json은 한 번에 한 쪽만 고친다 (적용·지우기 겹침 방지)
 
 
 @dataclass
@@ -73,7 +75,9 @@ class FacePack:
             return {}
 
     def _save_meta(self, meta: dict) -> None:
-        self.meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+        tmp = self.meta_path.with_name(f"applied.{threading.get_ident()}.tmp")
+        tmp.write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+        os.replace(tmp, self.meta_path)
 
     def entries(self) -> list[FaceEntry]:
         try:
@@ -103,7 +107,9 @@ class FacePack:
             for p in olds[:-30]:
                 p.unlink(missing_ok=True)
         lines = [CONFIG_HEAD]
-        for e in sorted(entries, key=lambda x: int(x.uid)):
+        for e in sorted(entries, key=lambda x: (0, int(x.uid)) if x.uid.isdigit() else (1, 0)):
+            if not e.uid.isdigit():
+                continue
             lines.append(f'    <record from="{e.uid}" to="{e.target}"/>\n')
         lines.append(CONFIG_TAIL)
         tmp = cfg.with_suffix(".xml.tmp")
@@ -112,6 +118,10 @@ class FacePack:
 
     def apply(self, items: list[tuple[FaceEntry, Path]]) -> None:
         """(정보, 완성된 png) 목록을 팩에 넣고 config.xml 갱신."""
+        with _WRITE_LOCK:
+            self._apply(items)
+
+    def _apply(self, items: list[tuple[FaceEntry, Path]]) -> None:
         current = {e.uid: e for e in self.entries()}
         meta = self._meta()
         self.dir.mkdir(parents=True, exist_ok=True)
@@ -126,6 +136,10 @@ class FacePack:
         self._save_meta(meta)
 
     def remove(self, uids: list[str]) -> None:
+        with _WRITE_LOCK:
+            self._remove(uids)
+
+    def _remove(self, uids: list[str]) -> None:
         current = {e.uid: e for e in self.entries()}
         meta = self._meta()
         for uid in uids:

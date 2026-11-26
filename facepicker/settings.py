@@ -4,7 +4,10 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading as _th
 from pathlib import Path
+
+_SAVE_LOCK = _th.RLock()
 
 APP_NAME = "FM27FacePicker"
 PACK_FOLDER_NAME = "zzz_FMFaceStudio"    # graphics 폴더 안에 만들 이 프로그램 전용 폴더
@@ -103,9 +106,14 @@ class Settings:
         return app_data_dir() / self.FILE
 
     def load(self) -> None:
-        try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-        except Exception:
+        data = None
+        for f in (self.path, self.path.with_suffix(".bak")):     # 깨졌으면 지난 정상본으로
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                break
+            except Exception:
+                continue
+        if not isinstance(data, dict):
             return
         old_version = data.get("settings_version", 1)
         for k, v in data.items():
@@ -127,10 +135,18 @@ class Settings:
             self.save()
 
     def save(self) -> None:
-        keep = {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(keep, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(self.path)
+        import threading
+        with _SAVE_LOCK:
+            keep = {k: v for k, v in self.__dict__.items() if not k.startswith("_")}
+            text = json.dumps(keep, ensure_ascii=False, indent=2)
+            tmp = self.path.with_name(f"settings.{threading.get_ident()}.tmp")
+            tmp.write_text(text, encoding="utf-8")
+            try:      # 지난 정상본을 .bak으로 (깨지면 거기서 살린다)
+                if self.path.exists():
+                    os.replace(self.path, self.path.with_suffix(".bak"))
+            except OSError:
+                pass
+            os.replace(tmp, self.path)
 
     @property
     def pack_dir(self) -> Path:

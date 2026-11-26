@@ -20,7 +20,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string Id = "kr.fm27facestudio.plugin";
     public const string Name = "FM Face Studio";
-    public const string Version = "0.5.0";
+    public const string Version = "0.5.1";
 
     internal static ManualLogSource L = null!;
     internal static Harmony H = null!;
@@ -495,7 +495,18 @@ internal static class ManagerFace
     private static IntPtr _orig = IntPtr.Zero;
 
     private static string FilePath => Path.Combine(Bridge.Dir, "manager.raw");
-    public static bool HasPhoto => File.Exists(FilePath);
+    // 게임이 그림을 걸 때마다 디스크를 묻지 않게 1초 캐시
+    private static bool _has;
+    private static float _hasAt = -10f;
+    public static bool HasPhoto
+    {
+        get
+        {
+            var now = Time.realtimeSinceStartup;
+            if (now - _hasAt > 1f) { _hasAt = now; try { _has = File.Exists(FilePath); } catch { _has = false; } }
+            return _has;
+        }
+    }
 
     public static void Install()
     {
@@ -678,18 +689,26 @@ internal static class Appearance
         catch { }
     }
 
+    private static volatile bool _saving;
     public static void Tick(float now)
     {
-        if (!_dirty || now < _nextFlush) return;
-        _nextFlush = now + 3f;
+        if (!_dirty || _saving || now < _nextFlush) return;
+        _nextFlush = now + 10f;
         _dirty = false;
-        try
+        // 게임 화면이 멈추지 않게: 복사본만 만들고 저장은 백그라운드에서
+        var snap = new Dictionary<string, string>(Map);
+        var path = FilePath;
+        _saving = true;
+        System.Threading.ThreadPool.QueueUserWorkItem(_ =>
         {
-            var tmp = FilePath + ".tmp";
-            File.WriteAllText(tmp, JsonSerializer.Serialize(Map), new UTF8Encoding(false));
-            File.Copy(tmp, FilePath, true);
-            File.Delete(tmp);
-        }
-        catch (Exception e) { Plugin.L.LogWarning("외모 기록 저장 실패: " + e.Message); }
+            try
+            {
+                var tmp = path + ".tmp";
+                File.WriteAllText(tmp, JsonSerializer.Serialize(snap), new UTF8Encoding(false));
+                File.Move(tmp, path, true);
+            }
+            catch (Exception e) { try { Plugin.L.LogWarning("외모 기록 저장 실패: " + e.Message); } catch { } }
+            finally { _saving = false; }
+        });
     }
 }

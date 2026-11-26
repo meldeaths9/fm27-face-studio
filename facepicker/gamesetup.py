@@ -14,6 +14,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -81,11 +82,31 @@ def find_game(saved: str = "") -> str:
 
 
 # ------------------------------------------------------------------ 상태
+_MD5: dict = {}
+
+
 def _md5(path: Path) -> str:
     try:
-        return hashlib.md5(path.read_bytes()).hexdigest()
+        st = path.stat()
+        key = (str(path), st.st_size, st.st_mtime_ns)
+        if key not in _MD5:
+            _MD5[key] = hashlib.md5(path.read_bytes()).hexdigest()
+        return _MD5[key]
     except OSError:
         return ""
+
+
+_RUN = {"t": 0.0, "v": False}
+
+
+def _fm_running_cached(alive: bool) -> bool:
+    """tasklist를 3초마다 띄우지 않게: 플러그인이 살아 있으면 켜져 있는 것, 아니면 10초 캐시."""
+    if alive:
+        return True
+    now = time.time()
+    if now - _RUN["t"] > 10:
+        _RUN["v"], _RUN["t"] = fm_running(), now
+    return _RUN["v"]
 
 
 def bridge_dir() -> Path:
@@ -116,7 +137,7 @@ def status(game_dir: str) -> dict:
     return {
         "game_dir": str(g) if ok_game else "",
         "game_found": ok_game,
-        "running": fm_running(),
+        "running": _fm_running_cached(bool(hb and hb.get("alive"))),
         "bepinex": bool(has_loader),
         "bepinex_ready": bool(initialized),
         "plugin_installed": installed,
@@ -224,8 +245,16 @@ def launch_game() -> None:
 
 
 # ------------------------------------------------------------------ 플러그인 명령
+_CMD_LOCK = threading.Lock()
+
+
 def command(cmd: str, timeout: float = 20.0, **extra) -> dict:
-    """플러그인에 명령을 보내고 답을 기다린다."""
+    """플러그인에 명령을 보내고 답을 기다린다. 명령 파일이 하나라 한 번에 하나씩."""
+    with _CMD_LOCK:
+        return _command(cmd, timeout, **extra)
+
+
+def _command(cmd: str, timeout: float = 20.0, **extra) -> dict:
     hb = heartbeat()
     if not hb or not hb.get("alive"):
         return {"ok": False, "message": "게임 속 플러그인과 연결되어 있지 않아요. 게임을 켜고 세이브를 불러와 주세요."}

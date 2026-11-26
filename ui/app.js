@@ -894,7 +894,9 @@ async function deleteLater(uid) {
   };
   S.aPend.set(uid, row);
   $("#appliedCnt").textContent = S.applied.length - S.aPend.size;
-  renderApplied();
+  const card = document.querySelector(`.fcard[data-uid="${CSS.escape(uid)}"]`);    // 전체 다시 그리지 않고 그 카드만
+  if (card) { card.style.transition = ".2s"; card.style.opacity = "0"; card.style.transform = "scale(.94)"; setTimeout(() => card.remove(), 200); }
+  $("#aStat").textContent = `총 ${S.applied.length - S.aPend.size}명`;
 }
 async function editApplied(uid) {
   const r = await call("applied_edit", uid);
@@ -908,9 +910,11 @@ async function editApplied(uid) {
   S.promptDirty = false; autoPrompt();
 }
 $("#btnConflict").onclick = async () => {
-  busy(true, "다른 페이스팩과 겹치는지 검사 중…", "메가팩이 크면 몇 초 걸려요");
+  const b0 = $("#btnConflict"), t0 = b0.innerHTML;
+  b0.disabled = true; b0.textContent = "검사 중…";
+  toast("다른 페이스팩과 겹치는지 검사 중… (메가팩이 크면 몇 초 걸려요)", "info", 2500);
   const r = await call("conflict_report");
-  busy(false);
+  b0.disabled = false; b0.innerHTML = t0;
   if (!r || !r.groups) return;
   const body = $("#cfBody");
   if (!r.total) body.innerHTML = `<div class="cfhead">아직 적용한 사진이 없어요.</div>`;
@@ -1152,7 +1156,7 @@ function applyState(st) {
   setInterval(pollStatus, 3000);
   if (st.pack_moved === "moved") toast("내 사진 폴더 이름을 zzz_FMFaceStudio로 바꿨어요.\n이제 다른 페이스팩보다 내 사진이 먼저 보여요. (게임을 켜 놨다면 한 번 껐다 켜 주세요)", "ok", 8000);
   else if (st.pack_moved === "failed") toast("내 사진 폴더 이름을 바꾸지 못했어요. FM27을 끄고 프로그램을 다시 켜 주세요.", "err", 8000);
-  setTimeout(() => checkUpdate(false), 1500);
+  setTimeout(() => checkUpdate(false), 200);
 })();
 
 /* ------------------------------------------------------------------ 자동 업데이트 */
@@ -1173,10 +1177,16 @@ $("#updNotes").onclick = () => { if (UPD) confirmBox(`새 버전 ${UPD.version}`
 $("#updGo").onclick = async () => {
   if (S.queue.length && !await confirmBox("업데이트", `대기열에 ${S.queue.length}명이 있어요. 대기열은 그대로 남아 있으니 업데이트 뒤에 이어서 하면 돼요.\n\n업데이트할까요?`, "업데이트")) return;
   $("#updBar").hidden = true;
-  busy(true, "새 버전 받는 중…");
+  $("#updModal").classList.add("on");
+  $("#updMsg").textContent = `새 버전 ${UPD.version} 받는 중…`; $("#updFill").style.width = "0%"; $("#updSub").textContent = "";
+  const t = setInterval(async () => {
+    const p = await API.progress();
+    if (p && p.total) { const pc = Math.floor(p.done / p.total * 100); $("#updFill").style.width = pc + "%"; $("#updSub").textContent = `${(p.done / 1048576).toFixed(0)} / ${(p.total / 1048576).toFixed(0)} MB · ${pc}%`; }
+  }, 400);
   const r = await call("do_update");
-  if (r && r.ok) { $("#busyText").textContent = "설치하는 중… 끝나면 다시 켜져요"; $("#busySub").textContent = ""; }
-  else busy(false);
+  clearInterval(t);
+  if (r && r.ok) { $("#updFill").style.width = "100%"; $("#updMsg").textContent = "다 받았어요. 설치를 시작해요"; $("#updSub").textContent = "프로그램이 잠깐 꺼졌다가 설치가 끝나면 다시 켜져요 (10~20초)"; }
+  else $("#updModal").classList.remove("on");
 };
 $("#btnUpdNow").onclick = () => checkUpdate(true);
 $("#sUpd").onchange = (e) => call("set_option", "check_updates", e.target.checked);

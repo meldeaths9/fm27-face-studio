@@ -24,7 +24,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "0.14.0"
+VERSION = "0.15.0"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -53,6 +53,20 @@ def _thumb_url(path: Path, size: int = 96) -> str:
     except Exception:
         return ""
 
+
+
+def _desktop_dir() -> Path:
+    """진짜 바탕화면 (OneDrive로 옮긴 PC 포함)."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            from ctypes import wintypes
+            buf = ctypes.create_unicode_buffer(wintypes.MAX_PATH)
+            if ctypes.windll.shell32.SHGetFolderPathW(None, 0x0010, None, 0, buf) == 0 and buf.value:   # CSIDL_DESKTOPDIRECTORY
+                return Path(buf.value)
+        except Exception:  # noqa: BLE001
+            pass
+    return Path(os.path.expanduser("~")) / "Desktop"
 
 def _clean_uid(raw) -> tuple[str, bool]:
     """'r-2002042946' 같은 입력 → ('2002042946', True)."""
@@ -112,6 +126,7 @@ class Api:
         self._people = People()
         self._people.set(savedata.load_cache(self._cfg.last_save) if self._cfg.last_save else None)
         self._lock = threading.Lock()
+        self._qlock = threading.RLock()      # 대기열은 한 번에 한 요청만 고친다
         self._orig: Image.Image | None = None
         self._work: Image.Image | None = None
         self._nobg: Image.Image | None = None
@@ -133,7 +148,13 @@ class Api:
         except Exception as e:  # noqa: BLE001
             self._pack_moved = ""
             log.warning("우리 폴더 옮기기 실패: %s", e)
-        threading.Thread(target=lambda: self._index.build(self._cfg.graphics_dir), daemon=True).start()
+        self._index.load_cached(self._cfg.graphics_dir)
+
+        def _later_index():          # 화면이 먼저 뜨고 업데이트 확인이 끝난 뒤에 색인 (켤 때 렉 줄이기)
+            import time as _t
+            _t.sleep(2.5)
+            self._index.build(self._cfg.graphics_dir)
+        threading.Thread(target=_later_index, daemon=True).start()
         threading.Thread(target=self._maybe_reload, daemon=True).start()
 
     def _set_window(self, w) -> None:
@@ -234,7 +255,7 @@ class Api:
         finally:
             self._progress = {"task": "", "done": 0, "total": 0}
         updater.run_installer(path)
-        threading.Timer(1.2, lambda: self._window and self._window.destroy()).start()
+        threading.Timer(2.5, lambda: self._window and self._window.destroy()).start()
         return {"ok": True}
 
     # ---------------------------------------------------------------- 상태
@@ -557,7 +578,6 @@ class Api:
         return gamesetup.command("diag_stop", timeout=10)
 
     @_safe
-    @_safe
     def make_report(self) -> dict:
         """사용자가 개발자에게 보낼 '오류 보고 파일'. 바탕화면에 txt로 만든다. API 키는 넣지 않는다."""
         import datetime
@@ -591,7 +611,7 @@ class Api:
         out.append("\n== 플러그인 status.json ==\n" + tail(gamesetup.bridge_dir() / "status.json", 50))
         if c.game_dir:
             out.append("\n== BepInEx LogOutput.log (끝 200줄) ==\n" + tail(Path(c.game_dir) / "BepInEx" / "LogOutput.log", 200))
-        desk = Path(os.path.expanduser("~")) / "Desktop"
+        desk = _desktop_dir()
         if not desk.exists():
             desk = ad
         f = desk / f"FMFaceStudio_오류보고_{now:%Y%m%d-%H%M}.txt"
@@ -943,6 +963,10 @@ class Api:
 
     def _queue_put(self, person: dict, uid: str, prefixed: bool, src, box, deco: dict) -> dict:
         """사진 하나를 잘라 꾸며서 대기열에 넣는다 (같은 사람이 있으면 바꾼다)."""
+        with self._qlock:
+            return self._queue_put_locked(person, uid, prefixed, src, box, deco)
+
+    def _queue_put_locked(self, person: dict, uid: str, prefixed: bool, src, box, deco: dict) -> dict:
         for it in [i for i in self._queue if i["uid"] == uid]:
             self._drop_files(it)
             self._queue.remove(it)
@@ -1114,10 +1138,11 @@ class Api:
     @_safe
     def queue_remove(self, ids: list[str]) -> dict:
         ids = set(ids)
-        for it in [i for i in self._queue if i["id"] in ids]:
-            self._drop_files(it)
-            self._queue.remove(it)
-        self._save_queue()
+        with self._qlock:
+            for it in [i for i in self._queue if i["id"] in ids]:
+                self._drop_files(it)
+                self._queue.remove(it)
+            self._save_queue()
         return {"queue": self._queue_view()}
 
     @_safe
@@ -1148,8 +1173,9 @@ class Api:
         for it in items:
             self._drop_files(it)
         done = {it["id"] for it in items}
-        self._queue = [i for i in self._queue if i["id"] not in done]
-        self._save_queue()
+        with self._qlock:
+            self._queue = [i for i in self._queue if i["id"] not in done]
+            self._save_queue()
         self._sync_manager()
         refresh = None
         if self._cfg.auto_refresh and gamesetup.heartbeat() and gamesetup.heartbeat().get("alive"):
