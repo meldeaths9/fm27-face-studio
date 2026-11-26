@@ -24,7 +24,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "0.13.0"
+VERSION = "0.14.0"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -261,7 +261,7 @@ class Api:
         return {
             "version": VERSION, "pack_moved": getattr(self, "_pack_moved", ""),
             "settings": {
-                "graphics_dir": c.graphics_dir, "output_size": c.output_size, "check_updates": c.check_updates,
+                "graphics_dir": c.graphics_dir, "output_size": c.output_size, "check_updates": c.check_updates, "bulk_crop": c.bulk_crop, "bulk_deco": c.bulk_deco,
                 "prompt_template": c.prompt_template, "send_photo": c.send_photo,
                 "ai_provider": c.ai_provider, "deco": c.deco, "prompt_lang": c.prompt_lang,
                 "expression": c.expression, "manager_outfit": c.manager_outfit, "ref_mode": c.ref_mode, "club_hints": c.club_hints,
@@ -627,6 +627,10 @@ class Api:
     def set_option(self, key: str, value) -> bool:
         if key == "auto_refresh":
             self._cfg.auto_refresh = bool(value)
+        elif key == "bulk_crop" and value in ("face", "keep"):
+            self._cfg.bulk_crop = value
+        elif key == "bulk_deco" and value in ("follow", "none"):
+            self._cfg.bulk_deco = value
         elif key == "check_updates":
             self._cfg.check_updates = bool(value)
         elif key == "skip_version":
@@ -991,6 +995,18 @@ class Api:
             out["queued"] = True
         return out
 
+    def _quick_args(self, src, person: dict):
+        """대량 바꾸기·카드에 끌어다 놓기: 자르기와 꾸미기 설정대로."""
+        if self._cfg.bulk_crop == "keep":
+            w, h = src.size
+            side = float(min(w, h))
+            box = (w / 2, side / 2 if h > w else h / 2, side)       # 세로 사진은 위쪽(머리)에 맞춘다
+        else:
+            box = imaging.auto_box(src)
+        deco = dict(self._cfg.deco or {}) if self._cfg.bulk_deco == "follow" else {}
+        deco["text"] = str(person.get("name", "")).strip()
+        return box, deco
+
     @_safe
     def quick_add(self, person: dict, data_url: str) -> dict:
         """카드에 사진을 끌어다 놓았을 때: 얼굴 맞춤으로 자르고 지금 꾸미기 설정으로 바로 대기열에."""
@@ -998,9 +1014,7 @@ class Api:
         if not uid:
             return {"error": "이 사람의 UID를 알 수 없어요."}
         src = _from_data_url(data_url)
-        box = imaging.auto_box(src)
-        deco = dict(self._cfg.deco or {})
-        deco["text"] = str(person.get("name", "")).strip()
+        box, deco = self._quick_args(src, person)
         it = self._queue_put(person, uid, prefixed, src, box, deco)
         return {"queue": self._queue_view(), "thumb": _thumb_url(Path(it["png"]), 160), "uid": uid}
 
@@ -1089,9 +1103,8 @@ class Api:
         if not uid:
             return {"error": "UID가 없어요."}
         src = imaging.load_image(path) if path else _from_data_url(data_url)
-        deco = dict(self._cfg.deco or {})
-        deco["text"] = str(person.get("name", "")).strip()
-        self._queue_put(person, uid, prefixed, src, imaging.auto_box(src), deco)
+        box, deco = self._quick_args(src, person)
+        self._queue_put(person, uid, prefixed, src, box, deco)
         return {"ok": True, "count": len(self._queue)}
 
     @_safe
@@ -1177,6 +1190,63 @@ class Api:
                         "thumb": _thumb_url(pack.image_path(e.uid), 120)})
         return res
 
+    # 한 장씩 지우기: 바로 지우지 않고 몇 초 기다렸다가 지운다 (그 사이 되돌리기 가능)
+    @_safe
+    def applied_remove_later(self, uid: str, seconds: float = 6) -> dict:
+        import time as _t
+        with self._lock:
+            if not hasattr(self, "_pend"):
+                self._pend = {}
+                threading.Thread(target=self._pend_loop, daemon=True).start()
+            self._pend[str(uid)] = _t.time() + float(seconds)
+        return {"ok": True}
+
+    @_safe
+    def applied_undo(self, uid: str) -> dict:
+        with self._lock:
+            ok = getattr(self, "_pend", {}).pop(str(uid), None) is not None
+        return {"ok": ok}
+
+    def _pend_loop(self) -> None:
+        import time as _t
+        while True:
+            _t.sleep(0.3)
+            try:
+                with self._lock:
+                    now = _t.time()
+                    due = [u for u, t in self._pend.items() if t <= now]
+                    for u in due:
+                        self._pend.pop(u, None)
+                    more = bool(self._pend)
+                if due:
+                    self._remove_now(due)
+                    if not more:
+                        self._refresh_game()
+            except Exception as e:  # noqa: BLE001
+                log.warning("삭제 처리 실패: %s", e)
+
+    def flush_deletes(self) -> None:
+        with self._lock:
+            due = list(getattr(self, "_pend", {}))
+            if hasattr(self, "_pend"):
+                self._pend.clear()
+        if due:
+            self._remove_now(due, rebuild=False)
+
+    def _refresh_game(self) -> None:
+        hb = gamesetup.heartbeat()
+        if self._cfg.auto_refresh and hb and hb.get("alive"):
+            gamesetup.command("refresh", timeout=30)
+
+    def _remove_now(self, uids: list[str], rebuild: bool = True) -> None:
+        self._pack().remove([str(u) for u in uids])
+        for u in uids:
+            if (self._index.map.get(str(u)) or {}).get("ours"):
+                self._index.map.pop(str(u), None)
+        if rebuild:
+            threading.Thread(target=lambda: self._index.build(self._cfg.graphics_dir, force=True), daemon=True).start()
+        self._sync_manager()
+
     @_safe
     def applied_remove(self, uids: list[str]) -> list[dict]:
         self._pack().remove([str(u) for u in uids])
@@ -1206,6 +1276,54 @@ class Api:
         entries = {e.uid: e for e in pack.entries()}
         found = find_conflicts(Path(self._cfg.graphics_dir), self._cfg.pack_dir, set(entries))
         return self._conflict_view(found, {u: e.name or u for u, e in entries.items()})
+
+    @_safe
+    def conflict_report(self) -> dict:
+        """내 사진과 같은 사람을 지정한 다른 팩을 모두 찾아, 팩별로 이김/짐을 묶는다."""
+        from .settings import pack_sort_key, PACK_FOLDER_NAME
+        root = Path(self._cfg.graphics_dir)
+        pack = self._pack()
+        mine = {e.uid: e for e in pack.entries()}
+        if not mine:
+            return {"total": 0, "groups": []}
+        ours_dir = pack.dir.resolve()
+        ours_key = pack_sort_key(pack.dir.name)
+        groups: dict[str, dict] = {}
+        cfgs = faceindex.FaceIndex._configs(root)
+        for cfg, uid, ent in faceindex.iter_records(root, cfgs):
+            if uid not in mine or cfg.parent.resolve() == ours_dir:
+                continue
+            top = faceindex.top_folder(root, cfg)
+            g = groups.setdefault(top, {"pack": top, "dir": str(root / top), "win": pack_sort_key(top) <= ours_key,
+                                        "items": [], "_seen": set()})
+            if uid in g["_seen"]:
+                continue
+            g["_seen"].add(uid)
+            g["items"].append({"uid": uid, "name": mine[uid].name or uid, "other": ent["path"],
+                               "mine": str(pack.image_path(uid))})
+        out = []
+        for g in groups.values():
+            g.pop("_seen")
+            g["items"].sort(key=lambda x: x["name"])
+            out.append(g)
+        out.sort(key=lambda g: (g["win"], -len(g["items"])))
+        hit = {i["uid"] for g in out for i in g["items"]}
+        lost = {i["uid"] for g in out if not g["win"] for i in g["items"]}
+        return {"total": len(mine), "overlap": len(hit), "lost": len(lost), "groups": out, "ours": PACK_FOLDER_NAME}
+
+    @_safe
+    def thumbs(self, paths: list[str]) -> dict:
+        """작은 미리보기 (graphics 폴더 안 파일만)."""
+        g = Path(self._cfg.graphics_dir).resolve()
+        out = {}
+        for p in paths[:200]:
+            try:
+                rp = Path(p).resolve()
+                if g in rp.parents:
+                    out[p] = _thumb_url(rp, 64)
+            except Exception:  # noqa: BLE001
+                out[p] = ""
+        return out
 
     def _conflict_view(self, found: dict, names: dict) -> list[dict]:
         g = Path(self._cfg.graphics_dir)

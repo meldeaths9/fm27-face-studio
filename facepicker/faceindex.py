@@ -23,6 +23,46 @@ EXTS = (".png", ".jpg", ".jpeg", ".tga", ".bmp", ".dds")
 VERSION = 3
 
 
+
+def _parse(text: str):
+    pairs = [(m.group(1), m.group(3), bool(m.group(2))) for m in REC_RX.finditer(text)]
+    pairs += [(m.group(3), m.group(2), bool(m.group(1))) for m in REC_RX2.finditer(text)]
+    return pairs
+
+
+def iter_records(root: Path, cfgs: list[Path]):
+    """config.xml 순서대로 (config, uid, {path, pack, regen}) — 사진 파일이 실제로 있는 것만."""
+    for cfg in cfgs:
+        folder = cfg.parent
+        try:
+            text = cfg.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        files = None
+        for frm, uid, regen in _parse(text):
+            if files is None:
+                try:
+                    files = {f.lower(): f for f in os.listdir(folder)}
+                except OSError:
+                    files = {}
+            stem = frm.replace("\\", "/").split("/")[-1]
+            name = files.get(stem.lower())
+            if not name:
+                for ext in EXTS:
+                    if (stem + ext).lower() in files:
+                        name = files[(stem + ext).lower()]
+                        break
+            if name:
+                yield cfg, uid, {"path": str(folder / name), "pack": folder.name, "regen": regen}
+
+
+def top_folder(root: Path, path) -> str:
+    try:
+        return Path(path).relative_to(root).parts[0]
+    except (ValueError, IndexError):
+        return ""
+
+
 class FaceIndex:
     def __init__(self) -> None:
         self.map: dict[str, dict] = {}      # uid -> {"path", "pack", "ours"}
@@ -82,38 +122,13 @@ class FaceIndex:
             ours_dirs = {(root / n).resolve() for n in (PACK_FOLDER_NAME, *OLD_PACK_FOLDER_NAMES)}
             result: dict[str, dict] = {}
             ours_entries: dict[str, dict] = {}
-            for cfg in cfgs:
-                folder = cfg.parent
-                try:
-                    text = cfg.read_text(encoding="utf-8", errors="ignore")
-                except OSError:
-                    continue
-                is_ours = folder.resolve() in ours_dirs
-                pairs = [(m.group(1), m.group(3), bool(m.group(2))) for m in REC_RX.finditer(text)]
-                pairs += [(m.group(3), m.group(2), bool(m.group(1))) for m in REC_RX2.finditer(text)]
-                files = None
-                for frm, uid, regen in pairs:
-                    if files is None:
-                        try:
-                            files = {f.lower(): f for f in os.listdir(folder)}
-                        except OSError:
-                            files = {}
-                    stem = frm.replace("\\", "/").split("/")[-1]
-                    name = None
-                    if stem.lower() in files:
-                        name = files[stem.lower()]
-                    else:
-                        for ext in EXTS:
-                            if (stem + ext).lower() in files:
-                                name = files[(stem + ext).lower()]
-                                break
-                    if not name:
-                        continue
-                    entry = {"path": str(folder / name), "pack": folder.name, "ours": is_ours, "regen": regen}
-                    if is_ours:
-                        ours_entries[uid] = entry
-                    else:
-                        result[uid] = entry          # 뒤에 읽은 팩이 이긴다 (게임과 같게)
+            for cfg, uid, entry in iter_records(root, cfgs):
+                is_ours = cfg.parent.resolve() in ours_dirs
+                entry["ours"] = is_ours
+                if is_ours:
+                    ours_entries[uid] = entry
+                else:
+                    result[uid] = entry          # 뒤에 읽은 팩이 이긴다 (게임과 같게)
             # 우리 폴더는 이름이 맨 뒤라 보통 이긴다. 그래도 우리보다 뒤 폴더가 같은 사람을 지정하면 그쪽이 보인다
             ours_key = pack_sort_key(PACK_FOLDER_NAME)
             for uid, e in ours_entries.items():

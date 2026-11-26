@@ -823,7 +823,7 @@ async function refreshAppliedCount() {
 async function loadApplied() { await refreshAppliedCount(); S.aSel.clear(); renderApplied(); }
 function renderApplied() {
   const q = $("#aq").value.trim().toLowerCase();
-  const list = S.applied.filter((a) => !q || `${a.name} ${a.club} ${a.uid}`.toLowerCase().includes(q));
+  const list = S.applied.filter((a) => !S.aPend.has(a.uid) && (!q || `${a.name} ${a.club} ${a.uid}`.toLowerCase().includes(q)));
   $("#aStat").textContent = `총 ${S.applied.length}명` + (q ? ` · 표시 ${list.length}` : "") + (S.aSel.size ? ` · 선택 ${S.aSel.size}` : "");
   if (!S.applied.length) {
     $("#agrid").innerHTML = `<div class="empty" style="grid-column:1/-1;padding:80px">${ico("layers")}<br>아직 적용한 얼굴이 없어요</div>`;
@@ -836,11 +836,14 @@ function renderApplied() {
       <div class="tags">${a.newgen ? '<span class="badge ng">뉴젠</span>' : ""}</div>
       <div class="foot"><div class="tx"><div class="nm">${esc(a.name || "이름 없음")}</div>
         <div class="sub">${esc(a.club || "")}${a.club ? " · " : ""}${esc(a.uid)}</div></div>
-        <button class="btn icon sm" data-edit="${a.uid}" title="다시 편집">${ico("edit")}</button></div>
+        <button class="btn icon sm" data-edit="${a.uid}" title="다시 편집">${ico("edit")}</button>
+        <button class="btn icon sm del" data-del="${a.uid}" title="이 사진 지우기">${ico("trash")}</button></div>
     </div>`).join("");
   $$(".fcard").forEach((c) => c.onclick = (e) => {
     const ed = e.target.closest("[data-edit]");
     if (ed) return editApplied(ed.dataset.edit);
+    const dl = e.target.closest("[data-del]");
+    if (dl) { e.stopPropagation(); return deleteLater(dl.dataset.del); }
     const u = c.dataset.uid;
     S.aSel.has(u) ? S.aSel.delete(u) : S.aSel.add(u);
     renderApplied();
@@ -859,6 +862,40 @@ $("#btnADel").onclick = async () => {
   const r = await call("applied_remove", [...S.aSel]);
   if (Array.isArray(r)) { S.applied = r; S.aSel.clear(); $("#appliedCnt").textContent = r.length; renderApplied(); toast("삭제했어요.", "ok"); }
 };
+/* 한 장씩 지우기 + 되돌리기 줄 (6초 뒤 실제로 지움) */
+S.aPend = new Map();
+const UNDO_SEC = 6;
+async function deleteLater(uid) {
+  const a = S.applied.find((x) => x.uid === uid);
+  const r = await call("applied_remove_later", uid, UNDO_SEC);
+  if (!r || !r.ok) return;
+  S.aSel.delete(uid);
+  const row = document.createElement("div");
+  row.className = "undorow";
+  row.innerHTML = `${a && a.thumb ? `<img src="${a.thumb}">` : ""}<span class="t"><b>${esc((a && a.name) || uid)}</b> 사진을 지웠어요</span><button class="btn sm">되돌리기 <span class="n">${UNDO_SEC}</span></button>`;
+  $("#undoStack").appendChild(row);
+  let left = UNDO_SEC;
+  const tick = setInterval(() => {
+    left -= 1; $(".n", row).textContent = left;
+    if (left <= 0) { clearInterval(tick); finish(); }
+  }, 1000);
+  const finish = () => {
+    row.classList.add("out"); setTimeout(() => row.remove(), 250);
+    S.aPend.delete(uid);
+    clearTimeout(S.aRefreshT); S.aRefreshT = setTimeout(async () => { if (!S.aPend.size) { await refreshAppliedCount(); renderApplied(); doSearch(true); } }, 900);
+  };
+  $("button", row).onclick = async () => {
+    clearInterval(tick);
+    const u = await call("applied_undo", uid);
+    S.aPend.delete(uid);
+    row.classList.add("out"); setTimeout(() => row.remove(), 250);
+    renderApplied();
+    if (u && u.ok) toast(`${(a && a.name) || uid} 사진을 되돌렸어요.`, "ok", 1800);
+  };
+  S.aPend.set(uid, row);
+  $("#appliedCnt").textContent = S.applied.length - S.aPend.size;
+  renderApplied();
+}
 async function editApplied(uid) {
   const r = await call("applied_edit", uid);
   if (!r) return;
@@ -871,12 +908,41 @@ async function editApplied(uid) {
   S.promptDirty = false; autoPrompt();
 }
 $("#btnConflict").onclick = async () => {
-  toast("다른 페이스팩과 겹치는지 검사 중…");
-  const r = await call("check_conflicts");
-  if (!Array.isArray(r)) return;
-  if (!r.length) toast("겹치는 인물이 없어요. 내가 넣은 사진이 모두 이겨요.", "ok");
-  else await showConflicts(r);
+  busy(true, "다른 페이스팩과 겹치는지 검사 중…", "메가팩이 크면 몇 초 걸려요");
+  const r = await call("conflict_report");
+  busy(false);
+  if (!r || !r.groups) return;
+  const body = $("#cfBody");
+  if (!r.total) body.innerHTML = `<div class="cfhead">아직 적용한 사진이 없어요.</div>`;
+  else if (!r.groups.length) body.innerHTML = `<div class="cfhead ok">내 사진 ${r.total}명 중 다른 페이스팩과 겹치는 사람이 없어요.</div>`;
+  else {
+    body.innerHTML = `<div class="cfhead ${r.lost ? "bad" : "ok"}">내 사진 ${r.total}명 중 <b>${r.overlap}명</b>이 다른 페이스팩과 겹쳐요 · ` +
+      (r.lost ? `<b>${r.lost}명은 다른 팩에 가려져요</b>` : "모두 내 사진이 이겨요") + `</div>` +
+      r.groups.map((g, gi) => `<div class="cfg ${g.win ? "win" : "lose"}" data-g="${gi}">
+        <div class="cfgh"><span class="res">${g.win ? "✅ 이김" : "⚠️ 짐"}</span><code>${esc(g.pack)}</code><span class="cnt">${g.items.length}명</span>
+          <span class="names">${esc(g.items.slice(0, 4).map((i) => i.name).join(", "))}${g.items.length > 4 ? " …" : ""}</span>
+          <button class="btn sm" data-open="${gi}">폴더 열기</button><span class="car">▾</span></div>
+        <div class="cfgb" hidden></div></div>`).join("") +
+      (r.lost ? `<div class="hint" style="margin-top:10px">⚠️ 진 사람은 그 폴더 이름이 우리 폴더(<code>${esc(r.ours)}</code>)보다 뒤라서 그래요. 그 폴더에서 이 사람 사진을 지우면 내 사진이 보여요.</div>` : "");
+    $$(".cfg", body).forEach((el) => {
+      const g = r.groups[+el.dataset.g];
+      $("[data-open]", el).onclick = (e) => { e.stopPropagation(); call("open_dir", g.dir); };
+      $(".cfgh", el).onclick = async () => {
+        const b = $(".cfgb", el);
+        b.hidden = !b.hidden; el.classList.toggle("open", !b.hidden);
+        if (b.hidden || b.dataset.done) return;
+        b.dataset.done = 1;
+        const items = g.items.slice(0, 100);
+        b.innerHTML = items.map((i, k) => `<div class="cfi" data-k="${k}"><img class="m"><span class="vs">${g.win ? "›" : "‹"}</span><img class="o"><span class="nm">${esc(i.name)}<small>${esc(i.uid)}</small></span></div>`).join("") +
+          (g.items.length > 100 ? `<div class="hint">… 외 ${g.items.length - 100}명</div>` : "");
+        const th = await call("thumbs", items.flatMap((i) => [i.mine, i.other])) || {};
+        $$(".cfi", b).forEach((row) => { const i = items[+row.dataset.k]; $(".m", row).src = th[i.mine] || ""; $(".o", row).src = th[i.other] || ""; });
+      };
+    });
+  }
+  $("#cfModal").classList.add("on");
 };
+$("#cfX").onclick = () => $("#cfModal").classList.remove("on");
 async function showConflicts(list) {
   // 우리 폴더보다 이름이 뒤인 페이스팩만 온다 (FM은 뒤에 읽은 폴더가 이긴다)
   const body = "아래 인물은 다른 페이스팩도 사진을 지정하고 있어요. 그 폴더가 이름순으로 우리보다 뒤에 있어서 게임에서는 그쪽 사진이 보여요.\n" +
@@ -1254,7 +1320,24 @@ function candLabel(c) {
   if (!c.name) return `UID ${c.uid} (세이브에 없음)`;
   return `${c.name} · ${c.club || "무소속"}${c.alt ? " (" + c.alt + ")" : ""}${c.age ? " · " + c.age + "세" : ""}${c.me ? " · 내 감독" : ""}`;
 }
+function decoSummary() {
+  const d = S.deco || {}, out = [];
+  if (d.caption) out.push(`이름 띠(${({ gold: "금색", white: "흰색", navy: "남색" })[d.style] || d.style})`);
+  if (d.rounded) out.push("둥근 모서리");
+  if (d.border) out.push("테두리");
+  return out.length ? out.join(" · ") : "꾸미기 없음";
+}
+function renderBulkOpts() {
+  const st = S.settings || {}, crop = st.bulk_crop || "face", deco = st.bulk_deco || "follow";
+  $$("#bCrop button").forEach((b) => b.classList.toggle("on", b.dataset.v === crop));
+  $$("#bDeco button").forEach((b) => b.classList.toggle("on", b.dataset.v === deco));
+  $("#bOptSum").textContent = (crop === "face" ? "얼굴을 찾아 가운데로" : "사진 구도 그대로 (세로 사진은 위쪽 맞춤)") +
+    " · " + (deco === "follow" ? "편집 화면 꾸미기: " + decoSummary() : "꾸미기 없이 사진만");
+}
+$$("#bCrop button").forEach((b) => b.onclick = () => { S.settings.bulk_crop = b.dataset.v; call("set_option", "bulk_crop", b.dataset.v); renderBulkOpts(); });
+$$("#bDeco button").forEach((b) => b.onclick = () => { S.settings.bulk_deco = b.dataset.v; call("set_option", "bulk_deco", b.dataset.v); renderBulkOpts(); });
 function openBulk(files) {
+  renderBulkOpts();
   $("#bulkModal").classList.add("on");
   if (files && files.length) bulkFromFiles(files);
   else if (!S.bulk.length) { $("#bulkHelp").hidden = false; $("#bulkTable").hidden = true; renderBulkSum(); }
@@ -1291,7 +1374,7 @@ async function bulkRescan() {
 }
 function bulkReset() {
   S.bulk = []; S.bulkFolder = "";
-  $("#bulkHelp").hidden = false; $("#bulkTable").hidden = true; $("#bulkNote").textContent = "사진마다 얼굴 맞춤으로 자르고, 지금 꾸미기 설정(이름 넣기 등)을 똑같이 적용해요.";
+  $("#bulkHelp").hidden = false; $("#bulkTable").hidden = true; $("#bulkNote").textContent = "위에서 고른 자르기·꾸미기는 첫 화면 카드에 사진을 끌어다 놓을 때도 똑같이 쓰여요.";
   renderBulkSum();
 }
 function initPicks() {

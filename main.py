@@ -115,6 +115,10 @@ def main() -> None:
     window.events.loaded += lambda *_: log.info("화면 로드됨")
     log.info("webview.start 호출")
     webview.start(private_mode=False, debug="--debug" in sys.argv)
+    try:
+        api.flush_deletes()       # 되돌리기 기다리던 삭제는 끄기 전에 마저 지운다
+    except Exception as e:  # noqa: BLE001
+        log.warning("남은 삭제 처리 실패: %s", e)
     log.info("정상 종료")
 
 

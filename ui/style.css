@@ -489,3 +489,42 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 7px; border-radius: 6
 .updbar .btn.primary { background: #fff; color: #3b2fb8; border-color: #fff; }
 .updbar .btn:not(.primary) { background: rgba(255,255,255,.14); color: #fff; border-color: rgba(255,255,255,.25); }
 .updbar .x { background: none; border: 0; color: rgba(255,255,255,.8); cursor: pointer; font-size: 13px; padding: 2px 4px; }
+
+/* v0.14 대량 바꾸기 옵션 */
+.bulkopts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 4px 20px 10px; }
+.bulkopts .lbl2 { font-size: 12px; color: var(--muted); font-weight: 700; }
+.bulkopts .bseg { display: inline-grid; grid-template-columns: auto auto; }
+.bulkopts .bseg button { padding: 0 12px; height: 26px; font-size: 12px; }
+.bulkopts .hint { flex-basis: 100%; }
+
+/* 적용된 얼굴: 한 장 지우기 + 되돌리기 줄 */
+.fcard .btn.del:hover { color: #ff6b6b; border-color: rgba(255,107,107,.5); }
+.undostack { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 110; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
+.undorow { pointer-events: auto; display: flex; align-items: center; gap: 10px; min-width: 340px; padding: 8px 8px 8px 10px; border-radius: 12px;
+  background: var(--panel2, #1b2238); border: 1px solid var(--line2); box-shadow: 0 10px 28px rgba(0,0,0,.45); font-size: 13px; animation: fadeUp .25s ease; }
+.undorow img { width: 30px; height: 30px; border-radius: 6px; object-fit: cover; }
+.undorow .t { flex: 1; }
+.undorow .n { display: inline-block; min-width: 12px; opacity: .7; margin-left: 2px; }
+.undorow.out { opacity: 0; transform: translateY(6px); transition: .25s; }
+
+/* 충돌 검사 결과 */
+.cfbody { max-height: 62vh; overflow: auto; white-space: normal; }
+.cfhead { padding: 10px 12px; border-radius: 10px; background: var(--bg2); margin-bottom: 10px; font-size: 14px; }
+.cfhead.ok { border-left: 3px solid #36d399; } .cfhead.bad { border-left: 3px solid #ff6b6b; }
+.cfg { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; overflow: hidden; }
+.cfg.lose { border-color: rgba(255,107,107,.55); }
+.cfgh { display: flex; align-items: center; gap: 10px; padding: 9px 12px; cursor: pointer; }
+.cfgh:hover { background: var(--bg2); }
+.cfgh code { font-size: 12px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cfgh .res { font-weight: 800; font-size: 13px; white-space: nowrap; }
+.cfgh .cnt { font-weight: 700; color: var(--accent2); white-space: nowrap; }
+.cfgh .names { flex: 1; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cfgh .car { color: var(--muted); transition: .2s; } .cfg.open .car { transform: rotate(180deg); }
+.cfgb { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; padding: 8px 12px 12px; border-top: 1px solid var(--line); }
+.cfi { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.cfi img { width: 40px; height: 40px; border-radius: 6px; object-fit: cover; background: var(--bg2); }
+.cfi .vs { color: var(--muted); font-weight: 800; }
+.cfi .nm { display: flex; flex-direction: column; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.cfi .nm small { color: var(--muted); }
+.logo.logoimg.plain { border-radius: 0; overflow: visible; }
+.logo.logoimg.plain img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 2px 6px rgba(124,92,255,.35)); }
