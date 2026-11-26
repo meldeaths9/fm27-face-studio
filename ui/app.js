@@ -282,7 +282,9 @@ function openManual() {
   $("#fUid").focus();
 }
 $("#btnManual").onclick = openManual;
+let pvGen = 0;
 function resetEditor() {
+  pvGen++;
   S.photo = null;
   ctx.clearRect(0, 0, cv.width, cv.height);
   $("#drop").style.display = "";
@@ -339,6 +341,7 @@ function fillPerson(p) {
   updateCard();
 }
 async function pickPerson(p, idx) {
+  resetEditor();          // 앞 사람 사진이 오른쪽 미리보기에 남지 않게 먼저 비운다
   S.selUid = p.uid;
   S.curIdx = typeof idx === "number" ? idx : -1;
   fillPerson(p);
@@ -478,8 +481,10 @@ async function requestPreview() {
   if (!S.photo) return;
   if (pvBusy) { pvAgain = true; return; }
   pvBusy = true;
+  const gen = pvGen;
   const url = await API.preview(S.photo.box, S.deco, 300).catch(() => "");
   pvBusy = false;
+  if (gen !== pvGen || !S.photo) { pvAgain = false; return; }     // 그 사이 다른 사람으로 넘어감
   if (typeof url === "string" && url) {
     $("#pvImg").src = url; $("#pvImg").hidden = false; $("#pvBox .ph0").style.display = "none";
   }
