@@ -113,17 +113,20 @@ def decorate(img: Image.Image, deco: Deco) -> Image.Image:
 
     radius_px = int(S * deco.radius / 100) if deco.rounded else 0
 
-    # 테두리
-    if deco.border:
-        w = max(2, S // 170)
-        ov = Image.new("RGBA", (S * 4, S * 4), (0, 0, 0, 0))
-        ImageDraw.Draw(ov).rounded_rectangle(
-            (w * 2, w * 2, S * 4 - 1 - w * 2, S * 4 - 1 - w * 2),
-            radius=max(0, radius_px * 4 - w * 2), outline=border_rgba, width=w * 4)
-        im.alpha_composite(ov.resize((S, S), Image.LANCZOS))
-
-    # 둥근 모서리
+    # 둥근 모서리 먼저 자르고
     if radius_px > 0:
         mask = _round_mask(S, radius_px)
         im.putalpha(ImageChops.multiply(im.getchannel("A"), mask))
+
+    # 테두리는 그 뒤에 같은 둥글기로 (모서리에서 잘리지 않게)
+    if deco.border:
+        w = max(2, S // 170)
+        k = 4
+        ov = Image.new("RGBA", (S * k, S * k), (0, 0, 0, 0))
+        ImageDraw.Draw(ov).rounded_rectangle((0, 0, S * k - 1, S * k - 1), radius=radius_px * k,
+                                              outline=border_rgba, width=w * k)
+        ov = ov.resize((S, S), Image.LANCZOS)
+        if radius_px > 0:       # 테두리도 바깥 모양 안쪽에만
+            ov.putalpha(ImageChops.multiply(ov.getchannel("A"), _round_mask(S, radius_px)))
+        im.alpha_composite(ov)
     return im

@@ -138,7 +138,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px;
 
 .pv { display: flex; flex-direction: column; gap: 10px; }
 .pvcard { background: linear-gradient(160deg, #1d2a4b, #141d33); border: 1px solid var(--line2); border-radius: 14px; padding: 14px 12px 12px; text-align: center; }
-.pvimg { width: 150px; height: 150px; margin: 0 auto; border-radius: 14px; overflow: hidden; display: grid; place-items: center;
+.pvimg { width: 150px; height: 150px; margin: 0 auto; border-radius: 3px; overflow: hidden; display: grid; place-items: center;
   background: linear-gradient(180deg, #2a3962, #1a2442); box-shadow: 0 10px 25px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.08); }
 .pvimg.checker { background: repeating-conic-gradient(#3a4566 0 25%, #2c3653 0 50%) 0 0 / 16px 16px; }
 .pvimg canvas { width: 150px; height: 150px; }
