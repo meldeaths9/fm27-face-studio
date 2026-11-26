@@ -1,11 +1,34 @@
-# FM27 Face Studio
+# FM Face Studio
 
-Football Manager 27 선수·스태프 얼굴 사진을 바꾸는 프로그램.
+Football Manager 27의 선수·스태프·지원 스태프·내 감독 얼굴 사진을 바꾸는 Windows 프로그램이에요.
+A Windows tool to replace player, staff and manager portraits in Football Manager 27.
 
-- 사진 자르기 편집기 (얼굴 자동 맞춤)
-- 제미나이(나노 바나나) AI 사진 생성 — 참고 사진 함께 보내기 가능
-- 대기열에 모아서 한 번에 적용 (graphics\FacePicker 폴더 + config.xml 자동 관리)
-- 뉴젠·생성 인물 `r-` 접두사 처리, 다른 페이스팩과 충돌 검사
+## 기능
+- 세이브를 읽어 선수·스태프를 이름·팀으로 찾고, 지금 쓰이는 사진을 카드로 보여 줘요 (뉴젠 포함)
+- 사진 편집기: 자르기·확대, 얼굴 자동 맞춤, 배경 제거, 이름 넣기·둥근 모서리·테두리
+- AI 사진 만들기: 제미나이·그록·챗GPT 웹(무료) 또는 API 키로 새 얼굴·유니폼만 바꾸기
+- 대기열에 모아 한 번에 적용 (`graphics\FacePicker` 폴더와 `config.xml` 자동 관리)
+- BepInEx 플러그인(선택): 게임을 끄지 않고 바로 반영, 내 감독 사진 바꾸기, 게임 외모 정보 읽기
 
 ## 받기
-[Releases](../../releases)에서 `FM27FaceStudio.exe`를 받아 실행하세요. 파이썬 설치는 필요 없어요.
+[Releases](../../releases)에서 `FMFaceStudio.exe`를 받아 실행하세요. 파이썬 설치는 필요 없어요.
+처음 실행할 때 파란 "Windows의 PC 보호" 창이 뜨면 "추가 정보" → "실행"을 누르세요.
+
+## Code signing policy
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+
+- Committers and reviewers: [meldeaths9](https://github.com/meldeaths9)
+- Approvers: [meldeaths9](https://github.com/meldeaths9)
+
+Release binaries are built automatically by GitHub Actions from this repository
+(`.github/workflows/build.yml`). Each signing request is approved manually.
+
+## Privacy policy
+This program will not transfer any information to other networked systems unless specifically requested by the user:
+- **AI image generation** — only when you press the AI button, the prompt (and the photos you chose to attach) are sent to the AI service you selected (Google Gemini, xAI Grok, OpenAI, Cloudflare). Their own privacy policies apply. The "web" options only open the site in your browser and copy to your clipboard.
+- **Background-removal model** — downloaded once from GitHub when you first use background removal.
+
+The program reads your Football Manager save and graphics folders on your own computer only. Settings and logs stay in `%APPDATA%\FM27FacePicker`. The "error report" file is created on your desktop and is never sent automatically.
+
+## License
+[MIT](LICENSE). Third-party components are listed in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
