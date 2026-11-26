@@ -75,8 +75,10 @@ def selftest() -> int:
         from PIL import Image
         assert len(build_html()) > 20000, "ui 없음"
         assert ai_models.face_available(), "얼굴 인식 모델 없음"
-        from facepicker import gamesetup
+        from facepicker import gamesetup, updater
         assert gamesetup.PLUGIN_DLL.exists(), "플러그인 파일 없음"
+        assert updater.is_newer("9.0.0", "0.1.0")
+        print("update check:", (updater.latest() or {}).get("version"))
         ai_models.detect_face(Image.new("RGB", (320, 240), (128, 128, 128)))
         style.decorate(Image.new("RGBA", (128, 128)), style.Deco(caption=True, text="테스트", rounded=True, border=True))
         if sys.platform == "win32":

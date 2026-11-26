@@ -137,24 +137,31 @@ class FacePack:
 
 
 def find_conflicts(graphics_dir: Path, pack_dir: Path, uids: set[str]) -> dict[str, list[str]]:
-    """다른 페이스팩 config.xml이 같은 인물을 가리키는지 검사 (얼굴이 안 바뀌는 흔한 원인)."""
+    """다른 페이스팩 config.xml이 같은 인물을 가리키는지 검사.
+    FM은 폴더 이름순으로 읽고 뒤에 읽은 쪽이 이기므로, 우리 폴더보다 뒤에 오는 팩만 문제다."""
+    from .settings import pack_sort_key
     found: dict[str, list[str]] = {}
     if not uids:
         return found
-    pack_dir = pack_dir.resolve()
-    for root, _dirs, files in os.walk(graphics_dir):
+    graphics_dir, pack_dir = Path(graphics_dir), pack_dir.resolve()
+    ours = pack_sort_key(pack_dir.name)
+    for root, dirs, files in os.walk(graphics_dir):
+        dirs.sort(key=pack_sort_key)
         if "config.xml" not in files:
             continue
         p = Path(root) / "config.xml"
         try:
             if p.resolve().parent == pack_dir:
                 continue
+            rel = p.parent.relative_to(graphics_dir).parts
+            if rel and pack_sort_key(rel[0]) <= ours:      # 우리보다 앞 → 우리가 덮어쓴다
+                continue
             text = p.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
+        except (OSError, ValueError):
             continue
         for uid in uids:
             if f"/{uid}/portrait" in text or f"/r-{uid}/portrait" in text:
-                found.setdefault(uid, []).append(str(p))
+                found.setdefault(uid, []).append(str(p.parent))
     return found
 
 

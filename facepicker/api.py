@@ -18,13 +18,13 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-from . import ai_models, appearance, clipboard, faceindex, gamesetup, imaging, prompts, providers, savedata
+from . import updater, ai_models, appearance, clipboard, faceindex, gamesetup, imaging, prompts, providers, savedata
 from .pack import FaceEntry, FacePack, find_conflicts, fm_running, looks_like_newgen
 from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "0.12.1"
+VERSION = "0.13.0"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -126,6 +126,13 @@ class Api:
         self._started = __import__("time").time()     # 이 시각 이후에 저장된 세이브만 자동으로 읽는다
         self._index = faceindex.FaceIndex()
         self._thumbs: dict[str, str] = {}
+        try:
+            self._pack_moved = self._cfg.migrate_pack_dir()
+            if self._pack_moved:
+                log.info("우리 폴더 옮기기(맨 뒤 이름으로): %s", self._pack_moved)
+        except Exception as e:  # noqa: BLE001
+            self._pack_moved = ""
+            log.warning("우리 폴더 옮기기 실패: %s", e)
         threading.Thread(target=lambda: self._index.build(self._cfg.graphics_dir), daemon=True).start()
         threading.Thread(target=self._maybe_reload, daemon=True).start()
 
@@ -198,6 +205,38 @@ class Api:
             self._window.destroy()
         return True
 
+    # ---------------------------------------------------------------- 자동 업데이트 (GitHub 릴리스)
+    @_safe
+    def check_update(self, manual: bool = False) -> dict:
+        """최신 릴리스 버전만 묻는다. 보내는 정보 없음 (GitHub에 일반 접속만)."""
+        if not manual and not self._cfg.check_updates:
+            return {"available": False, "off": True}
+        if not getattr(sys, "frozen", False) and not manual:
+            return {"available": False}
+        rel = updater.latest()
+        if not rel:
+            return {"available": False, "error": "업데이트 정보를 못 받았어요." if manual else ""}
+        newer = updater.is_newer(rel["version"], VERSION)
+        skipped = not manual and rel["version"] == self._cfg.skip_version
+        self._update = rel if newer else None
+        return {"available": newer and not skipped, "version": rel["version"], "current": VERSION,
+                "notes": rel.get("notes", "")[:1500], "url": rel.get("page", "")}
+
+    @_safe
+    def do_update(self) -> dict:
+        rel = getattr(self, "_update", None)
+        if not rel or not rel.get("setup"):
+            return {"error": "받을 설치 파일이 없어요."}
+        def prog(done, total):
+            self._progress = {"task": f"새 버전 {rel['version']} 받는 중", "done": done, "total": total}
+        try:
+            path = updater.download(rel["setup"], rel.get("size", 0), prog)
+        finally:
+            self._progress = {"task": "", "done": 0, "total": 0}
+        updater.run_installer(path)
+        threading.Timer(1.2, lambda: self._window and self._window.destroy()).start()
+        return {"ok": True}
+
     # ---------------------------------------------------------------- 상태
     def _pack(self) -> FacePack:
         return FacePack(self._cfg.pack_dir)
@@ -220,9 +259,9 @@ class Api:
     def get_state(self) -> dict:
         c = self._cfg
         return {
-            "version": VERSION,
+            "version": VERSION, "pack_moved": getattr(self, "_pack_moved", ""),
             "settings": {
-                "graphics_dir": c.graphics_dir, "output_size": c.output_size,
+                "graphics_dir": c.graphics_dir, "output_size": c.output_size, "check_updates": c.check_updates,
                 "prompt_template": c.prompt_template, "send_photo": c.send_photo,
                 "ai_provider": c.ai_provider, "deco": c.deco, "prompt_lang": c.prompt_lang,
                 "expression": c.expression, "manager_outfit": c.manager_outfit, "ref_mode": c.ref_mode, "club_hints": c.club_hints,
@@ -588,6 +627,10 @@ class Api:
     def set_option(self, key: str, value) -> bool:
         if key == "auto_refresh":
             self._cfg.auto_refresh = bool(value)
+        elif key == "check_updates":
+            self._cfg.check_updates = bool(value)
+        elif key == "skip_version":
+            self._cfg.skip_version = str(value or "")
         elif key == "follow_save":
             self._cfg.follow_save = bool(value)
             if value:
@@ -1100,8 +1143,7 @@ class Api:
             refresh = gamesetup.command("refresh", timeout=30)
         return {
             "count": len(items), "queue": self._queue_view(), "refresh": refresh,
-            "conflicts": [{"uid": u, "name": names.get(u, u), "packs": [Path(p).parent.name for p in ps]}
-                          for u, ps in conflicts.items()],
+            "conflicts": self._conflict_view(conflicts, names),
         }
 
     # ---------------------------------------------------------------- 내 감독 사진 (플러그인)
@@ -1163,4 +1205,25 @@ class Api:
         pack = self._pack()
         entries = {e.uid: e for e in pack.entries()}
         found = find_conflicts(Path(self._cfg.graphics_dir), self._cfg.pack_dir, set(entries))
-        return [{"uid": u, "name": entries[u].name or u, "packs": ps} for u, ps in found.items()]
+        return self._conflict_view(found, {u: e.name or u for u, e in entries.items()})
+
+    def _conflict_view(self, found: dict, names: dict) -> list[dict]:
+        g = Path(self._cfg.graphics_dir)
+
+        def rel(p):
+            try:
+                return str(Path(p).relative_to(g))
+            except ValueError:
+                return str(p)
+        return [{"uid": u, "name": names.get(u, u), "packs": [rel(p) for p in ps], "dirs": list(ps)}
+                for u, ps in found.items()]
+
+    @_safe
+    def open_dir(self, path: str) -> bool:
+        """겹치는 페이스팩 폴더 열기 (graphics 폴더 안만)."""
+        d = Path(path)
+        g = Path(self._cfg.graphics_dir).resolve()
+        if d.is_dir() and (d.resolve() == g or g in d.resolve().parents) and sys.platform == "win32":
+            os.startfile(d)  # type: ignore[attr-defined]
+            return True
+        return False

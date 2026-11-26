@@ -30,21 +30,6 @@ jobs:
           Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Linzaer/Ultra-Light-Fast-Generic-Face-Detector-1MB/master/models/onnx/version-RFB-320.onnx" -OutFile models/ultraface-rfb-320.onnx
           Get-Item models/ultraface-rfb-320.onnx | Select-Object Name, Length
 
-      - name: Build exe
-        run: >
-          pyinstaller --noconfirm --clean --onefile --windowed
-          --name FMFaceStudio
-          --icon assets/icon.ico
-          --add-data "ui;ui"
-          --add-data "assets/icon.png;assets"
-          --add-data "models;models"
-          --add-data "THIRD_PARTY_NOTICES.txt;."
-          --add-data "plugin_dist;plugin_dist"
-          --collect-submodules fmsave
-          --collect-all backports.zstd
-          --splash assets/splash.png
-          main.py
-
       - name: Build app folder (for installer)
         run: >
           pyinstaller --noconfirm --onedir --windowed
@@ -74,17 +59,13 @@ jobs:
       - name: Self test
         shell: pwsh
         run: |
-          $p = Start-Process -FilePath dist/FMFaceStudio.exe -ArgumentList "--selftest" -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "self test failed: $($p.ExitCode)" }
           $p = Start-Process -FilePath dist_dir/FMFaceStudio/FMFaceStudio.exe -ArgumentList "--selftest" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "self test (folder) failed: $($p.ExitCode)" }
-          Get-Item dist/FMFaceStudio.exe | Select-Object Name, Length
 
       - uses: actions/upload-artifact@v4
         with:
           name: FMFaceStudio
           path: |
-            dist/FMFaceStudio.exe
             dist/FMFaceStudio-Setup.exe
 
       - name: Read version
@@ -103,11 +84,10 @@ jobs:
           target_commitish: ${{ github.sha }}
           files: |
             dist/FMFaceStudio-Setup.exe
-            dist/FMFaceStudio.exe
           make_latest: true
           body: |
             **`FMFaceStudio-Setup.exe`** 를 받아 실행하면 설치돼요 (관리자 권한 필요 없음, 시작 메뉴·바탕화면 바로가기).
-            설치 없이 쓰고 싶으면 `FMFaceStudio.exe` 하나만 받아서 바로 실행해도 돼요.
+            한 번 설치하면 다음부터는 프로그램이 새 버전을 알려 주고, 버튼 한 번으로 업데이트돼요.
 
             **처음 실행할 때 파란 "Windows의 PC 보호" 창이 뜨면** → "추가 정보"를 누르고 → "실행"을 누르세요.
             개인이 만든 무료 프로그램이라 디지털 서명이 없어서 뜨는 안내예요.

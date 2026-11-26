@@ -1,5 +1,5 @@
 ; FM Face Studio 설치 파일 (Inno Setup 6)
-; ISCC /DAppVersion=0.11.0 installer\FMFaceStudio.iss
+; ISCC /DAppVersion=0.13.0 installer\FMFaceStudio.iss
 #ifndef AppVersion
   #define AppVersion "0.0.0"
 #endif
@@ -45,6 +45,8 @@ Name: "{autodesktop}\FM Face Studio"; Filename: "{app}\FMFaceStudio.exe"; Tasks:
 
 [Run]
 Filename: "{app}\FMFaceStudio.exe"; Description: "{cm:LaunchProgram,FM Face Studio}"; Flags: nowait postinstall skipifsilent
+; 앱 안에서 '업데이트'로 조용히 설치했을 때는 끝나고 바로 다시 켠다
+Filename: "{app}\FMFaceStudio.exe"; Flags: nowait; Check: WizardSilent
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"

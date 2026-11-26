@@ -76,12 +76,12 @@ function toast(msg, kind = "info", ms = 3800) {
   $("#toasts").appendChild(t);
   setTimeout(() => { t.style.transition = ".3s"; t.style.opacity = 0; setTimeout(() => t.remove(), 300); }, kind === "err" ? ms + 3000 : ms);
 }
-function confirmBox(title, body, yes = "확인", danger = false) {
+function confirmBox(title, body, yes = "확인", danger = false, no = "취소") {
   return new Promise((res) => {
     $("#cTitle").textContent = title;
     $("#cBody").textContent = body;
     const y = $("#cYes"), n = $("#cNo");
-    y.textContent = yes;
+    y.textContent = yes; n.textContent = no;
     y.className = "btn " + (danger ? "danger" : "primary");
     const close = (v) => { $("#mConfirm").classList.remove("on"); y.onclick = n.onclick = null; res(v); };
     y.onclick = () => close(true);
@@ -809,10 +809,7 @@ $("#btnApply").onclick = async () => {
     else if (r.refresh) toast(`${r.count}명 적용 완료!\n게임 실시간 반영은 실패했어요: ${r.refresh.message}\nFM27을 껐다 켜면 반영돼요.`, "err", 7000);
     else toast(`${r.count}명 적용 완료!\nFM27을 완전히 종료한 뒤 다시 켜면 반영돼요.`, "ok", 6000);
     pollStatus();
-    if (r.conflicts && r.conflicts.length) {
-      await confirmBox("다른 페이스팩과 겹쳐요", "아래 인물은 다른 페이스팩도 사진을 지정하고 있어서 얼굴이 안 바뀔 수 있어요.\n\n" +
-        r.conflicts.slice(0, 12).map((c) => `• ${c.name} (${c.uid}) — ${c.packs.join(", ")}`).join("\n"), "확인");
-    }
+    if (r.conflicts && r.conflicts.length) await showConflicts(r.conflicts);
     refreshAppliedCount();
     doSearch();
   } else renderQueue();
@@ -877,16 +874,24 @@ $("#btnConflict").onclick = async () => {
   toast("다른 페이스팩과 겹치는지 검사 중…");
   const r = await call("check_conflicts");
   if (!Array.isArray(r)) return;
-  if (!r.length) toast("겹치는 인물이 없어요.", "ok");
-  else confirmBox("겹치는 인물 " + r.length + "명", "다른 config.xml이 같은 인물을 지정하고 있어요. 얼굴이 안 바뀌면 그쪽 줄을 지워야 해요.\n\n" +
-    r.slice(0, 15).map((c) => `• ${c.name} (${c.uid})\n   ${c.packs.join("\n   ")}`).join("\n"), "확인");
+  if (!r.length) toast("겹치는 인물이 없어요. 내가 넣은 사진이 모두 이겨요.", "ok");
+  else await showConflicts(r);
 };
+async function showConflicts(list) {
+  // 우리 폴더보다 이름이 뒤인 페이스팩만 온다 (FM은 뒤에 읽은 폴더가 이긴다)
+  const body = "아래 인물은 다른 페이스팩도 사진을 지정하고 있어요. 그 폴더가 이름순으로 우리보다 뒤에 있어서 게임에서는 그쪽 사진이 보여요.\n" +
+    "내 사진을 쓰려면 그 폴더에서 이 사람 사진을 지워 주세요.\n\n" +
+    list.slice(0, 12).map((c) => `• ${c.name} (${c.uid})\n   graphics\\${c.packs.join("\n   graphics\\")}`).join("\n") +
+    (list.length > 12 ? `\n… 외 ${list.length - 12}명` : "");
+  const dir = list[0].dirs && list[0].dirs[0];
+  if (await confirmBox("다른 페이스팩에 가려져요", body, dir ? "그 폴더 열기" : "확인", false, dir ? "확인" : "닫기") && dir) call("open_dir", dir);
+}
 
 /* ------------------------------------------------------------------ 설정 */
 let setAI = {}, setSel = null, setUse = null;
 function openSettings(focusId) {
   const s = S.settings;
-  $("#sG").value = s.graphics_dir || ""; $("#sSize").value = s.output_size || 512; $("#sTpl").value = s.prompt_template || ""; $("#sLang").value = s.prompt_lang || "ko";
+  $("#sG").value = s.graphics_dir || ""; $("#sSize").value = s.output_size || 512; $("#sTpl").value = s.prompt_template || ""; $("#sLang").value = s.prompt_lang || "ko"; $("#sUpd").checked = s.check_updates !== false; $("#updVer").textContent = "";
   setAI = {};
   S.ai.forEach((a) => setAI[a.id] = { key: a.key, account: a.account, model: a.model });
   setUse = s.ai_provider;
@@ -1079,7 +1084,36 @@ function applyState(st) {
   pollStatus();
   refreshMax();
   setInterval(pollStatus, 3000);
+  if (st.pack_moved === "moved") toast("내 사진 폴더 이름을 zzz_FMFaceStudio로 바꿨어요.\n이제 다른 페이스팩보다 내 사진이 먼저 보여요. (게임을 켜 놨다면 한 번 껐다 켜 주세요)", "ok", 8000);
+  else if (st.pack_moved === "failed") toast("내 사진 폴더 이름을 바꾸지 못했어요. FM27을 끄고 프로그램을 다시 켜 주세요.", "err", 8000);
+  setTimeout(() => checkUpdate(false), 1500);
 })();
+
+/* ------------------------------------------------------------------ 자동 업데이트 */
+let UPD = null;
+async function checkUpdate(manual) {
+  const r = await call("check_update", manual);
+  if (!r) return;
+  if (manual) $("#updVer").textContent = r.version ? `지금 ${r.current} · 최신 ${r.version}` : (r.error || "");
+  if (r.available) {
+    UPD = r;
+    $("#updText").textContent = `새 버전 ${r.version}이 나왔어요 (지금 ${r.current})`;
+    $("#updBar").hidden = false;
+  } else if (manual) toast(r.error || "최신 버전을 쓰고 있어요.", r.error ? "err" : "ok", 2500);
+}
+$("#updX").onclick = () => { $("#updBar").hidden = true; };
+$("#updSkip").onclick = async () => { if (UPD) await call("set_option", "skip_version", UPD.version); $("#updBar").hidden = true; };
+$("#updNotes").onclick = () => { if (UPD) confirmBox(`새 버전 ${UPD.version}`, (UPD.notes || "바뀐 점이 적혀 있지 않아요.").replace(/\*\*|`/g, ""), "지금 업데이트").then((ok) => ok && $("#updGo").click()); };
+$("#updGo").onclick = async () => {
+  if (S.queue.length && !await confirmBox("업데이트", `대기열에 ${S.queue.length}명이 있어요. 대기열은 그대로 남아 있으니 업데이트 뒤에 이어서 하면 돼요.\n\n업데이트할까요?`, "업데이트")) return;
+  $("#updBar").hidden = true;
+  busy(true, "새 버전 받는 중…");
+  const r = await call("do_update");
+  if (r && r.ok) { $("#busyText").textContent = "설치하는 중… 끝나면 다시 켜져요"; $("#busySub").textContent = ""; }
+  else busy(false);
+};
+$("#btnUpdNow").onclick = () => checkUpdate(true);
+$("#sUpd").onchange = (e) => call("set_option", "check_updates", e.target.checked);
 
 
 /* ------------------------------------------------------------------ 단축키 */

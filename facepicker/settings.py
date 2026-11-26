@@ -7,7 +7,13 @@ import sys
 from pathlib import Path
 
 APP_NAME = "FM27FacePicker"
-PACK_FOLDER_NAME = "FacePicker"          # graphics 폴더 안에 만들 이 프로그램 전용 폴더
+PACK_FOLDER_NAME = "zzz_FMFaceStudio"    # graphics 폴더 안에 만들 이 프로그램 전용 폴더
+# FM은 graphics 안 폴더를 이름순으로 읽고, 뒤에 읽은 폴더가 앞 폴더를 덮어쓴다 → 맨 뒤로 오게 zzz_
+OLD_PACK_FOLDER_NAMES = ("FacePicker",)
+
+
+def pack_sort_key(name: str) -> str:
+    return str(name).casefold()
 FM_FOLDER_NAME = "Football Manager 27"
 SETTINGS_VERSION = 4
 
@@ -73,6 +79,8 @@ class Settings:
         self.last_save: str = ""
         self.game_dir: str = ""
         self.auto_refresh: bool = True
+        self.check_updates: bool = True   # 켤 때 GitHub에서 새 버전 확인
+        self.skip_version: str = ""       # '이 버전 건너뛰기'
         self.follow_save: bool = False    # 게임의 '가장 최근 세이브'를 자동으로 따라가기 (기본: 끔)
         self.output_size: int = 512
         self.prompt_template: str = ""     # 비어 있으면 기본 프롬프트(언어별)
@@ -124,4 +132,24 @@ class Settings:
 
     @property
     def pack_dir(self) -> Path:
-        return Path(self.graphics_dir) / PACK_FOLDER_NAME
+        g = Path(self.graphics_dir)
+        new = g / PACK_FOLDER_NAME
+        if not new.exists():
+            for o in OLD_PACK_FOLDER_NAMES:      # 옮기기에 실패했으면(게임이 잡고 있음 등) 예전 폴더를 계속 쓴다
+                if (g / o / "config.xml").exists():
+                    return g / o
+        return new
+
+    def migrate_pack_dir(self) -> str:
+        """예전 폴더(FacePicker)를 맨 뒤로 오는 이름으로 옮긴다. 돌려주는 값: 'moved' / 'failed' / ''."""
+        g = Path(self.graphics_dir)
+        new = g / PACK_FOLDER_NAME
+        for o in OLD_PACK_FOLDER_NAMES:
+            old = g / o
+            if old.is_dir() and (old / "config.xml").exists() and not new.exists():
+                try:
+                    old.rename(new)
+                    return "moved"
+                except OSError:
+                    return "failed"
+        return ""
