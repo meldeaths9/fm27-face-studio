@@ -25,8 +25,6 @@ PROVIDERS = [
     # id, 이름, 묶음, 사진 참고 가능, 설명
     {"id": "web_gemini", "name": "제미나이 웹", "group": "free_web", "ref": True,
      "url": "https://gemini.google.com/app", "desc": "프롬프트를 복사하고 제미나이를 열어요. 무료 계정으로 하루 여러 장."},
-    {"id": "web_chatgpt", "name": "챗GPT 웹", "group": "free_web", "ref": True,
-     "url": "https://chatgpt.com/", "desc": "프롬프트를 복사하고 챗GPT를 열어요. 무료 계정은 하루 몇 장."},
     {"id": "web_grok", "name": "그록 웹", "group": "free_web", "ref": True,
      "url": "https://grok.com/imagine", "desc": "프롬프트를 복사하고 그록을 열어요."},
     {"id": "cloudflare", "name": "Cloudflare (FLUX)", "group": "free_auto", "ref": False,

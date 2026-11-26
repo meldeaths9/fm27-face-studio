@@ -24,7 +24,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "0.8.2"
+VERSION = "0.8.3"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -83,6 +83,8 @@ BROWSE_MAX = 50       # 첫 화면에 한 번에 보여 줄 최대 인원
 class Api:
     def __init__(self) -> None:
         self._cfg = Settings()
+        if self._cfg.ai_provider not in providers.BY_ID:      # 없어진 AI(챗GPT 웹 등)를 골라 뒀으면 제미나이로
+            self._cfg.ai_provider = "web_gemini"
         self._people = People()
         self._people.set(savedata.load_cache(self._cfg.last_save) if self._cfg.last_save else None)
         self._lock = threading.Lock()
