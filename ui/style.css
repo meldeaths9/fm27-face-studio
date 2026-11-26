@@ -453,3 +453,29 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 7px; border-radius: 6
 @media (max-width: 1480px) { .top .brand small { display: none; } .top .ver { display: none; } }
 @media (max-width: 1320px) { .top .brand b { font-size: 13px; letter-spacing: 1.5px; } .badges .pill { padding-left: 9px; padding-right: 9px; } }
 .ph h2, .ph .step + *, .ai .hd { white-space: nowrap; } .ai .hd { flex-wrap: wrap; row-gap: 6px; }
+/* 카드에 사진 끌어다 놓기 */
+.pcard2 .ph2 { position: relative; }
+.pcard2 .dropcue { position: absolute; inset: 0; display: none; place-items: center; text-align: center; font-size: 12px; font-weight: 800; color: #fff;
+  background: rgba(124,92,255,.55); backdrop-filter: blur(2px); border-radius: inherit; line-height: 1.5; }
+.pcard2.dropon { outline: 2px dashed var(--accent); outline-offset: 3px; transform: scale(1.03); }
+.pcard2.dropon .dropcue { display: grid; }
+.pcard2.dropbusy { opacity: .55; pointer-events: none; }
+.tag.queued { background: rgba(255,184,77,.92); color: #2b1a00; }
+/* 대량 바꾸기 */
+.dlg.bulk { width: min(980px, 94vw); max-height: 88vh; display: flex; flex-direction: column; }
+.dlg.bulk .db { flex: 1; min-height: 0; overflow: auto; white-space: normal; }
+.bulkhelp { border: 2px dashed var(--line2); border-radius: 14px; padding: 26px; text-align: center; font-size: 13.5px; line-height: 1.8; }
+.bulkhelp ul { text-align: left; display: inline-block; margin: 10px 0 16px; padding-left: 18px; color: var(--muted); }
+.bulkhelp code { color: var(--text); background: rgba(255,255,255,.06); padding: 1px 6px; border-radius: 5px; }
+.dlg.bulk.dropon .bulkhelp, .dlg.bulk.dropon .bulktable { outline: 2px dashed var(--accent); outline-offset: 4px; }
+.bulktable table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.bulktable th { text-align: left; font-size: 11.5px; color: var(--muted); font-weight: 700; padding: 6px 8px; position: sticky; top: 0; background: var(--panel); }
+.bulktable td { padding: 6px 8px; border-top: 1px solid rgba(255,255,255,.05); vertical-align: middle; }
+.bulktable img { width: 44px; height: 44px; object-fit: cover; border-radius: 8px; display: block; }
+.bulktable select, .bulktable input { width: 100%; background: var(--panel2); color: var(--text); border: 1px solid var(--line2); border-radius: 8px; padding: 6px 8px; font: inherit; font-size: 12.5px; }
+.bulktable .fn { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.st { font-size: 11.5px; font-weight: 800; padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
+.st.ok { background: rgba(31,209,165,.16); color: #1fd1a5; } .st.multi { background: rgba(255,184,77,.16); color: #ffb84d; }
+.st.none { background: rgba(255,93,115,.14); color: #ff5d73; } .st.skip { background: rgba(255,255,255,.06); color: var(--muted); }
+.st.done { background: rgba(124,92,255,.18); color: #b9a8ff; }
+#mConfirm { z-index: 120 !important; }

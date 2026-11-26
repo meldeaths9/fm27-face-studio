@@ -68,6 +68,7 @@
   <section class="view on panel" id="viewBrowse">
     <div class="ph"><span class="step">1</span><h2>대상 고르기</h2><div class="sp"></div>
       <span class="muted" id="bStat" style="font-size:12px"></span>
+      <button class="btn sm" id="btnBulk" title="폴더 안 사진을 파일 이름으로 짝지어 한꺼번에"><svg class="i"><use href="#i-folder"/></svg>대량으로 바꾸기</button>
       <button class="btn sm" id="btnManual" title="세이브 없이 UID로 바로 편집"><svg class="i"><use href="#i-edit"/></svg>UID로 직접 편집</button></div>
     <div class="pb grow">
       <div class="btool">
@@ -250,6 +251,21 @@
 
 <div class="pop" id="pop"></div>
 <div class="toasts" id="toasts"></div>
+<div class="modal" id="bulkModal"><div class="dlg bulk">
+  <div class="dh"><svg class="i"><use href="#i-folder"/></svg><h3>대량으로 사진 바꾸기</h3><div class="sp"></div><span class="hint" id="bulkSum"></span></div>
+  <div class="db">
+    <div class="bulkhelp" id="bulkHelp">
+      <div>사진 파일 이름으로 사람을 찾아요. <b>사진을 여기에 끌어다 놓거나</b> 폴더를 골라 주세요.</div>
+      <ul><li><code>2002097354.png</code> · <code>r-2002097354.png</code> — 고유번호 (가장 정확)</li>
+      <li><code>Danny McGuire_Marine.png</code> — 이름_팀 (동명이인 구분)</li>
+      <li><code>Danny McGuire.png</code> — 이름만 (동명이인이면 골라 주세요)</li></ul>
+      <button class="btn primary" id="bulkFolder"><svg class="i"><use href="#i-folder"/></svg>폴더 고르기</button>
+    </div>
+    <div class="bulktable" id="bulkTable" hidden></div>
+  </div>
+  <div class="df"><span class="hint grow" id="bulkNote">사진마다 얼굴 맞춤으로 자르고, 지금 꾸미기 설정(이름 넣기 등)을 똑같이 적용해요.</span>
+    <button class="btn" id="bulkClose">닫기</button><button class="btn primary" id="bulkGo" disabled>대기열에 넣기</button></div>
+</div></div>
 <div class="modal" id="keysModal"><div class="dlg" style="width:520px">
   <div class="dh"><span style="font-size:16px">⌨</span><h3>단축키</h3></div>
   <div class="db" style="white-space:normal"><table class="keys">

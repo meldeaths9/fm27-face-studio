@@ -165,11 +165,11 @@ async function doSearch(reset = true) {
   renderBrowse(reset);
 }
 function cardHtml(p, i) {
-  const tag = p.face_state === "ours" ? '<span class="tag ours">내가 넣은 사진</span>' : p.face_state === "none" ? '<span class="tag none">사진 없음</span>' : `<span class="tag">${esc(p.pack)}</span>`;
+  const tag = p.queued ? '<span class="tag queued">대기 중</span>' : p.face_state === "ours" ? '<span class="tag ours">내가 넣은 사진</span>' : p.face_state === "none" ? '<span class="tag none">사진 없음</span>' : `<span class="tag">${esc(p.pack)}</span>`;
   const tag2 = p.me ? '<span class="tag2">내 감독</span>' : p.newgen ? '<span class="tag2" style="background:rgba(31,209,165,.85);color:#03261c">뉴젠</span>' : "";
   const sq = p.squad && p.squad !== "1군" ? ` · ${esc(p.squad)}` : "";
   return `<div class="pcard2" data-i="${i}">${tag}${tag2}
-    <div class="ph2">${p.face ? `<img src="${p.face}" loading="lazy">` : "사진 없음"}</div>
+    <div class="ph2">${p.face ? `<img src="${p.face}" loading="lazy">` : "사진 없음"}<div class="dropcue">사진을 놓으면<br>바로 대기열에</div></div>
     <div class="nm">${esc(p.name)}</div>
     <div class="sub">${esc(p.club || "무소속")}${p.alt ? ` <span class="alt">(${esc(p.alt)})</span>` : ""}${sq}${p.age ? " · " + esc(p.age) + "세" : ""}${p.job && !p.me ? " · " + esc(p.job) : ""}</div></div>`;
 }
@@ -199,6 +199,7 @@ function renderBrowse(reset = true) {
     return;
   }
   g.innerHTML = S.bItems.map(cardHtml).join("");
+  $$(".pcard2", g).forEach((c) => bindCardDrop(c));
   $$(".pcard2", g).forEach((c) => c.onclick = () => {
     c.classList.add("picked");
     setTimeout(() => { c.classList.remove("picked"); pickPerson(S.bItems[+c.dataset.i], +c.dataset.i); }, 130);
@@ -545,12 +546,13 @@ $("#drop").onclick = $("#btnOpen").onclick = () => $("#file").click();
 $("#file").onchange = (e) => { readFile(e.target.files[0]); e.target.value = ""; };
 ["dragenter", "dragover"].forEach((ev) => document.addEventListener(ev, (e) => {
   e.preventDefault();
-  if ($("#pageMake").classList.contains("on")) $("#stage").classList.add("drag");
+  if (inEdit()) $("#stage").classList.add("drag");
 }));
 document.addEventListener("dragleave", (e) => { if (!e.relatedTarget) $("#stage").classList.remove("drag"); });
 document.addEventListener("drop", (e) => {
   e.preventDefault(); $("#stage").classList.remove("drag");
-  if (e.dataTransfer.files.length && $("#pageMake").classList.contains("on")) readFile(e.dataTransfer.files[0]);
+  if (e.dataTransfer.files.length && inEdit()) readFile(e.dataTransfer.files[0]);
+  else if (e.dataTransfer.files.length && $("#viewBrowse").classList.contains("on") && !$("#bulkModal").classList.contains("on")) openBulk(Array.from(e.dataTransfer.files));
 });
 document.addEventListener("paste", (e) => {
   if (e.target.matches("input,textarea")) return;
@@ -1159,3 +1161,138 @@ $("#btnReport").onclick = async () => {
   const r = await call("make_report");
   if (r && r.ok) toast("오류 보고 파일을 만들었어요.\n" + r.path, "ok", 6000);
 };
+
+
+/* ------------------------------------------------------------------ 카드에 사진 끌어다 놓기 */
+function fileToDataUrl(f) {
+  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); });
+}
+function bindCardDrop(c) {
+  let depth = 0;
+  const has = (e) => e.dataTransfer && Array.from(e.dataTransfer.types || []).includes("Files");
+  c.addEventListener("dragenter", (e) => { if (!has(e)) return; e.preventDefault(); depth++; c.classList.add("dropon"); });
+  c.addEventListener("dragover", (e) => { if (!has(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; });
+  c.addEventListener("dragleave", () => { if (--depth <= 0) { depth = 0; c.classList.remove("dropon"); } });
+  c.addEventListener("drop", async (e) => {
+    if (!has(e)) return;
+    e.preventDefault(); e.stopPropagation();
+    depth = 0; c.classList.remove("dropon");
+    const f = Array.from(e.dataTransfer.files).find((x) => /^image\//.test(x.type) || /\.(png|jpe?g|webp|bmp|gif)$/i.test(x.name));
+    if (!f) { toast("사진 파일만 놓을 수 있어요.", "err"); return; }
+    const p = S.bItems[+c.dataset.i];
+    if (!p) return;
+    c.classList.add("dropbusy");
+    const r = await call("quick_add", p, await fileToDataUrl(f));
+    c.classList.remove("dropbusy");
+    if (!r || r.error) return;
+    S.queue = r.queue; renderQueue();
+    p.queued = true; p.face = r.thumb;
+    const img = $(".ph2", c);
+    img.innerHTML = `<img src="${r.thumb}"><div class="dropcue">사진을 놓으면<br>바로 대기열에</div>`;
+    const t = $(".tag", c); if (t) { t.className = "tag queued"; t.textContent = "대기 중"; }
+    c.classList.add("flash"); setTimeout(() => c.classList.remove("flash"), 900);
+    toast(`${p.name} 사진을 대기열에 넣었어요. 얼굴 맞춤으로 자동으로 잘랐어요.\n손볼 건 카드를 눌러 편집하세요.`, "ok", 3500);
+  });
+}
+
+
+
+/* ------------------------------------------------------------------ 대량으로 바꾸기 */
+S.bulk = [];
+const IMG_RE = /\.(png|jpe?g|webp|bmp|gif)$/i;
+function candLabel(c) {
+  if (!c.name) return `UID ${c.uid} (세이브에 없음)`;
+  return `${c.name} · ${c.club || "무소속"}${c.alt ? " (" + c.alt + ")" : ""}${c.age ? " · " + c.age + "세" : ""}${c.me ? " · 내 감독" : ""}`;
+}
+function openBulk(files) {
+  $("#bulkModal").classList.add("on");
+  if (files && files.length) bulkFromFiles(files);
+  else if (!S.bulk.length) { $("#bulkHelp").hidden = false; $("#bulkTable").hidden = true; renderBulkSum(); }
+}
+async function bulkFromFiles(files) {
+  files = files.filter((f) => IMG_RE.test(f.name));
+  if (!files.length) { toast("사진 파일이 없어요.", "err"); return; }
+  const r = await call("bulk_match", files.map((f) => f.name));
+  if (!r) return;
+  if (!r.loaded) toast("세이브를 아직 안 읽어서 이름으로는 못 찾아요. 고유번호 파일만 연결돼요.", "info", 5000);
+  S.bulk = r.rows.map((row, i) => ({ ...row, fileObj: files[i], thumb: URL.createObjectURL(files[i]) }));
+  initPicks(); renderBulk();
+}
+async function bulkFromFolder() {
+  const r = await call("bulk_pick_folder");
+  if (!r || r.cancel) return;
+  if (!r.rows.length) { toast("그 폴더에 사진 파일이 없어요.", "err"); return; }
+  if (!r.loaded) toast("세이브를 아직 안 읽어서 이름으로는 못 찾아요. 고유번호 파일만 연결돼요.", "info", 5000);
+  S.bulk = r.rows; initPicks(); renderBulk();
+}
+function initPicks() {
+  S.bulk.forEach((row) => { row.pick = row.candidates.length ? row.candidates[0].uid : ""; row.manual = ""; row.done = false; });
+}
+function rowStatus(row) {
+  if (row.done) return ["done", "대기열에 넣음"];
+  if (row.pick === "") return row.status === "none" ? ["none", "못 찾음"] : ["skip", "건너뛰기"];
+  if (row.pick === "@manual") return row.manual.trim() ? ["ok", "직접 입력"] : ["none", "UID를 넣어 주세요"];
+  if (row.status === "multi") return ["multi", `동명이인 ${row.candidates.length}명 · 확인`];
+  return ["ok", row.how === "uid" ? "고유번호" : row.how === "team" ? "이름+팀" : "이름"];
+}
+function renderBulk() {
+  $("#bulkHelp").hidden = true; $("#bulkTable").hidden = false;
+  const rows = S.bulk.map((row, i) => {
+    const [cls, txt] = rowStatus(row);
+    const opts = row.candidates.map((c) => `<option value="${esc(c.uid)}" ${row.pick === c.uid ? "selected" : ""}>${esc(candLabel(c))}</option>`).join("")
+      + `<option value="@manual" ${row.pick === "@manual" ? "selected" : ""}>UID 직접 입력…</option><option value="" ${row.pick === "" ? "selected" : ""}>— 건너뛰기 —</option>`;
+    return `<tr data-i="${i}"><td>${row.thumb ? `<img src="${row.thumb}">` : ""}</td><td class="fn" title="${esc(row.file)}">${esc(row.file)}</td>
+      <td><select class="bpick" ${row.done ? "disabled" : ""}>${opts}</select>${row.pick === "@manual" ? `<input class="bman" placeholder="예: r-2002097354" value="${esc(row.manual)}" style="margin-top:4px">` : ""}</td>
+      <td><span class="st ${cls}">${txt}</span></td></tr>`;
+  }).join("");
+  $("#bulkTable").innerHTML = `<table><thead><tr><th></th><th>파일</th><th>연결할 사람</th><th>상태</th></tr></thead><tbody>${rows}</tbody></table>`;
+  $$("#bulkTable tr[data-i]").forEach((tr) => {
+    const row = S.bulk[+tr.dataset.i];
+    $(".bpick", tr).onchange = (e) => { row.pick = e.target.value; if (row.status === "multi" && row.pick && row.pick !== "@manual") row.status = "ok"; renderBulk(); };
+    const m = $(".bman", tr); if (m) m.oninput = (e) => { row.manual = e.target.value; renderBulkSum(); const [c, t] = rowStatus(row); const st = $(".st", tr); st.className = "st " + c; st.textContent = t; };
+  });
+  renderBulkSum();
+}
+function bulkTargets() {
+  return S.bulk.filter((r) => !r.done && r.pick && (r.pick !== "@manual" || r.manual.trim()));
+}
+function renderBulkSum() {
+  const n = S.bulk.length, go = bulkTargets().length;
+  const multi = S.bulk.filter((r) => !r.done && r.status === "multi" && r.pick).length;
+  const none = S.bulk.filter((r) => rowStatus(r)[0] === "none").length;
+  $("#bulkSum").textContent = n ? `사진 ${n}장 · 넣을 사람 ${go}명${multi ? ` · 확인 필요 ${multi}` : ""}${none ? ` · 못 찾음 ${none}` : ""}` : "";
+  $("#bulkGo").disabled = !go;
+  $("#bulkGo").textContent = go ? `${go}명 대기열에 넣기` : "대기열에 넣기";
+}
+$("#btnBulk").onclick = () => openBulk();
+$("#bulkFolder").onclick = bulkFromFolder;
+$("#bulkClose").onclick = () => $("#bulkModal").classList.remove("on");
+$("#bulkGo").onclick = async () => {
+  const list = bulkTargets();
+  const multi = list.filter((r) => r.status === "multi").length;
+  if (multi && !await confirmBox("동명이인 확인", `동명이인이라 첫 번째 후보로 고른 사진이 ${multi}장 있어요. 노란 줄을 확인했나요?\n\n그대로 넣을까요?`, "그대로 넣기")) return;
+  $("#bulkGo").disabled = true;
+  let ok = 0;
+  for (const [k, row] of list.entries()) {
+    $("#bulkNote").textContent = `넣는 중… ${k + 1} / ${list.length}  (${row.file})`;
+    const person = row.pick === "@manual" ? { uid: row.manual.trim(), name: "", kind: S.kind === "manager" ? "staff" : S.kind, newgen: /^r-/i.test(row.manual.trim()) }
+      : row.candidates.find((c) => c.uid === row.pick);
+    const data = row.fileObj ? await fileToDataUrl(row.fileObj) : "";
+    const r = await call("bulk_add_one", person, row.path || "", data);
+    if (r && r.ok) { row.done = true; ok++; }
+  }
+  $("#bulkNote").textContent = `${ok}명을 대기열에 넣었어요. 오른쪽 '한 번에 적용'을 누르면 게임에 들어가요.`;
+  const q = await call("queue_view"); if (q) { S.queue = q.queue; renderQueue(); }
+  renderBulk(); doSearch(true);
+  toast(`${ok}명을 대기열에 넣었어요.`, "ok", 3000);
+};
+(function bulkDrop() {
+  const dlg = $(".dlg.bulk");
+  dlg.addEventListener("dragover", (e) => { e.preventDefault(); e.stopPropagation(); dlg.classList.add("dropon"); });
+  dlg.addEventListener("dragleave", (e) => { if (!dlg.contains(e.relatedTarget)) dlg.classList.remove("dropon"); });
+  dlg.addEventListener("drop", (e) => {
+    e.preventDefault(); e.stopPropagation(); dlg.classList.remove("dropon");
+    const files = Array.from(e.dataTransfer.files || []);
+    if (files.length) bulkFromFiles(files);
+  });
+})();

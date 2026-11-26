@@ -24,7 +24,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "0.9.1"
+VERSION = "0.10.0"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -361,12 +361,17 @@ class Api:
         elif filt == "ours":
             items = [p for p in items if (face_of(p) or {}).get("ours")]
         page = []
+        queued = {it["uid"]: it for it in self._queue}
         for p in items[int(offset):int(offset) + int(limit)]:
             f = face_of(p)
             d = dict(p)
             d["face"] = self._face_thumb(f["path"]) if f else ""
             d["face_state"] = "ours" if f and f.get("ours") else "has" if f else "none"
             d["pack"] = f["pack"] if f else ""
+            q = queued.get(str(p.get("uid", "")).removeprefix("r-"))
+            if q:
+                d["queued"] = True
+                d["face"] = _thumb_url(Path(q["png"]), 160)
             page.append(d)
         return {"total": len(items), "items": page, "offset": 0, "max": BROWSE_MAX,
                 "index": {"building": idx.building, "count": len(idx.map), "configs": idx.configs},
@@ -838,11 +843,16 @@ class Api:
         dup = [it for it in self._queue if it["uid"] == uid]
         if dup and not replace:
             return {"confirm": "duplicate"}
-        for it in dup:
+        b = imaging.clamp_box(src, *(float(v) for v in box))
+        self._queue_put(person, uid, prefixed, src, b, deco)
+        return {"queue": self._queue_view()}
+
+    def _queue_put(self, person: dict, uid: str, prefixed: bool, src, box, deco: dict) -> dict:
+        """사진 하나를 잘라 꾸며서 대기열에 넣는다 (같은 사람이 있으면 바꾼다)."""
+        for it in [i for i in self._queue if i["uid"] == uid]:
             Path(it["png"]).unlink(missing_ok=True)
             self._queue.remove(it)
-        b = imaging.clamp_box(src, *(float(v) for v in box))
-        out = decorate(imaging.render(src, b, int(self._cfg.output_size or 512)), Deco.from_dict(deco))
+        out = decorate(imaging.render(src, box, int(self._cfg.output_size or 512)), Deco.from_dict(deco))
         iid = uuid.uuid4().hex
         png = self._qdir / f"{iid}.png"
         out.save(png, "PNG", optimize=True)
@@ -855,6 +865,102 @@ class Api:
             self._cfg.manager_uid = uid
             self._cfg.save()
         self._save_queue()
+        return self._queue[-1]
+
+    @_safe
+    def quick_add(self, person: dict, data_url: str) -> dict:
+        """카드에 사진을 끌어다 놓았을 때: 얼굴 맞춤으로 자르고 지금 꾸미기 설정으로 바로 대기열에."""
+        uid, prefixed = _clean_uid(person.get("uid"))
+        if not uid:
+            return {"error": "이 사람의 UID를 알 수 없어요."}
+        src = _from_data_url(data_url)
+        box = imaging.auto_box(src)
+        deco = dict(self._cfg.deco or {})
+        deco["text"] = str(person.get("name", "")).strip()
+        it = self._queue_put(person, uid, prefixed, src, box, deco)
+        return {"queue": self._queue_view(), "thumb": _thumb_url(Path(it["png"]), 160), "uid": uid}
+
+    # ---------------------------------------------------------------- 대량 사진 바꾸기
+    _IMG_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
+
+    def _match_name(self, stem: str) -> dict:
+        """파일 이름 → 사람. UID / 이름_팀 / 이름 순서로 찾는다."""
+        from .people import norm
+        import re as _re
+        s = stem.strip()
+        m = _re.fullmatch(r"(?i)(r-)?(\d{3,12})", s)
+        if m:
+            uid = m.group(2)
+            hit = [p for p in self._people.items if str(p.get("uid", "")).removeprefix("r-") == uid]
+            if hit:
+                return {"status": "ok", "how": "uid", "candidates": [self._cand(hit[0])]}
+            return {"status": "ok", "how": "uid", "candidates": [{"uid": ("r-" if m.group(1) else "") + uid,
+                    "name": "", "club": "", "age": "", "kind": "player", "newgen": bool(m.group(1))}]}
+        name, team = s, ""
+        if "_" in s:
+            name, team = s.rsplit("_", 1)
+        n, t = norm(name.replace("_", " ")), norm(team)
+        if not n or not self._people.items:
+            return {"status": "none", "how": "", "candidates": []}
+        exact = [p for p in self._people.items if norm(p.get("name")) == n]
+        if t:
+            exact_t = [p for p in exact if t in norm(p.get("club"))]
+            exact = exact_t or exact
+        if not exact:
+            toks = n.split()
+            exact = [p for p in self._people.items if all(x in norm(p.get("name")) for x in toks)
+                     and (not t or t in norm(p.get("club")))]
+        exact.sort(key=lambda p: (not p.get("me"), not p.get("mine"), bool(p.get("alt")), p.get("kind") != "player"))
+        cands = [self._cand(p) for p in exact[:8]]
+        if not cands:
+            return {"status": "none", "how": "", "candidates": []}
+        return {"status": "ok" if len(exact) == 1 else "multi", "how": "team" if t else "name", "candidates": cands}
+
+    @staticmethod
+    def _cand(p: dict) -> dict:
+        return {k: p.get(k, "") for k in ("uid", "name", "club", "age", "kind", "newgen", "me", "alt", "squad")}
+
+    @_safe
+    def bulk_match(self, names: list) -> dict:
+        """파일 이름 목록을 사람과 짝짓는다 (끌어다 놓은 파일용)."""
+        return {"rows": [{"file": n, **self._match_name(Path(str(n)).stem)} for n in names],
+                "loaded": bool(self._people.items)}
+
+    @_safe
+    def bulk_pick_folder(self) -> dict:
+        """폴더를 고르면 안의 사진 파일을 모두 짝지어 돌려준다."""
+        if not self._window:
+            return {"error": "창이 없어요."}
+        import webview
+        r = self._window.create_file_dialog(webview.FileDialog.FOLDER)
+        if not r:
+            return {"cancel": True}
+        folder = Path(r[0] if isinstance(r, (list, tuple)) else r)
+        files = sorted(p for p in folder.iterdir() if p.suffix.lower() in self._IMG_EXT)[:1000]
+        rows = []
+        for f in files:
+            row = {"file": f.name, "path": str(f), **self._match_name(f.stem)}
+            try:
+                row["thumb"] = _thumb_url(f, 72)
+            except Exception:  # noqa: BLE001
+                row["thumb"] = ""
+            rows.append(row)
+        return {"rows": rows, "folder": str(folder), "loaded": bool(self._people.items)}
+
+    @_safe
+    def bulk_add_one(self, person: dict, path: str = "", data_url: str = "") -> dict:
+        """대량 바꾸기의 한 줄: 얼굴 맞춤으로 자르고 지금 꾸미기로 대기열에."""
+        uid, prefixed = _clean_uid(person.get("uid"))
+        if not uid:
+            return {"error": "UID가 없어요."}
+        src = imaging.load_image(path) if path else _from_data_url(data_url)
+        deco = dict(self._cfg.deco or {})
+        deco["text"] = str(person.get("name", "")).strip()
+        self._queue_put(person, uid, prefixed, src, imaging.auto_box(src), deco)
+        return {"ok": True, "count": len(self._queue)}
+
+    @_safe
+    def queue_view(self) -> dict:
         return {"queue": self._queue_view()}
 
     @_safe
