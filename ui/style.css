@@ -381,3 +381,40 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px;
 .capnote{grid-column:1/-1;text-align:center;color:var(--muted);font-size:12.5px;padding:14px}
 .pcard2 .sub .alt{color:var(--warn);font-weight:600}
 #refMode .chip{padding:3px 9px;font-size:11.5px}
+/* v0.8 — 제목줄·편집 상단 바·전환 효과·단축키 */
+.top { height: 56px; padding-right: 0; user-select: none; }
+.winctl { display: flex; align-self: stretch; margin-left: 6px; }
+.winctl button { width: 46px; border: 0; background: transparent; color: var(--muted); cursor: pointer; display: grid; place-items: center; transition: background .15s, color .15s; }
+.winctl button:hover { background: rgba(255,255,255,.07); color: var(--text); }
+.winctl button.close:hover { background: #e5484d; color: #fff; }
+.winctl svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.3; }
+.grip { position: fixed; z-index: 90; }
+.grip-r { top: 0; right: 0; width: 5px; height: 100%; cursor: ew-resize; }
+.grip-b { left: 0; bottom: 0; height: 5px; width: 100%; cursor: ns-resize; }
+.grip-rb { right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; }
+body.maxed .grip { display: none; }
+#viewEdit.on { grid-template-rows: auto minmax(0, 1fr); }
+.editbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; padding: 10px 14px; border-radius: 16px;
+  background: linear-gradient(90deg, rgba(124,92,255,.16), rgba(124,92,255,.04)); border: 1px solid rgba(124,92,255,.28); }
+.backbtn { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 18px 0 14px; border-radius: 12px; border: 0; cursor: pointer;
+  font: inherit; font-size: 14.5px; font-weight: 800; color: #fff; background: var(--accent); box-shadow: 0 6px 18px rgba(124,92,255,.35); transition: transform .15s, filter .15s; }
+.backbtn:hover { filter: brightness(1.12); transform: translateX(-2px); }
+.backbtn .i { width: 18px; height: 18px; }
+.crumb { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); min-width: 0; }
+.crumb b { color: var(--text); font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pn { display: flex; align-items: center; gap: 6px; }
+.pnc { font-size: 12px; color: var(--muted); min-width: 54px; text-align: center; }
+@keyframes inRight { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: none; } }
+@keyframes inLeft { from { opacity: 0; transform: translateX(-40px); } to { opacity: 1; transform: none; } }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(10px) scale(.99); } to { opacity: 1; transform: none; } }
+.view.anim-in-r { animation: inRight .26s cubic-bezier(.2,.8,.2,1); }
+.view.anim-in-l { animation: inLeft .26s cubic-bezier(.2,.8,.2,1); }
+.view.anim-swap > .panel { animation: fadeUp .22s ease; }
+.pcard2.picked { transform: scale(1.04); box-shadow: 0 0 0 2px var(--accent), 0 12px 30px rgba(124,92,255,.35); transition: transform .14s, box-shadow .14s; }
+.pcard2.flash { box-shadow: 0 0 0 2px var(--accent); transition: box-shadow .6s; }
+table.keys { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.keys td { padding: 8px 4px; border-bottom: 1px solid rgba(255,255,255,.06); }
+table.keys td:last-child { color: var(--muted); text-align: right; }
+kbd { display: inline-block; min-width: 22px; padding: 2px 7px; border-radius: 6px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14);
+  border-bottom-width: 2px; font: 600 11.5px/1.4 inherit; text-align: center; color: var(--text); }
+#curLook { margin-top: 4px; font-size: 11.5px; }

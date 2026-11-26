@@ -20,7 +20,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string Id = "kr.fm27facestudio.plugin";
     public const string Name = "FM27 Face Studio";
-    public const string Version = "0.4.0";
+    public const string Version = "0.5.0";
 
     internal static ManualLogSource L = null!;
     internal static Harmony H = null!;
@@ -32,6 +32,7 @@ public sealed class Plugin : BasePlugin
         Bridge.Init();
         AddComponent<Runner>();
         ManagerFace.Install();
+        Appearance.Install();
         L.LogInfo($"{Name} {Version} 준비됨 — 통신 폴더: {Bridge.Dir}");
     }
 }
@@ -84,6 +85,7 @@ public sealed class Runner : MonoBehaviour
             PollCommand();
         }
         Diag.Tick(now);
+        Appearance.Tick(now);
     }
 
     private void Heartbeat()
@@ -100,6 +102,7 @@ public sealed class Runner : MonoBehaviour
                 manager_photo = ManagerFace.HasPhoto,
                 manager_hits = ManagerFace.Hits,
                 manager_shots = ManagerFace.Shots,
+                appearance_count = Appearance.Count,
                 last = _lastResult,
             });
         }
@@ -597,5 +600,96 @@ internal static class ManagerFace
         if (__0 is null || _orig == IntPtr.Zero || __0.Pointer != _orig) return;
         var p = Photo();
         if (p is not null) { __0 = p; Hits++; }
+    }
+}
+
+
+/// <summary>
+/// 게임이 뉴젠 얼굴을 그리기 직전에 만드는 '외모 문자열'(인종·피부색·머리 등)을 UID와 짝지어 appearance.json에 모은다.
+/// 앱이 이 값으로 AI 프롬프트에 그 사람의 실제 외모 설정을 넣는다.
+/// </summary>
+internal static class Appearance
+{
+    private static readonly Dictionary<string, string> Map = new();
+    private static IntPtr _lastRef = IntPtr.Zero;
+    private static string? _lastCode;
+    private static int _lastFrame = -1;
+    private static bool _dirty;
+    private static float _nextFlush;
+    public static int Count => Map.Count;
+    private static string FilePath => Path.Combine(Bridge.Dir, "appearance.json");
+
+    public static void Install()
+    {
+        try
+        {
+            if (File.Exists(FilePath))
+            {
+                var old = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(FilePath));
+                if (old is not null) foreach (var kv in old) Map[kv.Key] = kv.Value;
+            }
+        }
+        catch { }
+        var flags = System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic;
+        try
+        {
+            var t = typeof(FM.UI.DatabaseObjectImageHelpers);
+            var enc = AccessTools.Method(t, "EncodeNewgenAppearanceDescription");
+            Plugin.H.Patch(enc, postfix: new HarmonyMethod(typeof(Appearance).GetMethod(nameof(EncodePost), flags)));
+            foreach (var m in AccessTools.GetDeclaredMethods(t).Where(m => m.Name == "ConvertDynamicReferenceToAddressableID"))
+            {
+                var ps = m.GetParameters();
+                if (ps.Length == 0 || ps[0].ParameterType != typeof(SI.Bindable.DynamicReference)) continue;
+                Plugin.H.Patch(m, postfix: new HarmonyMethod(typeof(Appearance).GetMethod(nameof(ConvertPost), flags)));
+            }
+            Plugin.L.LogInfo($"외모 기록 준비 (지금까지 {Map.Count}명)");
+        }
+        catch (Exception e) { Plugin.L.LogWarning("외모 기록 연결 실패: " + e.Message); }
+    }
+
+    private static void EncodePost(SI.Bindable.DynamicReference __0, string __result)
+    {
+        try
+        {
+            _lastRef = __0 is null ? IntPtr.Zero : __0.Pointer;
+            _lastCode = __result;
+            _lastFrame = Time.frameCount;
+        }
+        catch { }
+    }
+
+    private static void ConvertPost(SI.Bindable.DynamicReference __0, string __result)
+    {
+        try
+        {
+            if (_lastCode is null || __result is null) return;
+            string uid;
+            if (__result.StartsWith("newgen_")) uid = __result.Substring(7);
+            else return;
+            var same = __0 is not null && __0.Pointer == _lastRef;
+            if (!same && Time.frameCount != _lastFrame) return;
+            if (!Map.TryGetValue(uid, out var cur) || cur != _lastCode)
+            {
+                Map[uid] = _lastCode;
+                _dirty = true;
+            }
+            _lastCode = null;
+        }
+        catch { }
+    }
+
+    public static void Tick(float now)
+    {
+        if (!_dirty || now < _nextFlush) return;
+        _nextFlush = now + 3f;
+        _dirty = false;
+        try
+        {
+            var tmp = FilePath + ".tmp";
+            File.WriteAllText(tmp, JsonSerializer.Serialize(Map), new UTF8Encoding(false));
+            File.Copy(tmp, FilePath, true);
+            File.Delete(tmp);
+        }
+        catch (Exception e) { Plugin.L.LogWarning("외모 기록 저장 실패: " + e.Message); }
     }
 }

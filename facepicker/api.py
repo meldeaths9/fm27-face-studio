@@ -24,7 +24,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "0.7.3"
+VERSION = "0.8.0"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -105,6 +105,46 @@ class Api:
 
     def _set_window(self, w) -> None:
         self._window = w
+        self._maxed = False
+        try:
+            w.events.maximized += lambda *a: setattr(self, "_maxed", True)
+            w.events.restored += lambda *a: setattr(self, "_maxed", False)
+        except Exception:  # noqa: BLE001
+            pass
+
+    # ---------------------------------------------------------------- 창 (제목줄을 직접 그린다)
+    def win_state(self) -> dict:
+        w = self._window
+        if not w:
+            return {"maximized": False, "width": 1440, "height": 900}
+        return {"maximized": bool(getattr(self, "_maxed", False)), "width": int(w.width), "height": int(w.height)}
+
+    def win_min(self) -> bool:
+        if self._window:
+            self._window.minimize()
+        return True
+
+    def win_toggle_max(self) -> bool:
+        w = self._window
+        if not w:
+            return False
+        if getattr(self, "_maxed", False):
+            w.restore()
+            self._maxed = False
+        else:
+            w.maximize()
+            self._maxed = True
+        return self._maxed
+
+    def win_resize(self, width: int, height: int) -> bool:
+        if self._window and not getattr(self, "_maxed", False):
+            self._window.resize(max(1240, int(width)), max(760, int(height)))
+        return True
+
+    def win_close(self) -> bool:
+        if self._window:
+            self._window.destroy()
+        return True
 
     # ---------------------------------------------------------------- 상태
     def _pack(self) -> FacePack:
@@ -331,9 +371,10 @@ class Api:
     def current_face(self, uid: str) -> dict:
         clean, _ = _clean_uid(uid)
         f = self._index.get(clean)
+        look = gamesetup.appearance(clean)
         if not f:
-            return {"face": "", "pack": "", "ours": False}
-        return {"face": self._face_thumb(f["path"], 300), "pack": f["pack"], "ours": f.get("ours", False)}
+            return {"face": "", "pack": "", "ours": False, "look": look}
+        return {"face": self._face_thumb(f["path"], 300), "pack": f["pack"], "ours": f.get("ours", False), "look": look}
 
     @_safe
     def load_existing(self, uid: str) -> dict:

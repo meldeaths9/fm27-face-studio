@@ -271,3 +271,20 @@ def write_manager_photo(png: Path) -> None:
 
 def clear_manager_photo() -> None:
     manager_photo_path().unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------- 게임 외모 코드 (플러그인이 모음)
+_APP_CACHE: dict = {"mtime": 0.0, "map": {}}
+
+
+def appearance(uid: str) -> str:
+    """게임이 뉴젠 얼굴을 그릴 때 쓰는 외모 문자열. 게임에서 한 번이라도 얼굴이 뜬 사람만 있다."""
+    p = bridge_dir() / "appearance.json"
+    try:
+        m = p.stat().st_mtime
+        if m != _APP_CACHE["mtime"]:
+            _APP_CACHE["map"] = json.loads(p.read_text(encoding="utf-8-sig"))
+            _APP_CACHE["mtime"] = m
+    except (OSError, ValueError):
+        return ""
+    return _APP_CACHE["map"].get(str(uid).removeprefix("r-"), "")

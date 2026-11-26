@@ -103,6 +103,7 @@ def main() -> None:
         js_api=api,
         width=1440, height=900, min_size=(1240, 760),
         background_color="#0a0f1d",
+        frameless=True, easy_drag=False,      # 제목줄은 앱이 직접 그린다 (헤더를 잡고 끌기)
     )
     api._set_window(window)
     window.events.shown += close_splash

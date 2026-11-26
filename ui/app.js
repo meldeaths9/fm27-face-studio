@@ -199,7 +199,10 @@ function renderBrowse(reset = true) {
     return;
   }
   g.innerHTML = S.bItems.map(cardHtml).join("");
-  $$(".pcard2", g).forEach((c) => c.onclick = () => pickPerson(S.bItems[+c.dataset.i]));
+  $$(".pcard2", g).forEach((c) => c.onclick = () => {
+    c.classList.add("picked");
+    setTimeout(() => { c.classList.remove("picked"); pickPerson(S.bItems[+c.dataset.i], +c.dataset.i); }, 130);
+  });
   more.innerHTML = S.bTotal > S.bItems.length ? `<div class="capnote">최대 ${S.bMax}명까지만 보여요 (전체 ${S.bTotal.toLocaleString()}명). 이름이나 팀을 더 입력해 주세요.</div>` : "";
   if (S.kind === "manager" && S.bItems.length) more.innerHTML = `<div class="capnote">내 감독 사진은 플러그인이 있어야 게임에 반영돼요. (감독 사진은 config.xml로는 안 바뀌어요)</div>`;
   if (reset) $("#bwrap").scrollTop = 0;
@@ -227,14 +230,48 @@ $("#btnMyTeam").onclick = () => {
 $$("#kindSeg button").forEach((b) => b.onclick = () => { setKind(b.dataset.kind); doSearch(true); });
 
 /* 화면 전환 */
+function animate(el, cls) {
+  el.classList.remove("anim-in-r", "anim-in-l", "anim-swap");
+  void el.offsetWidth;
+  el.classList.add(cls);
+  el.addEventListener("animationend", () => el.classList.remove(cls), { once: true });
+}
 function showView(v) {
+  const was = $("#viewEdit").classList.contains("on") ? "edit" : "browse";
   $("#viewBrowse").classList.toggle("on", v === "browse");
   $("#viewEdit").classList.toggle("on", v === "edit");
-  if (v === "edit") requestAnimationFrame(drawStage);
+  if (v === "edit") { if (was !== "edit") animate($("#viewEdit"), "anim-in-r"); requestAnimationFrame(drawStage); }
+  else if (was === "edit") animate($("#viewBrowse"), "anim-in-l");
 }
-$("#btnBack").onclick = () => { showView("browse"); doSearch(true); };
+function inEdit() { return $("#viewEdit").classList.contains("on") && $("#pageMake").classList.contains("on"); }
+async function goBack() {
+  if (!inEdit()) return;
+  showView("browse");
+  await doSearch(true);
+  const i = S.bItems.findIndex((p) => p.uid === S.selUid);
+  const c = i >= 0 ? $(`.pcard2[data-i="${i}"]`) : null;
+  if (c) { c.scrollIntoView({ block: "nearest" }); c.classList.add("flash"); setTimeout(() => c.classList.remove("flash"), 900); }
+}
+$("#btnBack").onclick = goBack;
+function updatePN() {
+  const i = S.curIdx ?? -1, n = S.bItems.length;
+  const show = i >= 0 && n > 1 && S.bItems[i] && S.bItems[i].uid === S.selUid;
+  $(".pn").style.visibility = show ? "visible" : "hidden";
+  if (!show) return;
+  $("#pnCount").textContent = `${i + 1} / ${n}`;
+  $("#btnPrev").disabled = i <= 0;
+  $("#btnNext").disabled = i >= n - 1;
+}
+async function stepPerson(d) {
+  const i = (S.curIdx ?? -1) + d;
+  if (!inEdit() || i < 0 || i >= S.bItems.length) return;
+  animate($("#viewEdit"), "anim-swap");
+  await pickPerson(S.bItems[i], i);
+}
+$("#btnPrev").onclick = () => stepPerson(-1);
+$("#btnNext").onclick = () => stepPerson(1);
 function openManual() {
-  S.selUid = null;
+  S.selUid = null; S.curIdx = -1;
   fillPerson({ kind: S.kind === "manager" ? "staff" : S.kind, me: S.kind === "manager", newgen: S.kind === "support" || S.kind === "manager" });
   if (S.kind === "support") $("#fUid").value = "r-";
   resetEditor();
@@ -264,6 +301,10 @@ function showCurrent(r) {
     $("#curFrom").textContent = r ? "지금은 사진이 없어요 (게임 기본 얼굴)" : "";
     $("#btnUseCur").hidden = true;
   }
+  const lk = $("#curLook");
+  lk.hidden = !(r && r.look);
+  if (r && r.look) lk.textContent = "게임 외모 기록 있음 · " + r.look;
+  if (S.selUid == null) updatePN();
 }
 $("#btnUseCur").onclick = async () => {
   const uid = $("#fUid").value.trim();
@@ -296,10 +337,12 @@ function fillPerson(p) {
   syncDecoText();
   updateCard();
 }
-async function pickPerson(p) {
+async function pickPerson(p, idx) {
   S.selUid = p.uid;
+  S.curIdx = typeof idx === "number" ? idx : -1;
   fillPerson(p);
   showView("edit");
+  updatePN();
   S.promptDirty = false;
   const cur = await call("current_face", p.uid);
   showCurrent(cur || { face: "" });
@@ -329,6 +372,7 @@ $("#fUid").addEventListener("input", async () => {
 function updateCard() {
   const p = person();
   $("#whoName").textContent = p.name || "이름 없음";
+  $("#crumbName").textContent = p.name || (p.uid ? p.uid : "새 인물");
   $("#whoSub").textContent = [p.club || "소속 없음", p.age ? p.age + "세" : ""].filter(Boolean).join(" · ");
   $("#pvName").textContent = p.name || "이름 없음";
   $("#pvSub").textContent = [p.club || "소속 없음", p.age ? p.age + "세" : ""].filter(Boolean).join(" · ");
@@ -1014,5 +1058,99 @@ function applyState(st) {
   refreshAppliedCount();
   doSearch(true);
   pollStatus();
+  refreshMax();
   setInterval(pollStatus, 3000);
+})();
+
+
+/* ------------------------------------------------------------------ 단축키 */
+function openKeys() { $("#keysModal").classList.add("on"); }
+$("#keysX").onclick = () => $("#keysModal").classList.remove("on");
+$("#btnKeys").onclick = openKeys;
+function typing(e) {
+  const t = e.target;
+  return t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+}
+document.addEventListener("keydown", (e) => {
+  const anyModal = $(".modal.on");
+  if (e.key === "Escape") {
+    if (anyModal) { anyModal.classList.remove("on"); e.preventDefault(); return; }
+    if ($("#pop").classList.contains("on")) { closePop(); return; }
+    if (inEdit() && !typing(e)) { e.preventDefault(); goBack(); }
+    else if (inEdit() && typing(e)) e.target.blur();
+    return;
+  }
+  if (anyModal) return;
+  const ctrl = e.ctrlKey || e.metaKey;
+  if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+    e.preventDefault();
+    if (!inEdit()) return;
+    if (e.key === "ArrowRight") stepPerson(1);
+    else if ((S.curIdx ?? -1) > 0) stepPerson(-1); else goBack();
+    return;
+  }
+  if (ctrl && e.shiftKey && (e.key === "C" || e.key === "c")) {
+    if (!inEdit()) return;
+    e.preventDefault();
+    copyText($("#prompt").value).then(() => toast("프롬프트를 복사했어요.", "ok", 1800));
+    return;
+  }
+  if (ctrl && (e.key === "g" || e.key === "G")) { if (inEdit()) { e.preventDefault(); $("#btnAI").click(); } return; }
+  if (ctrl && e.key === "Enter") { if (inEdit() && !$("#btnAdd").disabled) { e.preventDefault(); $("#btnAdd").click(); } return; }
+  if (ctrl && (e.key === "f" || e.key === "F")) {
+    e.preventDefault();
+    if (!$("#pageMake").classList.contains("on")) $$(".tab")[0].click();
+    if (inEdit()) goBack();
+    setTimeout(() => { $("#qName").focus(); $("#qName").select(); }, 60);
+    return;
+  }
+  if (e.key === "?" && !typing(e)) { e.preventDefault(); openKeys(); }
+});
+// 마우스 뒤로가기 버튼(엄지 버튼)
+window.addEventListener("mousedown", (e) => { if (e.button === 3 || e.button === 4) e.preventDefault(); });
+window.addEventListener("mouseup", (e) => {
+  if (e.button === 3) { e.preventDefault(); goBack(); }
+  else if (e.button === 4) { e.preventDefault(); if (inEdit()) stepPerson(1); }
+});
+
+/* ------------------------------------------------------------------ 제목줄 (창 버튼·크기 조절) */
+async function refreshMax() {
+  const r = await call("win_state");
+  const m = !!(r && r.maximized);
+  document.body.classList.toggle("maxed", m);
+  $("#wMax").title = m ? "이전 크기로" : "최대화";
+  $("#wMax").innerHTML = m
+    ? '<svg viewBox="0 0 12 12"><rect x="2" y="3.6" width="6.4" height="6.4" rx="1"/><path d="M4 3.6V2.6a.6.6 0 0 1 .6-.6h4.8a.6.6 0 0 1 .6.6v4.8a.6.6 0 0 1-.6.6H8.4"/></svg>'
+    : '<svg viewBox="0 0 12 12"><rect x="2.2" y="2.2" width="7.6" height="7.6" rx="1"/></svg>';
+}
+$("#wMin").onclick = () => call("win_min");
+$("#wMax").onclick = async () => { await call("win_toggle_max"); refreshMax(); };
+$("#wClose").onclick = () => call("win_close");
+["#dragFill", ".brand"].forEach((sel) => $(sel).addEventListener("dblclick", async () => { await call("win_toggle_max"); refreshMax(); }));
+(function grips() {
+  let drag = null, pending = null, busyR = false;
+  async function flush() {
+    if (busyR || !pending) return;
+    busyR = true;
+    const p = pending; pending = null;
+    await call("win_resize", p.w, p.h);
+    busyR = false;
+    if (pending) flush();
+  }
+  $$(".grip").forEach((g) => g.addEventListener("mousedown", async (e) => {
+    e.preventDefault();
+    const st = await call("win_state");
+    if (!st || st.maximized) return;
+    drag = { kind: g.dataset.g, x: e.screenX, y: e.screenY, w: st.width, h: st.height };
+  }));
+  window.addEventListener("mousemove", (e) => {
+    if (!drag) return;
+    const dx = e.screenX - drag.x, dy = e.screenY - drag.y;
+    pending = {
+      w: Math.max(1240, drag.w + (drag.kind.includes("r") ? dx : 0)),
+      h: Math.max(760, drag.h + (drag.kind.includes("b") ? dy : 0)),
+    };
+    flush();
+  });
+  window.addEventListener("mouseup", () => { drag = null; });
 })();
