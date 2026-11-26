@@ -1,4 +1,4 @@
-// FM27 Face Studio 플러그인
+// FM Face Studio 플러그인
 // - 실시간 반영: 프로그램이 "refresh"를 요청하면 게임이 사용자 graphics 폴더(config.xml 포함)를 다시 읽게 한다.
 // - 진단: 게임이 요청하는 사진 키와 데이터 바인딩 구조를 기록해 감독 사진·지원 스태프 작업에 쓴다.
 // 프로그램과는 %APPDATA%\FM27FacePicker\plugin 폴더의 작은 JSON 파일로만 주고받는다.
@@ -19,7 +19,7 @@ namespace FaceStudio;
 public sealed class Plugin : BasePlugin
 {
     public const string Id = "kr.fm27facestudio.plugin";
-    public const string Name = "FM27 Face Studio";
+    public const string Name = "FM Face Studio";
     public const string Version = "0.5.0";
 
     internal static ManualLogSource L = null!;
@@ -254,7 +254,7 @@ internal static class Diag
         _until = Time.realtimeSinceStartup + Math.Clamp(seconds, 10, 900);
         _file = Path.Combine(Bridge.DiagDir, $"diag-{DateTime.Now:yyyyMMdd-HHmmss}.txt");
         var report = new StringBuilder();
-        report.AppendLine($"FM27 Face Studio 진단 {DateTime.Now:yyyy-MM-dd HH:mm:ss}, plugin {Plugin.Version}");
+        report.AppendLine($"FM Face Studio 진단 {DateTime.Now:yyyy-MM-dd HH:mm:ss}, plugin {Plugin.Version}");
         report.AppendLine($"Unity {Application.unityVersion}, game {Application.version}");
         report.AppendLine();
         report.AppendLine("== 바인딩 루트 ==");

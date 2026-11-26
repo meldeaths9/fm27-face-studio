@@ -24,7 +24,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "0.8.4"
+VERSION = "0.9.0"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -466,6 +466,49 @@ class Api:
         return gamesetup.command("diag_stop", timeout=10)
 
     @_safe
+    @_safe
+    def make_report(self) -> dict:
+        """사용자가 개발자에게 보낼 '오류 보고 파일'. 바탕화면에 txt로 만든다. API 키는 넣지 않는다."""
+        import datetime
+        import platform
+
+        def tail(path: Path, n: int = 300) -> str:
+            try:
+                lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+                return "\n".join(lines[-n:]) or "(비어 있음)"
+            except OSError:
+                return "(없음)"
+
+        out = []
+        now = datetime.datetime.now()
+        out.append(f"FM Face Studio 오류 보고  {now:%Y-%m-%d %H:%M:%S}")
+        out.append(f"버전 {VERSION} · {platform.platform()} · Python {platform.python_version()}")
+        c = self._cfg
+        safe = {k: v for k, v in c.__dict__.items() if k not in ("ai_cfg", "club_hints")}
+        safe["ai_cfg"] = {pid: {"model": (v or {}).get("model", ""), "has_key": bool((v or {}).get("key"))}
+                          for pid, v in (c.ai_cfg or {}).items()}
+        out.append("\n== 설정 (API 키 제외) ==\n" + json.dumps(safe, ensure_ascii=False, indent=1, default=str))
+        try:
+            st = gamesetup.status(c.game_dir)
+            out.append("\n== 게임·플러그인 상태 ==\n" + json.dumps(st, ensure_ascii=False, indent=1, default=str))
+        except Exception as e:  # noqa: BLE001
+            out.append(f"\n== 게임·플러그인 상태 ==\n(읽기 실패: {e})")
+        out.append(f"\n== 세이브 ==\n{self._people.save or '(없음)'} · 인물 {len(self._people.items)}명 · 읽는 중 {self._reading.get('active')}")
+        ad = app_data_dir()
+        out.append("\n== app.log (끝 300줄) ==\n" + tail(ad / "app.log"))
+        out.append("\n== crash.log ==\n" + tail(ad / "crash.log", 200))
+        out.append("\n== 플러그인 status.json ==\n" + tail(gamesetup.bridge_dir() / "status.json", 50))
+        if c.game_dir:
+            out.append("\n== BepInEx LogOutput.log (끝 200줄) ==\n" + tail(Path(c.game_dir) / "BepInEx" / "LogOutput.log", 200))
+        desk = Path(os.path.expanduser("~")) / "Desktop"
+        if not desk.exists():
+            desk = ad
+        f = desk / f"FMFaceStudio_오류보고_{now:%Y%m%d-%H%M}.txt"
+        f.write_text("\n".join(out), encoding="utf-8")
+        if sys.platform == "win32":
+            providers.reveal(f)
+        return {"ok": True, "path": str(f)}
+
     def open_diag_folder(self) -> bool:
         d = gamesetup.diag_dir()
         if sys.platform == "win32":

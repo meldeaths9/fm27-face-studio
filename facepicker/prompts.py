@@ -109,6 +109,22 @@ EXPRESSIONS = {
                 "en": "with a calm, serious, focused expression"},
     "smug": {"label": "도도", "ko": "턱을 아주 약간 들고 한쪽 입꼬리만 살짝 올린, 자신감 있고 약간 도도한 표정이에요",
              "en": "with a confident, slightly smug look, chin raised a touch and one corner of the mouth lifted"},
+    "confident": {"label": "자신감", "ko": "눈빛이 또렷하고 입을 다문 채 살짝 웃는, 자신감 있는 표정이에요",
+                  "en": "with a self-assured look, steady eyes and a faint closed-mouth smile"},
+    "determined": {"label": "결연", "ko": "눈썹에 살짝 힘이 들어간, 결연하고 집중한 표정이에요",
+                   "en": "with a determined, focused look, brows slightly tensed"},
+    "blank": {"label": "무덤덤", "ko": "아무 감정 없이 담담하고 무심한 표정이에요",
+              "en": "with a blank, matter-of-fact, unbothered expression"},
+    "playful": {"label": "장난기", "ko": "눈가가 살짝 웃고 있는, 장난기 어린 표정이에요",
+                "en": "with a playful, mischievous look, eyes smiling slightly"},
+    "shy": {"label": "수줍음", "ko": "살짝 어색하고 수줍게 웃는 표정이에요",
+            "en": "with a slightly awkward, shy smile"},
+    "tired": {"label": "피곤", "ko": "조금 지쳐 보이는, 졸린 듯한 표정이에요",
+              "en": "looking a little tired and sleepy-eyed"},
+    "proud": {"label": "뿌듯", "ko": "가슴을 살짝 펴고 뿌듯해하는, 기분 좋은 표정이에요",
+              "en": "looking proud and pleased, chest slightly out"},
+    "grin": {"label": "활짝", "ko": "이가 다 보이게 활짝 웃고 있어요",
+             "en": "with a big, wide grin showing teeth"},
 }
 EXPRESSION_LABELS = {"random": "랜덤", **{k: v["label"] for k, v in EXPRESSIONS.items()}}
 
@@ -123,7 +139,7 @@ ROLE = {
 def pick_expression(expr: str) -> str:
     if expr in EXPRESSIONS:
         return expr
-    return random.choice(list(EXPRESSIONS))
+    return random.choice([k for k in EXPRESSIONS if k not in ("tired", "shy")])   # 랜덤엔 무난한 것만
 
 
 def club_text(club: str, hint: str, lang: str) -> str:

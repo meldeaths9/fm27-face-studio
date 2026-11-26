@@ -1,5 +1,5 @@
 "use strict";
-/* FM27 Face Studio — 화면 로직 */
+/* FM Face Studio — 화면 로직 */
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -581,6 +581,7 @@ function renderDeco() {
   $("#dCaption").checked = d.caption; $("#dRound").checked = d.rounded; $("#dBorder").checked = d.border;
   $("#dRadius").value = d.radius; $("#dRadius").disabled = !d.rounded;
   $(".deco").classList.toggle("off-cap", !d.caption);
+  $(".deco").classList.toggle("on-round", !!d.rounded);
   $("#dStyle").innerHTML = Object.entries(S.styles).map(([k, v]) => `<button class="chip ${d.style === k ? "on" : ""}" data-k="${k}">${esc(v)}</button>`).join("");
   $$("#dStyle .chip").forEach((b) => b.onclick = () => { S.deco.style = b.dataset.k; decoChanged(); });
 }
@@ -1009,7 +1010,7 @@ async function popAction(act, btn) {
   else if (act === "install") {
     const g = ST.game;
     if (g.running) { toast("FM27이 켜져 있어요. 게임을 완전히 끈 다음 설치해 주세요.", "err"); return; }
-    if (!await confirmBox("플러그인 설치", "FM27 Face Studio 플러그인을 BepInEx\\plugins 폴더에 넣어요. BepInEx와 다른 플러그인은 건드리지 않아요.\n\n게임 폴더(Program Files)에 쓰려면 관리자 권한이 필요해요. 권한 창이 뜨면 '예'를 눌러 주세요.\n\n설치할까요?", "설치")) return;
+    if (!await confirmBox("플러그인 설치", "FM Face Studio 플러그인을 BepInEx\\plugins 폴더에 넣어요. BepInEx와 다른 플러그인은 건드리지 않아요.\n\n게임 폴더(Program Files)에 쓰려면 관리자 권한이 필요해요. 권한 창이 뜨면 '예'를 눌러 주세요.\n\n설치할까요?", "설치")) return;
     btn.disabled = true; btn.textContent = "설치 중…";
     const r = await call("install_plugin");
     if (r && r.done) toast("설치 완료: " + r.done.join(", ") + "\n게임을 켜면 플러그인이 적용돼요.", "ok", 7000);
@@ -1153,3 +1154,8 @@ $("#wClose").onclick = () => call("win_close");
   });
   window.addEventListener("mouseup", () => { drag = null; });
 })();
+
+$("#btnReport").onclick = async () => {
+  const r = await call("make_report");
+  if (r && r.ok) toast("오류 보고 파일을 만들었어요.\n" + r.path, "ok", 6000);
+};

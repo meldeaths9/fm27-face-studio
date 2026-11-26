@@ -33,7 +33,7 @@ jobs:
       - name: Build exe
         run: >
           pyinstaller --noconfirm --clean --onefile --windowed
-          --name FM27FaceStudio
+          --name FMFaceStudio
           --icon assets/icon.ico
           --add-data "ui;ui"
           --add-data "assets/icon.png;assets"
@@ -45,30 +45,16 @@ jobs:
           --splash assets/splash.png
           main.py
 
-      - name: Build debug exe (console)
-        run: >
-          pyinstaller --noconfirm --onefile --console
-          --name FM27FaceStudio_debug
-          --icon assets/icon.ico
-          --add-data "ui;ui"
-          --add-data "assets/icon.png;assets"
-          --add-data "models;models"
-          --add-data "THIRD_PARTY_NOTICES.txt;."
-          --add-data "plugin_dist;plugin_dist"
-          --collect-submodules fmsave
-          --collect-all backports.zstd
-          main.py
-
       - name: Self test
         shell: pwsh
         run: |
-          $p = Start-Process -FilePath dist/FM27FaceStudio.exe -ArgumentList "--selftest" -Wait -PassThru
+          $p = Start-Process -FilePath dist/FMFaceStudio.exe -ArgumentList "--selftest" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "self test failed: $($p.ExitCode)" }
-          Get-Item dist/FM27FaceStudio.exe | Select-Object Name, Length
+          Get-Item dist/FMFaceStudio.exe | Select-Object Name, Length
 
       - uses: actions/upload-artifact@v4
         with:
-          name: FM27FaceStudio
+          name: FMFaceStudio
           path: dist/*.exe
 
       - name: Read version
@@ -83,13 +69,15 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
-          name: FM27 Face Studio ${{ steps.ver.outputs.tag }}
+          name: FM Face Studio ${{ steps.ver.outputs.tag }}
           target_commitish: ${{ github.sha }}
           files: |
-            dist/FM27FaceStudio.exe
-            dist/FM27FaceStudio_debug.exe
+            dist/FMFaceStudio.exe
           make_latest: true
           body: |
-            `FM27FaceStudio.exe`를 받아서 더블클릭하면 실행돼요. 파이썬 설치는 필요 없어요.
-            처음 실행할 때 윈도우 보안 경고(SmartScreen)가 뜨면 "추가 정보" → "실행"을 누르세요.
-            실행이 안 되면 `FM27FaceStudio_debug.exe`(검은 창에 진행 기록이 나오는 진단용)로 실행해서 내용을 알려주세요.
+            `FMFaceStudio.exe`를 받아서 더블클릭하면 실행돼요. 파이썬 설치는 필요 없어요.
+
+            **처음 실행할 때 파란 "Windows의 PC 보호" 창이 뜨면** → "추가 정보"를 누르고 → "실행"을 누르세요.
+            개인이 만든 무료 프로그램이라 디지털 서명이 없어서 뜨는 안내예요.
+
+            문제가 생기면 프로그램의 설정(톱니바퀴) → "오류 보고 파일 만들기"를 눌러서 바탕화면에 생긴 파일을 보내 주세요.

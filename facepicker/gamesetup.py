@@ -151,7 +151,7 @@ def install(game_dir: str) -> list[str]:
     pdir = g / "BepInEx" / "plugins" / PLUGIN_FOLDER
     pdir.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(PLUGIN_DLL, pdir / "FM27FaceStudio.dll")
-    done.append("FM27 Face Studio 플러그인 설치")
+    done.append("FM Face Studio 플러그인 설치")
     return done
 
 

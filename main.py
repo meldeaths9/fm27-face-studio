@@ -1,4 +1,4 @@
-"""FM27 Face Studio 실행 파일."""
+"""FM Face Studio 실행 파일."""
 import logging
 import os
 import sys
@@ -35,7 +35,7 @@ def error_box(msg: str) -> None:
     close_splash()
     try:
         import ctypes
-        ctypes.windll.user32.MessageBoxW(None, msg, "FM27 Face Studio 오류", 0x10)
+        ctypes.windll.user32.MessageBoxW(None, msg, "FM Face Studio 오류", 0x10)
     except Exception:
         print(msg, file=sys.stderr)
 
@@ -99,7 +99,7 @@ def main() -> None:
     log.info("Api 준비됨")
     webview.settings["DRAG_REGION_DIRECT_TARGET_ONLY"] = True   # 헤더의 빈 곳만 잡히게 (버튼은 그대로 눌림)
     window = webview.create_window(
-        f"FM27 Face Studio v{VERSION}",
+        f"FM Face Studio v{VERSION}",
         html=build_html(),
         js_api=api,
         width=1440, height=900, min_size=(1240, 760),
