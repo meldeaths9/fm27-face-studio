@@ -347,6 +347,12 @@ async function pickPerson(p, idx) {
   S.promptDirty = false;
   const cur = await call("current_face", p.uid);
   showCurrent(cur || { face: "" });
+  if (p.queued) {
+    busy(true, "대기열 사진 불러오는 중…");
+    const r = await call("load_queued", p.uid);
+    busy(false);
+    if (r && !r.error) { await setPhoto(r); toast("대기열에 넣었던 사진이에요. 고친 뒤 다시 대기열에 넣으면 바뀌어요.", "ok", 2500); autoPrompt(); return; }
+  }
   if (cur && cur.face) {
     busy(true, "지금 사진 불러오는 중…");
     const r = await call("load_existing", p.uid);
@@ -749,7 +755,17 @@ $("#btnAI").onclick = async () => {
 };
 
 /* ------------------------------------------------------------------ 3. 대기열 */
+let _qSig = null, _qTimer = 0;
+function cardsFollowQueue() {
+  // 대기열이 바뀌면(빼기·비우기·적용) 첫 화면 카드의 "대기 중" 사진도 맞춰 다시 그린다
+  const sig = S.queue.map((q) => q.uid).sort().join(",");
+  if (_qSig !== null && sig !== _qSig && S.bItems && S.bItems.length) {
+    clearTimeout(_qTimer); _qTimer = setTimeout(async () => { const y = $("#bwrap").scrollTop; await doSearch(true); $("#bwrap").scrollTop = y; }, 150);
+  }
+  _qSig = sig;
+}
 function renderQueue() {
+  cardsFollowQueue();
   const el = $("#queue");
   $("#qCount").textContent = S.queue.length;
   $("#btnApply").disabled = !S.queue.length;
@@ -1226,19 +1242,36 @@ async function bulkFromFolder() {
   S.bulk = r.rows; initPicks(); renderBulk();
 }
 function initPicks() {
-  S.bulk.forEach((row) => { row.pick = row.candidates.length ? row.candidates[0].uid : ""; row.manual = ""; row.done = false; });
+  // 같은 이름 파일이 여러 장이면(김민재.png, 김민재 (2).png) 후보를 겹치지 않게 차례로 나눠 준다
+  const used = {};
+  S.bulk.forEach((row) => {
+    row.manual = ""; row.done = false;
+    if (!row.candidates.length) { row.pick = ""; return; }
+    const k = row.key || row.file, n = used[k] || 0;
+    row.pick = n < row.candidates.length ? row.candidates[n].uid : "";
+    used[k] = n + 1;
+  });
 }
-function rowStatus(row) {
+function dupPicks() {
+  const c = {};
+  S.bulk.forEach((r) => { const u = r.pick === "@manual" ? r.manual.trim() : r.pick; if (u && !r.done) c[u] = (c[u] || 0) + 1; });
+  return c;
+}
+function rowStatus(row, dups) {
   if (row.done) return ["done", "대기열에 넣음"];
+  const u = row.pick === "@manual" ? row.manual.trim() : row.pick;
+  if (u && (dups || dupPicks())[u] > 1) return ["none", "같은 사람이 두 번 골라졌어요"];
   if (row.pick === "") return row.status === "none" ? ["none", "못 찾음"] : ["skip", "건너뛰기"];
   if (row.pick === "@manual") return row.manual.trim() ? ["ok", "직접 입력"] : ["none", "UID를 넣어 주세요"];
   if (row.status === "multi") return ["multi", `동명이인 ${row.candidates.length}명 · 확인`];
-  return ["ok", row.how === "uid" ? "고유번호" : row.how === "team" ? "이름+팀" : "이름"];
+  if (row.status === "multi" && row.how === "order") return ["multi", "이름 순서가 달라요 · 확인"];
+  return ["ok", "찾음"];
 }
 function renderBulk() {
   $("#bulkHelp").hidden = true; $("#bulkTable").hidden = false;
+  const dups = dupPicks();
   const rows = S.bulk.map((row, i) => {
-    const [cls, txt] = rowStatus(row);
+    const [cls, txt] = rowStatus(row, dups);
     const opts = row.candidates.map((c) => `<option value="${esc(c.uid)}" ${row.pick === c.uid ? "selected" : ""}>${esc(candLabel(c))}</option>`).join("")
       + `<option value="@manual" ${row.pick === "@manual" ? "selected" : ""}>UID 직접 입력…</option><option value="" ${row.pick === "" ? "selected" : ""}>— 건너뛰기 —</option>`;
     return `<tr data-i="${i}"><td>${row.thumb ? `<img src="${row.thumb}">` : ""}</td><td class="fn" title="${esc(row.file)}">${esc(row.file)}</td>
@@ -1249,9 +1282,13 @@ function renderBulk() {
   $$("#bulkTable tr[data-i]").forEach((tr) => {
     const row = S.bulk[+tr.dataset.i];
     $(".bpick", tr).onchange = (e) => { row.pick = e.target.value; if (row.status === "multi" && row.pick && row.pick !== "@manual") row.status = "ok"; renderBulk(); };
-    const m = $(".bman", tr); if (m) m.oninput = (e) => { row.manual = e.target.value; renderBulkSum(); const [c, t] = rowStatus(row); const st = $(".st", tr); st.className = "st " + c; st.textContent = t; };
+    const m = $(".bman", tr); if (m) m.oninput = (e) => { row.manual = e.target.value; renderBulkSum(); refreshBulkStatus(); };
   });
   renderBulkSum();
+}
+function refreshBulkStatus() {
+  const d = dupPicks();
+  $$("#bulkTable tr[data-i]").forEach((tr) => { const [c, t] = rowStatus(S.bulk[+tr.dataset.i], d); const st = $(".st", tr); st.className = "st " + c; st.textContent = t; });
 }
 function bulkTargets() {
   return S.bulk.filter((r) => !r.done && r.pick && (r.pick !== "@manual" || r.manual.trim()));
@@ -1269,8 +1306,9 @@ $("#bulkFolder").onclick = bulkFromFolder;
 $("#bulkClose").onclick = () => $("#bulkModal").classList.remove("on");
 $("#bulkGo").onclick = async () => {
   const list = bulkTargets();
+  if (Object.values(dupPicks()).some((n) => n > 1)) { toast("같은 사람이 두 번 골라진 줄이 있어요. 빨간 줄을 고쳐 주세요.", "err", 3500); return; }
   const multi = list.filter((r) => r.status === "multi").length;
-  if (multi && !await confirmBox("동명이인 확인", `동명이인이라 첫 번째 후보로 고른 사진이 ${multi}장 있어요. 노란 줄을 확인했나요?\n\n그대로 넣을까요?`, "그대로 넣기")) return;
+  if (multi && !await confirmBox("동명이인 확인", `동명이인(또는 이름 순서가 다른) 사진이 ${multi}장 있어요. 노란 줄을 확인했나요?\n\n그대로 넣을까요?`, "그대로 넣기")) return;
   $("#bulkGo").disabled = true;
   let ok = 0;
   for (const [k, row] of list.entries()) {

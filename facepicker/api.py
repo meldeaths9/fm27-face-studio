@@ -24,7 +24,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "0.11.0"
+VERSION = "0.12.0"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -80,6 +80,30 @@ def _safe(fn):
 BROWSE_MAX = 50       # 첫 화면에 한 번에 보여 줄 최대 인원
 
 
+
+import re as _re_name
+import unicodedata as _ud_name
+
+
+def name_key(s) -> str:
+    """파일 이름/목록 이름 공통 정리: 확장자·뒤 번호 떼고 공백 하나로."""
+    s = _ud_name.normalize("NFC", str(s or "")).strip()
+    s = _re_name.sub(r"\.(png|jpe?g|webp|bmp|gif)$", "", s, flags=_re_name.I)
+    s = _re_name.sub(r"[\s_]*(\(\d{1,3}\)|\d{1,3})$", "", s)       # 김민재1, 김민재 2, 김민재(2), 김민재 (2)
+    return " ".join(s.replace("_", " ").split())
+
+
+def loose_key(s) -> str:
+    s = _ud_name.normalize("NFKD", s.lower())
+    s = "".join(c for c in s if not _ud_name.combining(c))
+    s = _re_name.sub(r"[-‐'’`.·]", "", s)
+    return " ".join(s.split())
+
+
+def order_key(s) -> str:
+    return " ".join(sorted(loose_key(s).split()))
+
+
 class Api:
     def __init__(self) -> None:
         self._cfg = Settings()
@@ -111,6 +135,8 @@ class Api:
         try:
             w.events.maximized += lambda *a: setattr(self, "_maxed", True)
             w.events.restored += lambda *a: setattr(self, "_maxed", False)
+            w.events.shown += lambda *a: self._fit_work_area()
+            w.events.moved += lambda *a: self._fit_work_area()
         except Exception:  # noqa: BLE001
             pass
 
@@ -134,9 +160,30 @@ class Api:
             w.restore()
             self._maxed = False
         else:
+            self._fit_work_area()
             w.maximize()
             self._maxed = True
         return self._maxed
+
+    def _fit_work_area(self) -> None:
+        """제목줄 없는 창은 최대화하면 작업표시줄까지 덮는다 → 최대화 크기를 작업 영역(작업표시줄 뺀 곳)으로 묶는다."""
+        try:
+            form = self._window.native
+            from System import Func, Type  # type: ignore
+            from System.Windows.Forms import Screen  # type: ignore
+            from System.Drawing import Rectangle  # type: ignore
+
+            def _set():
+                scr = Screen.FromHandle(form.Handle)
+                wa, b = scr.WorkingArea, scr.Bounds
+                form.MaximizedBounds = Rectangle(wa.X - b.X, wa.Y - b.Y, wa.Width, wa.Height)
+
+            if form.InvokeRequired:
+                form.Invoke(Func[Type](_set))
+            else:
+                _set()
+        except Exception as e:  # noqa: BLE001
+            log.debug("작업 영역 맞추기 실패: %s", e)
 
     def win_resize(self, width: int, height: int, edge: str = "rb") -> bool:
         """edge: 잡은 가장자리(l/r/t/b 조합). 반대쪽 모서리를 고정하고 크기를 바꾼다."""
@@ -850,22 +897,56 @@ class Api:
     def _queue_put(self, person: dict, uid: str, prefixed: bool, src, box, deco: dict) -> dict:
         """사진 하나를 잘라 꾸며서 대기열에 넣는다 (같은 사람이 있으면 바꾼다)."""
         for it in [i for i in self._queue if i["uid"] == uid]:
-            Path(it["png"]).unlink(missing_ok=True)
+            self._drop_files(it)
             self._queue.remove(it)
         out = decorate(imaging.render(src, box, int(self._cfg.output_size or 512)), Deco.from_dict(deco))
         iid = uuid.uuid4().hex
         png = self._qdir / f"{iid}.png"
         out.save(png, "PNG", optimize=True)
+        srcf = self._qdir / f"{iid}_src.png"
+        try:      # 대기 중인 사람을 다시 열면 자르기 전 사진부터 이어서 고칠 수 있게
+            src.save(srcf, "PNG", compress_level=1)
+        except Exception:  # noqa: BLE001
+            srcf = None
         self._queue.append({
             "id": iid, "uid": uid, "name": str(person.get("name", "")).strip(),
             "club": str(person.get("club", "")).strip(), "kind": person.get("kind", "player"),
             "newgen": bool(person.get("newgen")) or prefixed, "png": str(png),
+            "src": str(srcf) if srcf else "", "box": [float(v) for v in box],
         })
         if person.get("me") and uid != self._cfg.manager_uid:
             self._cfg.manager_uid = uid
             self._cfg.save()
         self._save_queue()
         return self._queue[-1]
+
+    @staticmethod
+    def _drop_files(it: dict) -> None:
+        for k in ("png", "src"):
+            if it.get(k):
+                Path(it[k]).unlink(missing_ok=True)
+
+    @_safe
+    def load_queued(self, uid: str) -> dict:
+        """대기열에 있는 사람: 대기열에 넣었던 사진(자르기 전)과 자른 틀을 편집기로."""
+        clean, _ = _clean_uid(uid)
+        it = next((i for i in reversed(self._queue) if i["uid"] == clean), None)
+        if not it:
+            return {"error": "대기열에 없어요."}
+        if it.get("src") and Path(it["src"]).exists():
+            im = imaging.load_image(it["src"])
+            out = self._set_photo(im, original=True)
+            if im.mode == "RGBA" and im.getchannel("A").getextrema()[0] < 255:   # 배경 지운 사진이었다
+                with self._lock:
+                    self._nobg = im
+                out = self._photo_payload()
+            if it.get("box") and isinstance(out, dict):
+                out["box"] = list(it["box"])
+        else:      # 예전 대기열(원본을 안 남김) → 완성 사진이라도
+            out = self._set_photo(imaging.load_image(it["png"]), original=True)
+        if isinstance(out, dict):
+            out["queued"] = True
+        return out
 
     @_safe
     def quick_add(self, person: dict, data_url: str) -> dict:
@@ -884,37 +965,41 @@ class Api:
     _IMG_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
 
     def _match_name(self, stem: str) -> dict:
-        """파일 이름 → 사람. UID / 이름_팀 / 이름 순서로 찾는다."""
-        from .people import norm
-        import re as _re
-        s = stem.strip()
-        m = _re.fullmatch(r"(?i)(r-)?(\d{3,12})", s)
-        if m:
-            uid = m.group(2)
-            hit = [p for p in self._people.items if str(p.get("uid", "")).removeprefix("r-") == uid]
-            if hit:
-                return {"status": "ok", "how": "uid", "candidates": [self._cand(hit[0])]}
-            return {"status": "ok", "how": "uid", "candidates": [{"uid": ("r-" if m.group(1) else "") + uid,
-                    "name": "", "club": "", "age": "", "kind": "player", "newgen": bool(m.group(1))}]}
-        name, team = s, ""
-        if "_" in s:
-            name, team = s.rsplit("_", 1)
-        n, t = norm(name.replace("_", " ")), norm(team)
-        if not n or not self._people.items:
-            return {"status": "none", "how": "", "candidates": []}
-        exact = [p for p in self._people.items if norm(p.get("name")) == n]
-        if t:
-            exact_t = [p for p in exact if t in norm(p.get("club"))]
-            exact = exact_t or exact
-        if not exact:
-            toks = n.split()
-            exact = [p for p in self._people.items if all(x in norm(p.get("name")) for x in toks)
-                     and (not t or t in norm(p.get("club")))]
-        exact.sort(key=lambda p: (not p.get("me"), not p.get("mine"), bool(p.get("alt")), p.get("kind") != "player"))
-        cands = [self._cand(p) for p in exact[:8]]
-        if not cands:
-            return {"status": "none", "how": "", "candidates": []}
-        return {"status": "ok" if len(exact) == 1 else "multi", "how": "team" if t else "name", "candidates": cands}
+        """파일 이름 → 사람. 규칙은 하나: 목록에 보이는 이름 그대로.
+        뒤 번호(1, (2))는 떼고, ① 똑같은 이름 → ② 악센트·대소문자·하이픈 무시 → ③ 순서 무시 순으로
+        앞 단계에서 못 찾았을 때만 다음 단계로 넘어간다 (순서만 다른 다른 사람이 섞이지 않게)."""
+        name = name_key(stem)
+        if not name or not self._people.items:
+            return {"status": "none", "how": "", "candidates": [], "key": ""}
+        k1, k2, k3 = name, loose_key(name), order_key(name)
+        idx = self._name_index()
+        hit, how = list(idx[0].get(k1, [])), "exact"
+        if not hit:
+            hit, how = list(idx[1].get(k2, [])), "loose"
+        if not hit:
+            hit, how = list(idx[2].get(k3, [])), "order"
+        if not hit:
+            return {"status": "none", "how": "", "candidates": [], "key": k3}
+        hit.sort(key=lambda p: (not p.get("me"), not p.get("mine"), bool(p.get("alt")), p.get("kind") != "player"))
+        cands = [self._cand(p) for p in hit[:12]]
+        status = "ok" if len(hit) == 1 and how != "order" else "multi"
+        return {"status": status, "how": how, "candidates": cands, "key": k3}
+
+    def _name_index(self):
+        """이름 → 사람 목록 (세 단계용). 세이브를 새로 읽으면 다시 만든다."""
+        items = self._people.items
+        key = (id(items), len(items))
+        if getattr(self, "_nidx_key", None) != key:
+            a, b, c = {}, {}, {}
+            for p in items:
+                n = name_key(p.get("name"))
+                if not n:
+                    continue
+                a.setdefault(n, []).append(p)
+                b.setdefault(loose_key(n), []).append(p)
+                c.setdefault(order_key(n), []).append(p)
+            self._nidx, self._nidx_key = (a, b, c), key
+        return self._nidx
 
     @staticmethod
     def _cand(p: dict) -> dict:
@@ -967,7 +1052,7 @@ class Api:
     def queue_remove(self, ids: list[str]) -> dict:
         ids = set(ids)
         for it in [i for i in self._queue if i["id"] in ids]:
-            Path(it["png"]).unlink(missing_ok=True)
+            self._drop_files(it)
             self._queue.remove(it)
         self._save_queue()
         return {"queue": self._queue_view()}
@@ -998,7 +1083,7 @@ class Api:
                                           "ours": True, "regen": bool(it["newgen"])}
         names = {it["uid"]: it.get("name") or it["uid"] for it in items}
         for it in items:
-            Path(it["png"]).unlink(missing_ok=True)
+            self._drop_files(it)
         done = {it["id"] for it in items}
         self._queue = [i for i in self._queue if i["id"] not in done]
         self._save_queue()
