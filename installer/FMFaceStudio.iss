@@ -1,0 +1,50 @@
+; FM Face Studio 설치 파일 (Inno Setup 6)
+; ISCC /DAppVersion=0.11.0 installer\FMFaceStudio.iss
+#ifndef AppVersion
+  #define AppVersion "0.0.0"
+#endif
+
+[Setup]
+AppId={{7C2B36AA-72AB-4B0B-B274-7EE3EB30EBA6}
+AppName=FM Face Studio
+AppVersion={#AppVersion}
+AppVerName=FM Face Studio {#AppVersion}
+AppPublisher=meldeaths9
+AppPublisherURL=https://github.com/meldeaths9/fm27-face-studio
+DefaultDirName={localappdata}\Programs\FM Face Studio
+DefaultGroupName=FM Face Studio
+DisableProgramGroupPage=yes
+PrivilegesRequired=lowest
+OutputDir=..\dist
+OutputBaseFilename=FMFaceStudio-Setup
+SetupIconFile=..\assets\icon.ico
+UninstallDisplayIcon={app}\FMFaceStudio.exe
+UninstallDisplayName=FM Face Studio
+Compression=lzma2/max
+SolidCompression=yes
+WizardStyle=modern
+CloseApplications=yes
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+
+[Languages]
+#if FileExists(CompilerPath + "Languages\Korean.isl")
+Name: "ko"; MessagesFile: "compiler:Languages\Korean.isl"
+#endif
+Name: "en"; MessagesFile: "compiler:Default.isl"
+
+[Tasks]
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
+
+[Files]
+Source: "..\dist_dir\FMFaceStudio\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[Icons]
+Name: "{autoprograms}\FM Face Studio"; Filename: "{app}\FMFaceStudio.exe"
+Name: "{autodesktop}\FM Face Studio"; Filename: "{app}\FMFaceStudio.exe"; Tasks: desktopicon
+
+[Run]
+Filename: "{app}\FMFaceStudio.exe"; Description: "{cm:LaunchProgram,FM Face Studio}"; Flags: nowait postinstall skipifsilent
+
+[UninstallDelete]
+Type: filesandordirs; Name: "{app}"

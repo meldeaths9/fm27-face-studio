@@ -9,3 +9,5 @@ plugin/refs/
 plugin/obj/
 plugin/bin/
 !plugin_dist/
+dist_dir/
+build_dir/
