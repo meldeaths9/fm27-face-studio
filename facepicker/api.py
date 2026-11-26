@@ -24,7 +24,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "0.12.0"
+VERSION = "0.12.1"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -1020,8 +1020,15 @@ class Api:
         r = self._window.create_file_dialog(webview.FileDialog.FOLDER)
         if not r:
             return {"cancel": True}
-        folder = Path(r[0] if isinstance(r, (list, tuple)) else r)
-        files = sorted(p for p in folder.iterdir() if p.suffix.lower() in self._IMG_EXT)[:1000]
+        return self.bulk_scan(str(r[0] if isinstance(r, (list, tuple)) else r))
+
+    @_safe
+    def bulk_scan(self, folder: str) -> dict:
+        """폴더 안 사진을 (다시) 읽어 짝짓는다. 파일 이름을 고친 뒤 '다시 읽기'에도 쓴다."""
+        folder = Path(folder)
+        if not folder.is_dir():
+            return {"error": f"폴더를 찾을 수 없어요: {folder}"}
+        files = sorted((p for p in folder.iterdir() if p.suffix.lower() in self._IMG_EXT), key=lambda p: p.name.lower())[:1000]
         rows = []
         for f in files:
             row = {"file": f.name, "path": str(f), **self._match_name(f.stem)}

@@ -1232,14 +1232,33 @@ async function bulkFromFiles(files) {
   if (!r) return;
   if (!r.loaded) toast("세이브를 아직 안 읽어서 이름으로는 못 찾아요. 고유번호 파일만 연결돼요.", "info", 5000);
   S.bulk = r.rows.map((row, i) => ({ ...row, fileObj: files[i], thumb: URL.createObjectURL(files[i]) }));
-  initPicks(); renderBulk();
+  S.bulkFolder = ""; initPicks(); renderBulk();
 }
 async function bulkFromFolder() {
   const r = await call("bulk_pick_folder");
   if (!r || r.cancel) return;
   if (!r.rows.length) { toast("그 폴더에 사진 파일이 없어요.", "err"); return; }
   if (!r.loaded) toast("세이브를 아직 안 읽어서 이름으로는 못 찾아요. 고유번호 파일만 연결돼요.", "info", 5000);
-  S.bulk = r.rows; initPicks(); renderBulk();
+  S.bulk = r.rows; S.bulkFolder = r.folder || ""; initPicks(); renderBulk();
+}
+async function bulkRescan() {
+  // 파일 이름을 고친 뒤: 같은 폴더를 다시 읽는다 (끌어다 놓은 사진은 다시 끌어다 놓아야 새 이름이 보여요)
+  if (S.bulkFolder) {
+    const r = await call("bulk_scan", S.bulkFolder);
+    if (!r || r.error) return;
+    S.bulk = r.rows; initPicks(); renderBulk();
+    toast(`폴더를 다시 읽었어요 (사진 ${r.rows.length}장).`, "ok", 2000);
+  } else if (S.bulk.length) {
+    const r = await call("bulk_match", S.bulk.map((x) => x.file));
+    if (!r) return;
+    S.bulk = S.bulk.map((x, i) => ({ ...x, ...r.rows[i] })); initPicks(); renderBulk();
+    toast("다시 짝지었어요. 파일 이름을 고쳤다면 사진을 다시 끌어다 놓아 주세요.", "info", 3500);
+  }
+}
+function bulkReset() {
+  S.bulk = []; S.bulkFolder = "";
+  $("#bulkHelp").hidden = false; $("#bulkTable").hidden = true; $("#bulkNote").textContent = "사진마다 얼굴 맞춤으로 자르고, 지금 꾸미기 설정(이름 넣기 등)을 똑같이 적용해요.";
+  renderBulkSum();
 }
 function initPicks() {
   // 같은 이름 파일이 여러 장이면(김민재.png, 김민재 (2).png) 후보를 겹치지 않게 차례로 나눠 준다
@@ -1299,10 +1318,14 @@ function renderBulkSum() {
   const none = S.bulk.filter((r) => rowStatus(r)[0] === "none").length;
   $("#bulkSum").textContent = n ? `사진 ${n}장 · 넣을 사람 ${go}명${multi ? ` · 확인 필요 ${multi}` : ""}${none ? ` · 못 찾음 ${none}` : ""}` : "";
   $("#bulkGo").disabled = !go;
+  ["#bulkRepick", "#bulkRescan", "#bulkReset"].forEach((k) => { $(k).hidden = !n; });
   $("#bulkGo").textContent = go ? `${go}명 대기열에 넣기` : "대기열에 넣기";
 }
 $("#btnBulk").onclick = () => openBulk();
 $("#bulkFolder").onclick = bulkFromFolder;
+$("#bulkRepick").onclick = bulkFromFolder;
+$("#bulkRescan").onclick = bulkRescan;
+$("#bulkReset").onclick = bulkReset;
 $("#bulkClose").onclick = () => $("#bulkModal").classList.remove("on");
 $("#bulkGo").onclick = async () => {
   const list = bulkTargets();
