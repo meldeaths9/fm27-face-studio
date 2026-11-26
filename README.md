@@ -14,15 +14,6 @@ A Windows tool to replace player, staff and manager portraits in Football Manage
 [Releases](../../releases)에서 `FMFaceStudio.exe`를 받아 실행하세요. 파이썬 설치는 필요 없어요.
 처음 실행할 때 파란 "Windows의 PC 보호" 창이 뜨면 "추가 정보" → "실행"을 누르세요.
 
-## Code signing policy
-Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
-
-- Committers and reviewers: [meldeaths9](https://github.com/meldeaths9)
-- Approvers: [meldeaths9](https://github.com/meldeaths9)
-
-Release binaries are built automatically by GitHub Actions from this repository
-(`.github/workflows/build.yml`). Each signing request is approved manually.
-
 ## Privacy policy
 This program will not transfer any information to other networked systems unless specifically requested by the user:
 - **AI image generation** — only when you press the AI button, the prompt (and the photos you chose to attach) are sent to the AI service you selected (Google Gemini, xAI Grok, OpenAI, Cloudflare). Their own privacy policies apply. The "web" options only open the site in your browser and copy to your clipboard.
