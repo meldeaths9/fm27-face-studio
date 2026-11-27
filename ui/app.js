@@ -1732,7 +1732,7 @@ function renderDT() {
   if (t.active) {
     const pct = t.total ? Math.min(99, Math.round(t.done / t.total * 100)) : 0;
     h += `<div class="lrow"><b>설치 중</b><span>${esc(t.step || "")}</span></div>
-      <div class="abprog"><div class="abbar"><i style="width:${pct}%"></i></div><span>${gb(t.done)} / 약 ${gb(t.total)}GB</span></div>
+      <div class="abprog"><div class="abbar"><i style="width:${pct}%"></i></div><span>${gb(t.done)} / 약 ${gb(t.total)}GB${t.speed ? ` · ${(t.speed / 1e6).toFixed(1)}MB/s` : ""}</span></div>
       <div class="lrow"><span class="hint grow">이 창을 닫아도 설치는 계속돼요. 다시 열면 이어서 보여요.</span><button class="btn sm" id="dtCancel">설치 취소</button></div>`;
   } else if (d.installed) {
     h += `<div class="lrow"><b>설치됨</b><code>${esc(d.root)}</code><span class="hint">쓰는 용량 약 ${gb(d.used || 0)}GB</span></div>`;

@@ -26,7 +26,7 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 UV_ZIP = "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip"
 PBS_API = "https://api.github.com/repos/astral-sh/python-build-standalone/releases?per_page=2"
 TORCH_INDEX = "https://download.pytorch.org/whl/cu128"
-PACKAGES = ["diffusers>=0.37", "transformers", "accelerate", "safetensors", "huggingface_hub",
+PACKAGES = ["diffusers>=0.37", "transformers", "accelerate", "safetensors", "huggingface_hub", "hf_xet",
             "sentencepiece", "protobuf", "pillow"]
 PKG_EST = 5.5e9            # 파이썬 + PyTorch + 나머지 (대략)
 
@@ -154,6 +154,7 @@ class DrawTool:
             "UV_NO_PROGRESS": "1",
             "HF_HOME": str(self.root / "cache" / "hf"),
             "HF_HUB_DISABLE_TELEMETRY": "1",
+            "HF_XET_HIGH_PERFORMANCE": "1",            # 빠르게 받기 (파일을 쪼개 여러 연결로)
             "HF_HUB_DISABLE_SYMLINKS_WARNING": "1",
             "PYTHONIOENCODING": "utf-8",
             "VIRTUAL_ENV": str(self.venv),
@@ -213,7 +214,13 @@ class DrawTool:
                     return
                 base = self.task.get("base", 0)
             n = max(0, dir_size(self.root) - base)
+            now = time.time()
             with self.lock:
+                prev = self.task.get("_prev")
+                if prev and now > prev[1]:
+                    sp = max(0.0, (n - prev[0]) / (now - prev[1]))
+                    self.task["speed"] = sp if not self.task.get("speed") else self.task["speed"] * 0.6 + sp * 0.4
+                self.task["_prev"] = (n, now)
                 self.task["done"] = min(n, self.task.get("total", n))
             time.sleep(2)
 
@@ -337,13 +344,22 @@ class DrawTool:
                 st["ready"] = True
                 self._save_state(st)
                 self._run([self.uv, "cache", "clean"])           # 받은 꾸러미 사본은 지워 용량 아끼기
+            if not need_pkg:                     # 예전에 설치한 사람: 빠르게 받기 부품만 추가
+                try:
+                    self._run([self.py, "-c", "import hf_xet"])
+                except RuntimeError:
+                    if self._cancel:
+                        raise
+                    self._get_uv()
+                    self._step("빠르게 받기 부품 설치 중")
+                    self._run([self.uv, "pip", "install", "--python", self.py, "-U", "huggingface_hub", "hf_xet"])
             for k in keys:
                 if k in self.models_ready():
                     continue
                 m = MODELS[k]
                 self._step(f"{m['name']} 받는 중 (약 {m['size'] / 1e9:.0f}GB)")
                 code = ("import sys\nfrom huggingface_hub import snapshot_download\n"
-                        "snapshot_download(sys.argv[1], local_dir=sys.argv[2], allow_patterns=sys.argv[3].split(','), max_workers=4)\n")
+                        "snapshot_download(sys.argv[1], local_dir=sys.argv[2], allow_patterns=sys.argv[3].split(','), max_workers=8)\n")
                 self._run([self.py, "-c", code, m["repo"], self.model_dir(k), ",".join(m["allow"])])
                 st = self.state()
                 st["models"] = sorted(set(st.get("models", [])) | {k})
