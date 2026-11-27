@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import io
 import json
+import tarfile
 import logging
 import os
 import shutil
@@ -23,6 +24,7 @@ log = logging.getLogger("drawtool")
 FOLDER_NAME = "FMFaceStudio_DrawTool"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 UV_ZIP = "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip"
+PBS_API = "https://api.github.com/repos/astral-sh/python-build-standalone/releases?per_page=2"
 TORCH_INDEX = "https://download.pytorch.org/whl/cu128"
 PACKAGES = ["diffusers>=0.37", "transformers", "accelerate", "safetensors", "huggingface_hub",
             "sentencepiece", "protobuf", "pillow"]
@@ -147,7 +149,8 @@ class DrawTool:
         env.update({
             "UV_CACHE_DIR": str(self.root / "cache" / "uv"),
             "UV_PYTHON_INSTALL_DIR": str(self.root / "python"),
-            "UV_PYTHON_PREFERENCE": "only-managed",
+            "UV_PYTHON_PREFERENCE": "only-system",
+            "UV_PYTHON_DOWNLOADS": "never",
             "UV_NO_PROGRESS": "1",
             "HF_HOME": str(self.root / "cache" / "hf"),
             "HF_HUB_DISABLE_TELEMETRY": "1",
@@ -266,6 +269,40 @@ class DrawTool:
         if not self.uv.exists():
             raise RuntimeError("설치 도구(uv)를 풀지 못했어요.")
 
+    @property
+    def base_py(self) -> Path:
+        return self.root / "python" / "python.exe"
+
+    def _get_python(self) -> None:
+        """파이썬을 직접 받아 폴더에 푼다 (uv의 파이썬 관리 기능은 윈도우 연결 폴더를 만들다 막히는 PC가 있어 안 씀)."""
+        if self.base_py.exists():
+            return
+        self._step("파이썬 받는 중")
+        req = urllib.request.Request(PBS_API, headers={"Accept": "application/vnd.github+json", "User-Agent": "FMFaceStudio"})
+        with urllib.request.urlopen(req, timeout=60) as r:
+            rels = json.loads(r.read().decode())
+        url = ""
+        for rel in rels:
+            for a in rel.get("assets", []):
+                n = a.get("name", "")
+                if n.startswith("cpython-3.12.") and n.endswith("-x86_64-pc-windows-msvc-install_only.tar.gz"):
+                    url = a.get("browser_download_url", "")
+                    break
+            if url:
+                break
+        if not url:
+            raise RuntimeError("파이썬 내려받을 주소를 찾지 못했어요.")
+        self._log("python: " + url)
+        tmp = self.root / "python.tar.gz"
+        with urllib.request.urlopen(url, timeout=600) as r, open(tmp, "wb") as f:
+            shutil.copyfileobj(r, f, 1 << 20)
+        shutil.rmtree(self.root / "python", ignore_errors=True)
+        with tarfile.open(tmp, "r:gz") as t:          # 안에 python/ 폴더 하나
+            t.extractall(self.root, filter="data") if hasattr(tarfile, "data_filter") else t.extractall(self.root)
+        tmp.unlink(missing_ok=True)
+        if not self.base_py.exists():
+            raise RuntimeError("파이썬을 풀지 못했어요.")
+
     def _install(self, keys: list[str], need_pkg: bool) -> None:
         err = ""
         try:
@@ -273,9 +310,11 @@ class DrawTool:
             st = self.state()
             if need_pkg:
                 self._get_uv()
+                self._get_python()
                 self._step("파이썬 준비 중")
                 if not self.py.exists():
-                    self._run([self.uv, "venv", "--python", "3.12", self.venv])
+                    shutil.rmtree(self.venv, ignore_errors=True)
+                    self._run([self.uv, "venv", "--no-python-downloads", "--python", self.base_py, self.venv])
                 self._step("PyTorch 받는 중 (약 3GB, 가장 오래 걸려요)")
                 self._run([self.uv, "pip", "install", "--python", self.py, "torch", "--index-url", TORCH_INDEX])
                 self._step("그림 프로그램 받는 중")

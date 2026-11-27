@@ -1698,7 +1698,7 @@ async function showABSetup() {
   renderABPeople();
 }
 function renderABEngines() {
-  const sel = $("#abEngine"), cur = sel.value || (AB_ENG.includes(S.settings.ai_provider) ? S.settings.ai_provider : "gemini");
+  const sel = $("#abEngine"), cur = sel.value || "local";     // 기본은 내 PC 그림도구 (무료)
   sel.innerHTML = AB_ENG.map((id) => {
     const a = S.ai.find((x) => x.id === id); if (!a) return "";
     return `<option value="${id}">${esc(a.name)} · ${esc(a.status)}</option>`;
