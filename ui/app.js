@@ -749,10 +749,12 @@ async function renderKitGrid() {
     return;
   }
   g.innerHTML = r.items.map((x, i) => `<div class="kcard ${cur && x.club === cur ? "mine" : ""}" data-i="${i}">
-      <div class="kh"><b>${esc(x.name || `유니폼 ${x.num}번`)}</b>${x.alt ? ` <span class="tg2">${esc(x.alt)}</span>` : ""}${!x.known ? ' <span class="tg2">구단 모름</span>' : ""}${x.user ? ' <span class="tg">직접 지정</span>' : ""}${cur && x.club === cur ? ' <span class="tg">이 선수 구단</span>' : ""}</div>
+      <div class="kh"><b>${esc(x.name || `유니폼 ${x.num}번`)}</b>${x.alt ? ` <span class="tg2">${esc(x.alt)}</span>` : ""}${!x.known ? ' <span class="tg2">세이브에 없는 구단 (여성팀 등)</span>' : ""}<button class="khide" title="이 유니폼 숨기기">숨기기</button>${x.user ? ' <span class="tg">직접 지정</span>' : ""}${cur && x.club === cur ? ' <span class="tg">이 선수 구단</span>' : ""}</div>
       <div class="kk">${["home", "away", "third"].filter((k) => x.kits[k]).map((k) => `<button class="kimg" data-k="${k}" title="${KIND_KO[k]} 유니폼 입히기"><img src="${x.kits[k]}"><span>${KIND_KO[k]}</span></button>`).join("")}</div>
       ${cur && x.club !== cur ? `<button class="btn sm ghost kmem">이 유니폼을 '${esc(curName || "이 선수 구단")}' 것으로 기억</button>` : ""}
     </div>`).join("") + (r.total > r.items.length ? `<div class="hint">… 외 ${r.total - r.items.length}개 · 검색해서 찾아 주세요</div>` : "");
+  $("#kitNote").innerHTML = r.hidden ? `숨긴 유니폼 ${r.hidden}개 · <a id="kitUnhide">다시 보이기</a>` : "게임에서 구단 프로필을 열면 그 구단 유니폼이 여기에 모여요 (플러그인).";
+  const uh = $("#kitUnhide"); if (uh) uh.onclick = async () => { await call("unhide_kits"); renderKitGrid(); };
   $$(".kcard", g).forEach((el) => {
     const x = r.items[+el.dataset.i];
     $$(".kimg", el).forEach((b) => b.onclick = async () => {
@@ -762,6 +764,7 @@ async function renderKitGrid() {
       $("#kitModal").classList.remove("on");
       toast(`${x.name || "유니폼 " + x.num + "번"} ${KIND_KO[b.dataset.k]} 유니폼을 입혀요.`, "ok", 2000);
     });
+    $(".khide", el).onclick = async () => { await call("hide_kit", x.num, true); toast("유니폼을 숨겼어요. 창 아래에서 다시 보이게 할 수 있어요.", "info", 2200); renderKitGrid(); };
     const m = $(".kmem", el);
     if (m) m.onclick = async () => {
       if (!await confirmBox("유니폼 기억", `이 유니폼(${x.name || "유니폼 " + x.num + "번"})을 '${curName}' 구단 것으로 기억할까요?\n다음부터 ${curName} 선수에게 자동으로 들어가요.`, "기억하기")) return;

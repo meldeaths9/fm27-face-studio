@@ -570,3 +570,7 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 7px; border-radius: 6
 .kcard .tg { font-size: 10px; padding: 1px 6px; border-radius: 6px; background: rgba(31,209,165,.2); color: #1fd1a5; }
 .kcard .tg2 { font-size: 10px; padding: 1px 6px; border-radius: 6px; background: rgba(255,180,80,.18); color: #ffb450; }
 .kcard .kmem { align-self: flex-start; font-size: 11px; }
+
+.kcard .khide { margin-left: auto; font-size: 11px; background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 2px; }
+.kcard .khide:hover { color: #ff6b6b; }
+#kitUnhide { color: var(--accent2); cursor: pointer; text-decoration: underline; }

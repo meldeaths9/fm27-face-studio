@@ -24,7 +24,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.3.0"
+VERSION = "1.3.1"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -957,7 +957,10 @@ class Api:
         names = self._club_names()
         q = "".join(str(query or "").lower().split())
         out = []
+        hidden = set(map(str, self._cfg.kit_hidden or []))
         for num in gamesetup.kit_nums():
+            if num in hidden:
+                continue
             owner = gamesetup.kit_owner(num, self._cfg.kit_aliases)
             name, alt = names.get(owner, ("", ""))
             label = name or f"유니폼 {num}번"
@@ -977,7 +980,22 @@ class Api:
             out.append({"num": num, "club": owner, "name": name, "alt": alt, "known": bool(name),
                         "user": num in (self._cfg.kit_aliases or {}), "kits": thumbs})
         out.sort(key=lambda x: (not x["known"], x["name"] or "", int(x["num"])))
-        return {"items": out[:80], "total": len(out)}
+        return {"items": out[:80], "total": len(out), "hidden": len(hidden)}
+
+    @_safe
+    def hide_kit(self, num: str, hide: bool = True) -> dict:
+        h = [str(x) for x in (self._cfg.kit_hidden or []) if str(x) != str(num)]
+        if hide:
+            h.append(str(num))
+        self._cfg.kit_hidden = h
+        self._cfg.save()
+        return {"ok": True}
+
+    @_safe
+    def unhide_kits(self) -> dict:
+        self._cfg.kit_hidden = []
+        self._cfg.save()
+        return {"ok": True}
 
     @_safe
     def remember_kit(self, num: str, club: str) -> dict:
