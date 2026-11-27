@@ -20,7 +20,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string Id = "kr.fm27facestudio.plugin";
     public const string Name = "FM Face Studio";
-    public const string Version = "0.7.2";
+    public const string Version = "0.7.3";
 
     internal static ManualLogSource L = null!;
     internal static Harmony H = null!;
@@ -894,6 +894,7 @@ internal static class Kits
         P(typeof(FM.UI.DatabaseObjectImageHelpers), "GetLicensedKit2DResourceID", nameof(IdPost), true);
         // 유니폼 주소의 번호는 '유니폼 번호'라 구단 번호와 다를 때가 있다(레알 마드리드 1736 ↔ 구단 1734).
         // 주소를 만드는 바깥 함수에서 구단(dynRef)의 UID를 함께 받아 짝을 기록한다.
+        FindConv();
         P(typeof(FM.UI.DatabaseObjectImageHelpers), "ConvertDynamicReferenceToAddressableID", nameof(OwnerPost), true);
         P(typeof(UnityEngine.UIElements.Image), "set_image", nameof(ImagePrefix), false);
     }
@@ -901,34 +902,44 @@ internal static class Kits
     private static readonly Dictionary<string, string> Owner = new();   // 유니폼 번호 -> 구단 UID (이번 실행)
     private static readonly Dictionary<string, string> Owners = new();  // 저장한 유니폼의 짝 (owners.json)
 
-    // 같은 구단 dynRef로 엠블럼 주소(club_<UID>)도 만든다 → 그 UID를 기억했다가 유니폼 주소와 짝짓는다
-    private static readonly Dictionary<IntPtr, string> RefClub = new();
-    private static (string uid, float at) _lastClub;
+    // 유니폼 주소를 만든 구단(dynRef)으로 '엠블럼 주소'를 직접 물어 구단 UID를 얻는다:
+    // ConvertDynamicReferenceToAddressableID(dynRef, Club, null, false) => "club_<UID>"
+    private static System.Reflection.MethodInfo? _conv4;
+    private static object? _clubType;
+    private static bool _inOwner;
+
+    private static void FindConv()
+    {
+        foreach (var m in AccessTools.GetDeclaredMethods(typeof(FM.UI.DatabaseObjectImageHelpers)).Where(x => x.Name == "ConvertDynamicReferenceToAddressableID"))
+        {
+            var ps = m.GetParameters();
+            if (ps.Length == 4 && ps[1].ParameterType.IsEnum && ps[3].ParameterType == typeof(bool))
+            {
+                try { _clubType = Enum.Parse(ps[1].ParameterType, "Club"); _conv4 = m; }
+                catch (Exception e) { Plugin.L.LogWarning("구단 종류 값 찾기 실패: " + e.Message); }
+            }
+        }
+    }
 
     private static void OwnerPost(SI.Bindable.DynamicReference __0, string __result)
     {
+        if (_inOwner) return;
         try
         {
-            if (__0 is null || string.IsNullOrEmpty(__result)) return;
-            if (__result.StartsWith("club_"))
-            {
-                var u = __result.Substring(5);
-                if (u.Length > 0 && u.All(char.IsDigit))
-                {
-                    if (RefClub.Count > 5000) RefClub.Clear();
-                    RefClub[__0.Pointer] = u;
-                    _lastClub = (u, Time.realtimeSinceStartup);
-                }
-                return;
-            }
-            if (!__result.StartsWith("kit2d_")) return;
+            if (__0 is null || string.IsNullOrEmpty(__result) || !__result.StartsWith("kit2d_")) return;
             var parts = __result.Split('_');
-            if (parts.Length != 3 || !parts[1].All(char.IsDigit)) return;
-            if (RefClub.TryGetValue(__0.Pointer, out var club)) Owner[parts[1]] = club;
-            else if (!Owner.ContainsKey(parts[1]) && Time.realtimeSinceStartup - _lastClub.at < 3f && _lastClub.uid is not null)
-                Owner[parts[1]] = _lastClub.uid;      // 구단 프로필: 엠블럼 바로 뒤에 유니폼
+            if (parts.Length != 3 || !parts[1].All(char.IsDigit) || Owner.ContainsKey(parts[1])) return;
+            if (_conv4 is null || _clubType is null) return;
+            _inOwner = true;
+            var club = _conv4.Invoke(null, new object?[] { __0, _clubType, null, false }) as string;
+            if (club is not null && club.StartsWith("club_"))
+            {
+                var u = club.Substring(5);
+                if (u.Length > 0 && u.All(char.IsDigit)) Owner[parts[1]] = u;
+            }
         }
-        catch { }
+        catch (Exception e) { try { Plugin.L.LogWarning("유니폼 구단 찾기 실패: " + e.Message); } catch { } }
+        finally { _inOwner = false; }
     }
 
     private static void IdPost(string __result)
