@@ -20,6 +20,16 @@ STYLES = {
 STYLE_LABELS = {"gold": "금색", "white": "흰색", "navy": "남색 띠"}
 
 
+def _hex(v: str):
+    v = str(v or "").strip()
+    if len(v) == 7 and v.startswith("#"):
+        try:
+            return tuple(int(v[i:i + 2], 16) for i in (1, 3, 5))
+        except ValueError:
+            return None
+    return None
+
+
 @dataclass
 class Deco:
     caption: bool = False
@@ -28,6 +38,8 @@ class Deco:
     rounded: bool = False
     radius: int = 14          # 한 변의 %
     border: bool = False
+    text_color: str = ""      # "#rrggbb" — 비우면 스타일 기본색
+    border_color: str = ""
 
     @classmethod
     def from_dict(cls, d: dict | None) -> "Deco":
@@ -39,6 +51,9 @@ class Deco:
         out.radius = max(0, min(50, out.radius))
         if out.style not in STYLES:
             out.style = "gold"
+        for k in ("text_color", "border_color"):
+            if _hex(getattr(out, k)) is None:
+                setattr(out, k, "")
         return out
 
     def to_dict(self) -> dict:
@@ -83,6 +98,10 @@ def decorate(img: Image.Image, deco: Deco) -> Image.Image:
     im = img.convert("RGBA").copy()
     S = im.width
     color, band_rgb, band_alpha, border_rgba = STYLES.get(deco.style, STYLES["gold"])
+    if _hex(deco.text_color):                 # 직접 고른 글씨 색
+        color = _hex(deco.text_color) + (255,)
+    if _hex(deco.border_color):               # 직접 고른 테두리 색
+        border_rgba = _hex(deco.border_color) + (235,)
 
     # 하단 이름
     text = deco.text.strip()

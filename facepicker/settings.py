@@ -66,7 +66,17 @@ def documents_dir() -> Path:
 
 
 def default_fm_user_dir() -> Path:
-    return documents_dir() / "Sports Interactive" / FM_FOLDER_NAME
+    """FM27 사용자 폴더. 윈도우 '문서' → OneDrive 문서 → 사용자 폴더의 문서 순으로, FM27 폴더가 있는 곳."""
+    cands = [documents_dir()]
+    od = os.environ.get("OneDrive") or os.environ.get("OneDriveConsumer")
+    if od:
+        cands += [Path(od) / "Documents", Path(od) / "문서"]
+    cands.append(Path.home() / "Documents")
+    for c in cands:
+        p = c / "Sports Interactive" / FM_FOLDER_NAME
+        if p.is_dir():
+            return p
+    return cands[0] / "Sports Interactive" / FM_FOLDER_NAME
 
 
 def app_data_dir() -> Path:

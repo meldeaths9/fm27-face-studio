@@ -20,7 +20,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string Id = "kr.fm27facestudio.plugin";
     public const string Name = "FM Face Studio";
-    public const string Version = "0.5.1";
+    public const string Version = "0.6.0";
 
     internal static ManualLogSource L = null!;
     internal static Harmony H = null!;
@@ -86,6 +86,7 @@ public sealed class Runner : MonoBehaviour
         }
         Diag.Tick(now);
         Appearance.Tick(now);
+        Collect.Tick(now);
     }
 
     private void Heartbeat()
@@ -103,6 +104,8 @@ public sealed class Runner : MonoBehaviour
                 manager_hits = ManagerFace.Hits,
                 manager_shots = ManagerFace.Shots,
                 appearance_count = Appearance.Count,
+                collecting = Collect.On,
+                collected = Collect.Count,
                 last = _lastResult,
             });
         }
@@ -155,6 +158,12 @@ public sealed class Runner : MonoBehaviour
                     break;
                 case "diag_stop":
                     Answer(id, true, Diag.Stop());
+                    break;
+                case "collect":
+                    Answer(id, true, Collect.Start(seconds));
+                    break;
+                case "collect_stop":
+                    Answer(id, true, Collect.Stop());
                     break;
                 default:
                     Answer(id, false, "모르는 명령: " + cmd);
@@ -596,6 +605,7 @@ internal static class ManagerFace
 
     private static void SetImagePrefix2D(ref Texture2D __0)
     {
+        if (Collect.On && __0 is not null) Collect.Take(__0, "SetImage(Texture2D)");
         if (__0 is null || !HasPhoto) return;
         if (_tex is not null && __0.Pointer == _tex.Pointer) return;
         if (!(__0.Pointer == _orig || LooksLikeManagerShot(__0))) return;
@@ -608,6 +618,7 @@ internal static class ManagerFace
 
     private static void SetImagePrefixTex(ref Texture __0)
     {
+        if (Collect.On && __0 is not null) Collect.Take(__0, "SetImage(Texture)");
         if (__0 is null || _orig == IntPtr.Zero || __0.Pointer != _orig) return;
         var p = Photo();
         if (p is not null) { __0 = p; Hits++; }
@@ -710,5 +721,76 @@ internal static class Appearance
             catch (Exception e) { try { Plugin.L.LogWarning("외모 기록 저장 실패: " + e.Message); } catch { } }
             finally { _saving = false; }
         });
+    }
+}
+
+
+/// <summary>
+/// 연구용 '이미지 수집': 정해진 시간 동안 게임이 화면 그림 칸(SIImage)에 거는 그림을 모두 저장한다.
+/// 클럽 정보 화면의 유니폼처럼, 게임이 직접 그린 그림을 앱이 가져다 쓸 수 있는지 찾으려고 쓴다.
+/// 그림마다 raw(가로·세로 int32 + RGBA, 아래 줄부터)와 index.txt 한 줄. png 변환은 앱이 한다.
+/// </summary>
+internal static class Collect
+{
+    private static float _until;
+    private static string _dir = "";
+    private static readonly HashSet<IntPtr> Seen = new();
+    public static int Count;
+    public static bool On => Time.realtimeSinceStartup < _until;
+
+    public static string Start(int seconds)
+    {
+        _dir = Path.Combine(Bridge.DiagDir, $"images-{DateTime.Now:yyyyMMdd-HHmmss}");
+        Directory.CreateDirectory(_dir);
+        Seen.Clear();
+        Count = 0;
+        _until = Time.realtimeSinceStartup + Math.Clamp(seconds, 10, 600);
+        return $"이미지 수집 시작 ({Math.Clamp(seconds, 10, 600)}초). 클럽 정보 → 개요(유니폼) 같은 화면을 열어 주세요.";
+    }
+
+    public static string Stop()
+    {
+        _until = 0;
+        return $"이미지 수집 끝: {Count}장";
+    }
+
+    public static void Tick(float now) { }
+
+    public static void Take(Texture tex, string via)
+    {
+        try
+        {
+            if (Count >= 300) return;
+            var ptr = tex.Pointer;
+            if (!Seen.Add(ptr)) return;
+            int w = tex.width, h = tex.height;
+            if (w < 48 || h < 48 || w > 2048 || h > 2048) return;
+            var rt = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGB32);
+            var prev = RenderTexture.active;
+            Graphics.Blit(tex, rt);
+            RenderTexture.active = rt;
+            var t2 = new Texture2D(w, h, TextureFormat.RGBA32, false);
+            t2.ReadPixels(new Rect(0, 0, w, h), 0, 0);
+            t2.Apply();
+            RenderTexture.active = prev;
+            RenderTexture.ReleaseTemporary(rt);
+            byte[] data = t2.GetRawTextureData();
+            UnityEngine.Object.Destroy(t2);
+            Count++;
+            var file = Path.Combine(_dir, $"{Count:000}.raw");
+            using (var fs = File.Create(file))
+            {
+                fs.Write(BitConverter.GetBytes(w));
+                fs.Write(BitConverter.GetBytes(h));
+                fs.Write(data);
+            }
+            var kind = tex.GetIl2CppType().Name;
+            File.AppendAllText(Path.Combine(_dir, "index.txt"),
+                $"{Count:000}\t{w}x{h}\t{kind}\t{(tex.name ?? "").Replace('\t', ' ')}\t{via}\n", new UTF8Encoding(false));
+        }
+        catch (Exception e)
+        {
+            try { Plugin.L.LogWarning("이미지 수집 실패: " + e.Message); } catch { }
+        }
     }
 }

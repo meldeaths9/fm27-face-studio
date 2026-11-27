@@ -109,11 +109,33 @@ def _gamepass_dirs() -> list[Path]:
     return out
 
 
+def _epic_dirs() -> list[Path]:
+    """에픽 게임즈 런처의 설치 기록(*.item, JSON)에서 FM27 위치."""
+    out = []
+    pd = os.environ.get("ProgramData") or r"C:\ProgramData"
+    man = Path(pd) / "Epic" / "EpicGamesLauncher" / "Data" / "Manifests"
+    try:
+        for f in man.glob("*.item"):
+            try:
+                d = json.loads(f.read_text(encoding="utf-8", errors="ignore"))
+            except (OSError, ValueError):
+                continue
+            name = str(d.get("DisplayName", "")).lower()
+            if "football manager" in name and ("27" in name or "2027" in name) and d.get("InstallLocation"):
+                out.append(Path(d["InstallLocation"]))
+    except OSError:
+        pass
+    return out
+
+
 def find_game(saved: str = "") -> str:
     if valid_game(saved):
         return str(saved)
     for lib in _steam_roots():
         p = lib / "steamapps" / "common" / "Football Manager 27"
+        if valid_game(p):
+            return str(p)
+    for p in _epic_dirs():              # 에픽 게임즈
         if valid_game(p):
             return str(p)
     for p in _gamepass_dirs():          # Xbox 앱 / PC 게임패스

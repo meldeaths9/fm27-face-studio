@@ -34,7 +34,7 @@ const S = {
   styles: {},
   defaultPrompt: "",
   promptDirty: false,
-  deco: { caption: false, text: "", style: "gold", rounded: false, radius: 14, border: false },
+  deco: { caption: false, text: "", style: "gold", rounded: false, radius: 14, border: false, text_color: "", border_color: "" },
   decoTextDirty: false,
 };
 
@@ -597,7 +597,15 @@ function renderDeco() {
   $(".deco").classList.toggle("on-round", !!d.rounded);
   $("#dStyle").innerHTML = Object.entries(S.styles).map(([k, v]) => `<button class="chip ${d.style === k ? "on" : ""}" data-k="${k}">${esc(v)}</button>`).join("");
   $$("#dStyle .chip").forEach((b) => b.onclick = () => { S.deco.style = b.dataset.k; decoChanged(); });
+  const def = STYLE_COL[d.style] || STYLE_COL.gold;
+  $("#dTextCol").value = d.text_color || def[0]; $("#dBorderCol").value = d.border_color || def[1];
+  $("#dTextColW").hidden = !d.caption; $("#dBorderColW").hidden = !d.border;
+  $("#dTextColW").classList.toggle("custom", !!d.text_color); $("#dBorderColW").classList.toggle("custom", !!d.border_color);
 }
+const STYLE_COL = { gold: ["#dec38b", "#e0d1af"], white: ["#ffffff", "#ffffff"], navy: ["#ecf0fa", "#7b8cff"] };
+$("#dTextCol").oninput = (e) => { S.deco.text_color = e.target.value; decoChanged(); };
+$("#dBorderCol").oninput = (e) => { S.deco.border_color = e.target.value; decoChanged(); };
+$$(".dcol [data-reset]").forEach((b) => b.onclick = (e) => { e.preventDefault(); S.deco[b.dataset.reset] = ""; decoChanged(); });
 function syncDecoText() {
   if (!S.decoTextDirty) { $("#dText").value = $("#fName").value.trim(); S.deco.text = $("#dText").value; requestPreview(); }
 }
@@ -1088,7 +1096,10 @@ function renderPop() {
         ${g.connected ? `<button class="btn" data-act="refresh">${ico("refresh")}지금 반영</button>` : ""}</div>
       <hr><div class="k" style="font-size:12px;color:var(--muted);font-weight:700">진단 (감독 사진·지원 스태프 작업용)</div>
       <div class="note" style="margin-top:6px">진단을 켜고 2분 동안 게임에서 내 감독 프로필, 그리고 언론 담당자·개인 비서처럼 얼굴이 뜨는 화면(받은 메시지 등)을 차례로 열어 주세요. 끝나면 진단 파일을 보내 주시면 돼요.</div>
-      <div class="acts">${g.connected ? (diagOn ? `<button class="btn" data-act="diagstop">진단 끝내기</button>` : `<button class="btn" data-act="diag">진단 시작 (2분)</button>`) : ""}<button class="btn" data-act="diagfolder">${ico("folder")}진단 파일</button></div>`;
+      <div class="acts">${g.connected ? (diagOn ? `<button class="btn" data-act="diagstop">진단 끝내기</button>` : `<button class="btn" data-act="diag">진단 시작 (2분)</button>`) : ""}<button class="btn" data-act="diagfolder">${ico("folder")}진단 파일</button></div>
+      <hr><div class="k" style="font-size:12px;color:var(--muted);font-weight:700">이미지 수집 (유니폼 연구용)</div>
+      <div class="note" style="margin-top:6px">켜고 2분 동안 게임에서 클럽 정보 → 개요(유니폼이 보이는 화면)를 열어 주세요. 게임이 화면에 건 그림을 모아요. 끝나면 '진단 파일'에서 모은 그림 폴더가 열려요.</div>
+      <div class="acts">${g.connected ? (g.heartbeat && g.heartbeat.collecting ? `<button class="btn" data-act="collectstop">수집 끝내기 (${g.heartbeat.collected || 0}장)</button>` : `<button class="btn" data-act="collect">이미지 수집 시작 (2분)</button>`) : `<span class="hint">게임을 켜고 세이브를 불러오면 쓸 수 있어요</span>`}</div>`;
   }
   el.innerHTML = html;
   const b = $(`.pill[data-pop="${popKind}"]`).getBoundingClientRect();
@@ -1127,6 +1138,10 @@ async function popAction(act, btn) {
     btn.disabled = true;
     const r = await call("plugin_refresh");
     if (r) toast(r.message, r.ok ? "ok" : "err", 6000);
+    pollStatus();
+  } else if (act === "collect" || act === "collectstop") {
+    const r = await call(act === "collect" ? "plugin_collect" : "plugin_collect_stop", 120);
+    if (r) toast(r.message, r.ok ? "ok" : "err", 9000);
     pollStatus();
   } else if (act === "diag" || act === "diagstop") {
     const r = await call(act === "diag" ? "plugin_diag" : "plugin_diag_stop", 120);
@@ -1315,7 +1330,7 @@ $("#wClose").onclick = () => call("win_close");
 
 $("#btnReport").onclick = async () => {
   const r = await call("make_report");
-  if (r && r.ok) toast("오류 보고 파일을 만들었어요.\n" + r.path, "ok", 6000);
+  if (r && r.ok) confirmBox("오류 보고 파일을 만들었어요", `${r.path}\n\n이 파일을 개발자에게 보내 주세요. 에펨코리아에서 'FM Face Studio' 글쓴이에게 쪽지로 문의하시면 받을 곳을 알려 드려요.\n(API 키 같은 개인 정보는 들어 있지 않아요)`, "확인", false, "닫기");
 };
 
 

@@ -24,7 +24,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.0.4"
+VERSION = "1.1.0"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -663,8 +663,44 @@ class Api:
             providers.reveal(f)
         return {"ok": True, "path": str(f)}
 
+    @_safe
+    def plugin_collect(self, seconds: int = 120) -> dict:
+        return gamesetup.command("collect", timeout=10, seconds=int(seconds))
+
+    @_safe
+    def plugin_collect_stop(self) -> dict:
+        r = gamesetup.command("collect_stop", timeout=10)
+        self._convert_collected()
+        return r
+
+    def _convert_collected(self) -> Path | None:
+        """플러그인이 모은 raw 그림을 png로 (가장 최근 폴더)."""
+        import struct
+        dirs = sorted(gamesetup.diag_dir().glob("images-*"))
+        if not dirs:
+            return None
+        d = dirs[-1]
+        for f in sorted(d.glob("*.raw")):
+            out = f.with_suffix(".png")
+            if out.exists():
+                continue
+            try:
+                b = f.read_bytes()
+                w, h = struct.unpack("<ii", b[:8])
+                im = Image.frombytes("RGBA", (w, h), b[8:8 + w * h * 4]).transpose(Image.FLIP_TOP_BOTTOM)
+                im.save(out)
+                f.unlink()
+            except Exception as e:  # noqa: BLE001
+                log.warning("수집 그림 변환 실패 %s: %s", f.name, e)
+        return d
+
+    @_safe
     def open_diag_folder(self) -> bool:
         d = gamesetup.diag_dir()
+        img = self._convert_collected()
+        if img and sys.platform == "win32" and (not list(d.glob("diag-*.txt")) or img.stat().st_mtime > max(x.stat().st_mtime for x in d.glob("diag-*.txt"))):
+            os.startfile(img)  # type: ignore[attr-defined]
+            return True
         if sys.platform == "win32":
             files = sorted(d.glob("diag-*.txt"))
             if files:
