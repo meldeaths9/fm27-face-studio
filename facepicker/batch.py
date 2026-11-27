@@ -25,7 +25,7 @@ PRICE_USD = {
     "grok-imagine-image-2.0": 0.07,
 }
 WON_PER_USD = 1450
-AUTO_ENGINES = ("gemini", "openai", "xai", "codex", "cloudflare")
+AUTO_ENGINES = ("local", "gemini", "openai", "xai", "codex", "cloudflare")
 
 
 def price_of(pid: str, model: str, size: str = "") -> dict:
@@ -34,6 +34,8 @@ def price_of(pid: str, model: str, size: str = "") -> dict:
         return {"kind": "free", "usd": 0.0}
     if pid == "codex":
         return {"kind": "sub", "usd": 0.0}
+    if pid == "local":
+        return {"kind": "local", "usd": 0.0}
     m = (model or providers.DEFAULT_MODELS.get(pid, "")).strip()
     if size == "512":
         small = next((x.get("small_usd") for ms in providers.MODEL_CHOICES.values() for x in ms if x["id"] == m), None)

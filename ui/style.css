@@ -579,6 +579,16 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 7px; border-radius: 6
 #kitUnhide { color: var(--accent2); cursor: pointer; text-decoration: underline; }
 
 /* ===== AI로 한꺼번에 ===== */
+.ablocal { border: 1px solid var(--line2); background: rgba(31,209,165,.06); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; font-size: 13px; }
+.ablocal[hidden] { display: none; }
+.ablocal .lrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ablocal .gpu.ok { color: #6ee7c4; font-weight: 800; }
+.ablocal .gpu.no { color: #ff8b8b; font-weight: 800; }
+.ablocal .mrow { display: flex; align-items: center; gap: 9px; }
+.ablocal .mrow .sz { color: var(--muted); font-size: 12px; }
+.ablocal .done { color: #6ee7c4; font-size: 12px; font-weight: 700; }
+.ablocal code { color: var(--text); background: rgba(255,255,255,.06); padding: 1px 6px; border-radius: 5px; font-size: 12px; word-break: break-all; }
+.ablocal .err { color: #ff9b9b; white-space: pre-wrap; font-size: 12px; background: rgba(255,80,80,.08); border-radius: 8px; padding: 8px 10px; max-height: 120px; overflow: auto; }
 .bigacts { display: grid; grid-template-columns: 1.25fr 1fr; gap: 12px; margin-bottom: 12px; }
 .bigbtn { display: flex; align-items: center; gap: 14px; text-align: left; padding: 16px 20px; min-height: 76px; border-radius: 16px; border: 1px solid var(--line2); background: var(--bg2); color: var(--text); cursor: pointer; transition: .15s; font: inherit; }
 .bigbtn:hover { border-color: var(--accent); transform: translateY(-1px); }

@@ -102,6 +102,7 @@ class Settings:
         self.bulk_crop: str = "face"      # 대량·끌어다 놓기 자르기: face(얼굴 맞춤) / keep(그대로, 위쪽 맞춤)
         self.bulk_deco: str = "none"      # 대량·끌어다 놓기 꾸미기: follow(편집 화면 설정) / none
         self.check_updates: bool = True
+        self.drawtool_dir: str = ""        # 내 PC 그림도구 폴더 (비우면 %LOCALAPPDATA%\FMFaceStudio_DrawTool)
         self.beta_updates: bool = False   # 테스트 버전(prerelease)도 받기   # 켤 때 GitHub에서 새 버전 확인
         self.skip_version: str = ""       # '이 버전 건너뛰기'
         self.follow_save: bool = False    # 게임의 '가장 최근 세이브'를 자동으로 따라가기 (기본: 끔)

@@ -6,13 +6,14 @@ const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const ico = (n, cls = "i") => `<svg class="${cls}"><use href="#i-${n}"/></svg>`;
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-const GROUPS = { free_web: "무료 · 웹에서 직접", free_auto: "무료 · 자동", sub: "구독", api: "API 키 · 쓴 만큼 요금" };
-const TAG = { free_web: ["free", "무료"], free_auto: ["free", "무료"], sub: ["sub", "구독"], api: ["paid", "유료"] };
+const GROUPS = { local: "내 PC · 무료", free_web: "무료 · 웹에서 직접", free_auto: "무료 · 자동", sub: "구독", api: "API 키 · 쓴 만큼 요금" };
+const TAG = { local: ["free", "내 PC"], free_web: ["free", "무료"], free_auto: ["free", "무료"], sub: ["sub", "구독"], api: ["paid", "유료"] };
 const HOWTO = {
   web_gemini: ["'사이트 열기'를 누르면 프롬프트가 복사되고 제미나이가 열려요.", "참고 사진을 켰으면 사진 파일이 있는 폴더가 같이 열려요. 사진을 제미나이 입력창에 끌어다 놓아요.", "입력창에 Ctrl+V로 프롬프트를 붙여넣고 보내요.", "완성된 사진을 우클릭 → 이미지 복사 후, 이 프로그램에서 Ctrl+V."],
   web_chatgpt: ["'사이트 열기'를 누르면 프롬프트가 복사되고 챗GPT가 열려요.", "참고 사진을 켰으면 사진 파일을 입력창에 끌어다 놓아요.", "Ctrl+V로 프롬프트를 붙여넣고 보내요.", "완성된 사진을 복사해서 이 프로그램에서 Ctrl+V."],
   web_grok: ["'사이트 열기'를 누르면 프롬프트가 복사되고 그록 Imagine이 열려요.", "참고 사진을 켰으면 사진 파일을 끌어다 놓아요.", "Ctrl+V로 프롬프트를 붙여넣고 만들어요.", "완성된 사진을 복사해서 이 프로그램에서 Ctrl+V."],
   cloudflare: ["dash.cloudflare.com 에서 무료 계정을 만들어요.", "오른쪽 위 계정 메뉴의 Account ID를 복사해 아래 '계정 ID'에 넣어요.", "내 프로필 → API 토큰 → 토큰 만들기 → 'Workers AI' 템플릿으로 만든 토큰을 '토큰'에 넣어요.", "하루 무료 사용량 안에서 버튼 하나로 생성돼요. 참고 사진은 못 보내요."],
+  local: ["엔비디아(RTX) 그래픽카드가 필요해요. 그래픽카드 메모리 8GB 이상.", "첫 화면의 'AI로 한꺼번에 그리기' → 그리는 곳에서 '내 PC 그림도구'를 고르면 설치·지우기 칸이 나와요.", "처음 설치할 때 20GB 안팎을 받아요."],
   codex: ["ChatGPT 유료 구독(Plus 이상)이 필요해요.", "Node.js 설치 후 명령 프롬프트에서: npm i -g @openai/codex", "codex login 으로 ChatGPT 계정 로그인.", "프로그램을 다시 켜면 '설치됨'으로 바뀌어요. 한 장에 30초~1분 걸려요."],
   gemini: ["aistudio.google.com/apikey 에서 키를 만들어요.", "이미지 생성은 결제를 등록한 계정에서만 돼요 (무료 키는 오류).", "키를 아래에 넣어요."],
   openai: ["platform.openai.com/api-keys 에서 키를 만들어요.", "크레딧 충전이 필요해요.", "키를 아래에 넣어요."],
@@ -1668,7 +1669,7 @@ $("#bulkGo").onclick = async () => {
 
 /* ================================================================ AI로 한꺼번에 그리기 */
 const AB = { banner: "none", people: [], sel: new Set(), task: "face", kitKind: "home", thumbs: {}, ver: {}, items: [], pick: new Set(), timer: 0, running: false, price: null, big: null };
-const AB_ENG = ["gemini", "openai", "xai", "codex", "cloudflare"];
+const AB_ENG = ["local", "gemini", "openai", "xai", "codex", "cloudflare"];
 const AB_TASK_HINT = { face: "게임 외모 설명(피부·머리)으로 새 얼굴을 그려요.", kit: "지금 사진의 얼굴은 두고 옷만 바꿔요. 지금 사진이 있는 사람만 돼요.", gunzo: "경기장에서 뛰는 모습을 그려요. 얼굴 참고를 켜면 지금 얼굴로 그려요." };
 const AB_BANNER_HINT = { follow: "편집 화면의 꾸미기(이름띠·모서리·테두리) 그대로", none: "사진만 넣어요. 꾸미기는 나중에 더할 수 있어요" };
 const won = (n) => Math.round(n).toLocaleString("ko-KR");
@@ -1706,8 +1707,74 @@ function renderABEngines() {
   abPrice();
 }
 async function abPrice() {
-  AB.price = await call("batch_price", $("#abEngine").value);
+  const eng = $("#abEngine").value;
+  AB.price = await call("batch_price", eng);
+  $("#abLocal").hidden = eng !== "local";
+  $("#abCost").hidden = eng === "local";
+  if (eng === "local") loadDT(true);
   renderABCost();
+}
+/* ---------------- 내 PC 그림도구 (설치·지우기) */
+let DT = null, dtTimer = 0;
+const gb = (b) => (b / 1e9).toFixed(b >= 1e10 ? 0 : 1);
+async function loadDT(gpu) {
+  const r = await call("drawtool_status", !!gpu);
+  if (!r) return;
+  DT = r; renderDT();
+  clearTimeout(dtTimer);
+  if (r.task && r.task.active && $("#abModal").classList.contains("on")) dtTimer = setTimeout(() => loadDT(false), 1500);
+}
+function renderDT() {
+  const el = $("#abLocal"), d = DT; if (!d) return;
+  const g = d.gpu || {}, t = d.task || {};
+  const gpuTxt = g.ok ? `<span class="gpu ok">✓ ${esc(g.name)} · ${g.vram}GB</span>${g.tight ? ' <span class="hint">메모리가 빠듯해서 조금 느릴 수 있어요</span>' : ""}` : `<span class="gpu no">✕ ${esc(g.reason || "그래픽카드를 확인하지 못했어요")}</span>`;
+  let h = `<div class="lrow"><b>그래픽카드</b>${gpuTxt}</div>`;
+  if (t.active) {
+    const pct = t.total ? Math.min(99, Math.round(t.done / t.total * 100)) : 0;
+    h += `<div class="lrow"><b>설치 중</b><span>${esc(t.step || "")}</span></div>
+      <div class="abprog"><div class="abbar"><i style="width:${pct}%"></i></div><span>${gb(t.done)} / 약 ${gb(t.total)}GB</span></div>
+      <div class="lrow"><span class="hint grow">이 창을 닫아도 설치는 계속돼요. 다시 열면 이어서 보여요.</span><button class="btn sm" id="dtCancel">설치 취소</button></div>`;
+  } else if (d.installed) {
+    h += `<div class="lrow"><b>설치됨</b><code>${esc(d.root)}</code><span class="hint">쓰는 용량 약 ${gb(d.used || 0)}GB</span></div>`;
+    h += Object.entries(d.models).map(([k, m]) => `<div class="mrow">${m.installed ? '<span class="done">✓ 받음</span>' : `<button class="btn sm" data-add="${k}">추가로 받기</button>`}<span>${esc(m.name)}</span><span class="sz">약 ${gb(m.size)}GB</span></div>`).join("");
+    h += `<div class="lrow"><span class="hint grow">요금 없이 내 그래픽카드로 그려요. (그리기는 다음 테스트 버전에 들어가요)</span><button class="btn sm" id="dtLog">설치 기록</button><button class="btn sm" id="dtDel">그림도구 지우기</button></div>`;
+  } else {
+    const adv = $("#dtAdv") ? $("#dtAdv").checked : false;
+    const need = d.pkg_est + d.models.std.size + (adv ? d.models.adv.size : 0);
+    h += `<div class="lrow"><b>설치 폴더</b><code>${esc(d.root)}</code><button class="btn sm" id="dtDir">폴더 바꾸기</button></div>
+      <div class="mrow"><span class="done">✓ 필수</span><span>${esc(d.models.std.name)}</span><span class="sz">약 ${gb(d.models.std.size)}GB · 얼굴·유니폼 참고 가능</span></div>
+      <div class="mrow"><label class="switch"><input type="checkbox" id="dtAdv"${adv ? " checked" : ""}><i></i>${esc(d.models.adv.name)}</label><span class="sz">약 ${gb(d.models.adv.size)}GB · 사진 느낌 더 좋음, 글로만 그림 (선택)</span></div>
+      <div class="lrow"><span>받는 용량 약 <b>${gb(need)}GB</b> · 남은 공간 ${gb(d.free)}GB</span>${d.free < need * 1.1 + 2e9 ? '<span class="gpu no">공간이 모자라요. 폴더를 다른 드라이브로 바꿔 주세요.</span>' : ""}<span class="hint">프로그램(파이썬·PyTorch 약 ${gb(d.pkg_est)}GB) 포함</span></div>
+      ${t.error ? `<div class="err">지난 설치가 멈췄어요: ${esc(t.error)}</div>` : ""}
+      <div class="lrow"><span class="hint grow">인터넷 속도에 따라 수십 분 걸려요. 중간에 끊겨도 다시 누르면 이어서 받아요.</span>${t.error ? '<button class="btn sm" id="dtLog">설치 기록</button>' : ""}<button class="btn primary" id="dtGo"${g.ok && d.free >= need * 1.1 + 2e9 ? "" : " disabled"}>그림도구 설치</button></div>`;
+  }
+  el.innerHTML = h;
+  const on = (id, fn) => { const b = $(id); if (b) b.onclick = fn; };
+  on("#dtCancel", async () => { await call("drawtool_cancel"); toast("설치를 멈추는 중이에요.", "info", 2000); setTimeout(() => loadDT(false), 1200); });
+  on("#dtDir", async () => { const r = await call("drawtool_pick_dir"); if (r && !r.cancel) { DT = r; renderDT(); } });
+  on("#dtLog", () => call("drawtool_open_log"));
+  const adv = $("#dtAdv"); if (adv) adv.onchange = renderDT;
+  on("#dtGo", async () => {
+    const keys = ["std"].concat($("#dtAdv").checked ? ["adv"] : []);
+    const r = await call("drawtool_install", keys);
+    if (r && r.error) { toast(r.error, "err", 4500); return; }
+    if (r) { DT = r; renderDT(); loadDT(false); }
+  });
+  $$("#abLocal [data-add]").forEach((b) => b.onclick = async () => {
+    const r = await call("drawtool_install", [b.dataset.add]);
+    if (r && r.error) { toast(r.error, "err", 4500); return; }
+    if (r) { DT = r; renderDT(); loadDT(false); }
+  });
+  on("#dtDel", async () => {
+    if (!await confirmBox("그림도구 지우기", `그림도구 폴더를 통째로 지워요.\n${d.root}\n\n약 ${gb(d.used || 0)}GB가 비워져요. 다시 쓰려면 처음부터 받아야 해요.`, "지우기", true)) return;
+    busy(true, "그림도구 지우는 중…");
+    const r = await call("drawtool_uninstall");
+    busy(false);
+    if (r && r.error) { toast(r.error, "err", 4000); return; }
+    if (r) toast(`그림도구를 지웠어요. 약 ${gb(r.freed || 0)}GB를 비웠어요.${r.left ? " (일부 파일은 남았어요)" : ""}`, "ok", 4000);
+    loadDT(false); renderABEngines();
+  });
+  if (!t.active && t.finished && !t.error && !DT._toasted) { DT._toasted = true; }
 }
 function renderABOpts() {
   $$("#abTask button").forEach((b) => b.classList.toggle("on", b.dataset.v === AB.task));

@@ -25,7 +25,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.9.7"
+VERSION = "1.9.8"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -382,6 +382,7 @@ class Api:
             for pid, v in s["ai_cfg"].items():
                 if pid in providers.BY_ID and isinstance(v, dict):
                     c.ai_cfg[pid] = {k: str(v.get(k, "")).strip() for k in ("key", "model", "account", "size")}
+            c.ai_cfg.setdefault("local", {})["dir"] = c.drawtool_dir
         if isinstance(s.get("deco"), dict):
             d = Deco.from_dict(s["deco"]).to_dict()
             d.pop("text", None)          # 글자는 인물마다 다르므로 저장하지 않음
@@ -1381,6 +1382,73 @@ class Api:
             out.append(d)
         return {"items": out, "total": total, "max": self.BATCH_MAX}
 
+    # ---------------------------------------------------------------- 내 PC 그림도구
+    def _drawtool(self):
+        from . import drawtool
+        root = Path(self._cfg.drawtool_dir) if self._cfg.drawtool_dir else drawtool.default_root()
+        dt = getattr(self, "_dt", None)
+        if dt is None or dt.root != root:
+            if dt is not None and dt.task.get("active"):
+                return dt
+            self._dt = drawtool.DrawTool(root)
+        return self._dt
+
+    @_safe
+    def drawtool_status(self, with_gpu: bool = False) -> dict:
+        from . import drawtool
+        st = self._drawtool().status()
+        if with_gpu or not hasattr(self, "_gpu"):
+            self._gpu = drawtool.gpu_info()
+        st["gpu"] = self._gpu
+        st["default"] = not bool(self._cfg.drawtool_dir)
+        return st
+
+    @_safe
+    def drawtool_pick_dir(self) -> dict:
+        from . import drawtool
+        dt = self._drawtool()
+        if dt.installed() or dt.task.get("active"):
+            return {"error": "설치된 뒤에는 폴더를 바꿀 수 없어요. 지우고 다시 설치해 주세요."}
+        r = self.pick_folder("")
+        if not r:
+            return {"cancel": True}
+        p = Path(r)
+        if p.name != drawtool.FOLDER_NAME:
+            p = p / drawtool.FOLDER_NAME
+        self._cfg.drawtool_dir = str(p)
+        self._cfg.ai_cfg.setdefault("local", {})["dir"] = str(p)
+        self._cfg.save()
+        return self.drawtool_status()
+
+    @_safe
+    def drawtool_install(self, keys: list) -> dict:
+        from . import drawtool
+        gpu = drawtool.gpu_info()
+        if not gpu.get("ok"):
+            return {"error": gpu.get("reason") or "그래픽카드를 확인하지 못했어요."}
+        dt = self._drawtool()
+        self._cfg.ai_cfg.setdefault("local", {})["dir"] = str(dt.root)
+        self._cfg.save()
+        r = dt.start_install([str(k) for k in keys or []])
+        return r if r.get("error") else self.drawtool_status()
+
+    @_safe
+    def drawtool_cancel(self) -> dict:
+        self._drawtool().cancel()
+        return {"ok": True}
+
+    @_safe
+    def drawtool_uninstall(self) -> dict:
+        r = self._drawtool().uninstall()
+        return r
+
+    @_safe
+    def drawtool_open_log(self) -> dict:
+        p = self._drawtool().root / "install.log"
+        if p.exists() and sys.platform == "win32":
+            os.startfile(p)  # type: ignore[attr-defined]
+        return {"ok": p.exists()}
+
     @_safe
     def batch_price(self, engine: str) -> dict:
         from .batch import price_of, WON_PER_USD
@@ -1478,6 +1546,10 @@ class Api:
         engine = str(opts.get("engine") or "gemini")
         if engine not in AUTO_ENGINES:
             return {"error": "이 방식은 한꺼번에 그릴 수 없어요."}
+        if engine == "local":
+            if not self._drawtool().installed():
+                return {"error": "먼저 아래 칸에서 그림도구를 설치해 주세요."}
+            return {"error": "내 PC로 그리기는 다음 테스트 버전에 들어가요. 지금은 설치만 해 둘 수 있어요."}
         cfg = self._cfg.ai_cfg.get(engine, {})
         if providers.status(engine, cfg) not in ("키 있음", "설치됨"):
             return {"error": "need_key", "engine": engine}

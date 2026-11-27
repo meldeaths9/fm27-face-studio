@@ -36,6 +36,8 @@ PROVIDERS = [
      "desc": "무료 계정만 있으면 버튼 하나로 자동 생성. 하루 무료 사용량 안에서. 참고 사진은 못 보내요."},
     {"id": "codex", "name": "ChatGPT 구독 (Codex CLI)", "group": "sub", "ref": True,
      "desc": "ChatGPT 구독 사용량으로 생성. Codex CLI 설치와 로그인이 필요해요. (실험 기능)"},
+    {"id": "local", "name": "내 PC 그림도구", "group": "local", "ref": True,
+     "desc": "내 그래픽카드로 그려요. 요금 없음. 'AI로 한꺼번에 그리기'에서 설치해요."},
     {"id": "gemini", "name": "Google Gemini API", "group": "api", "ref": True,
      "desc": "쓴 만큼 요금. 결제를 등록한 키가 필요해요."},
     {"id": "openai", "name": "OpenAI API", "group": "api", "ref": True,
@@ -224,7 +226,18 @@ def gen_codex(cfg: dict, prompt: str, photo) -> Image.Image:
     return Image.open(pngs[0]).convert("RGBA")
 
 
-GENERATORS = {"openai": gen_openai, "xai": gen_xai, "cloudflare": gen_cloudflare,
+def drawtool_root(cfg: dict | None = None):
+    from . import drawtool
+    from pathlib import Path as _P
+    d = (cfg or {}).get("dir") or ""
+    return _P(d) if d else drawtool.default_root()
+
+
+def gen_local(cfg: dict, prompt: str, photo) -> Image.Image:
+    raise ProviderError("내 PC로 그리기는 다음 테스트 버전에 들어가요. 지금은 설치만 해 둘 수 있어요.")
+
+
+GENERATORS = {"local": gen_local, "openai": gen_openai, "xai": gen_xai, "cloudflare": gen_cloudflare,
               "gemini": gen_gemini, "codex": gen_codex}
 
 
@@ -243,6 +256,9 @@ def status(pid: str, cfg: dict) -> str:
         return "바로 사용"
     if pid == "codex":
         return "설치됨" if codex_path() else "설치 안 됨"
+    if pid == "local":
+        from . import drawtool
+        return "설치됨" if drawtool.DrawTool(drawtool_root(cfg)).installed() else "설치 필요"
     if pid == "cloudflare":
         return "키 있음" if cfg.get("key") and cfg.get("account") else "키 없음"
     return "키 있음" if cfg.get("key") else "키 없음"
