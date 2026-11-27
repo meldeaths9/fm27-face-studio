@@ -382,12 +382,17 @@ def kit_images(club: str | int) -> dict:
     if not club.isdigit():
         return out
     d = bridge_dir() / "kits"
-    nums = [club]
-    try:      # 유니폼 번호가 구단 번호와 다른 구단(레알 마드리드 등): owners.json 에서 짝 찾기
-        owners = json.loads((d / "owners.json").read_text(encoding="utf-8"))
-        nums += [k for k, v in owners.items() if str(v) == club and k != club]
+    try:      # 유니폼 번호 → 실제 구단 번호 짝 (owners.json)
+        owners = {str(k): str(v) for k, v in json.loads((d / "owners.json").read_text(encoding="utf-8")).items()}
     except (OSError, ValueError):
-        pass
+        owners = {}
+    # 이 구단 것으로 짝지어진 유니폼 번호 먼저, 그다음 구단 번호 그대로 —
+    # 단, 그 번호가 다른 구단 것으로 짝지어져 있으면(레알 마드리드 1736 → 1734) 이 구단 것이 아니다
+    nums = [k for k, v in owners.items() if v == club and k != club]
+    if owners.get(club, club) == club:
+        nums.append(club)
+    if not nums:
+        return out
     for kind in ("home", "away", "third"):
         for num in nums:
             if (d / f"{num}_{kind}.raw").exists() or (d / f"{num}_{kind}.png").exists():
