@@ -20,7 +20,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string Id = "kr.fm27facestudio.plugin";
     public const string Name = "FM Face Studio";
-    public const string Version = "0.7.1";
+    public const string Version = "0.7.2";
 
     internal static ManualLogSource L = null!;
     internal static Harmony H = null!;
@@ -871,6 +871,10 @@ internal static class Kits
             if (File.Exists(idx))
                 foreach (var kv in JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(idx)) ?? new())
                     Saved[kv.Key] = kv.Value;
+            var own = Path.Combine(KitDir, "owners.json");
+            if (File.Exists(own))
+                foreach (var kv in JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(own)) ?? new())
+                    Owners[kv.Key] = kv.Value;
         }
         catch (Exception e) { Plugin.L.LogWarning("유니폼 기록 읽기 실패: " + e.Message); }
         var flags = System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic;
@@ -888,7 +892,43 @@ internal static class Kits
         }
         P(typeof(FM.UI.DatabaseObjectImageHelpers), "GetKit2DResourceID", nameof(IdPost), true);
         P(typeof(FM.UI.DatabaseObjectImageHelpers), "GetLicensedKit2DResourceID", nameof(IdPost), true);
+        // 유니폼 주소의 번호는 '유니폼 번호'라 구단 번호와 다를 때가 있다(레알 마드리드 1736 ↔ 구단 1734).
+        // 주소를 만드는 바깥 함수에서 구단(dynRef)의 UID를 함께 받아 짝을 기록한다.
+        P(typeof(FM.UI.DatabaseObjectImageHelpers), "ConvertDynamicReferenceToAddressableID", nameof(OwnerPost), true);
         P(typeof(UnityEngine.UIElements.Image), "set_image", nameof(ImagePrefix), false);
+    }
+
+    private static readonly Dictionary<string, string> Owner = new();   // 유니폼 번호 -> 구단 UID (이번 실행)
+    private static readonly Dictionary<string, string> Owners = new();  // 저장한 유니폼의 짝 (owners.json)
+
+    // 같은 구단 dynRef로 엠블럼 주소(club_<UID>)도 만든다 → 그 UID를 기억했다가 유니폼 주소와 짝짓는다
+    private static readonly Dictionary<IntPtr, string> RefClub = new();
+    private static (string uid, float at) _lastClub;
+
+    private static void OwnerPost(SI.Bindable.DynamicReference __0, string __result)
+    {
+        try
+        {
+            if (__0 is null || string.IsNullOrEmpty(__result)) return;
+            if (__result.StartsWith("club_"))
+            {
+                var u = __result.Substring(5);
+                if (u.Length > 0 && u.All(char.IsDigit))
+                {
+                    if (RefClub.Count > 5000) RefClub.Clear();
+                    RefClub[__0.Pointer] = u;
+                    _lastClub = (u, Time.realtimeSinceStartup);
+                }
+                return;
+            }
+            if (!__result.StartsWith("kit2d_")) return;
+            var parts = __result.Split('_');
+            if (parts.Length != 3 || !parts[1].All(char.IsDigit)) return;
+            if (RefClub.TryGetValue(__0.Pointer, out var club)) Owner[parts[1]] = club;
+            else if (!Owner.ContainsKey(parts[1]) && Time.realtimeSinceStartup - _lastClub.at < 3f && _lastClub.uid is not null)
+                Owner[parts[1]] = _lastClub.uid;      // 구단 프로필: 엠블럼 바로 뒤에 유니폼
+        }
+        catch { }
     }
 
     private static void IdPost(string __result)
@@ -936,6 +976,12 @@ internal static class Kits
                 kind = last.Value.kind;
             }
             Done.Add(ptr);
+            // 유니폼 번호 → 구단 UID 짝 (번호가 구단 UID와 다를 때 앱이 찾을 수 있게). 파일 이름은 유니폼 번호 그대로.
+            if (Owner.TryGetValue(club, out var owner) && owner != club && (!Owners.TryGetValue(club, out var had) || had != owner))
+            {
+                Owners[club] = owner;
+                Bridge.WriteJson(Path.Combine(KitDir, "owners.json"), Owners);
+            }
             var key = club + "_" + kind;
             var file = Path.Combine(KitDir, key + ".raw");
             if (Saved.TryGetValue(key, out var old) && old == name && (File.Exists(file) || File.Exists(Path.Combine(KitDir, key + ".png")))) return;
