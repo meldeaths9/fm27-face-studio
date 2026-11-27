@@ -20,7 +20,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string Id = "kr.fm27facestudio.plugin";
     public const string Name = "FM Face Studio";
-    public const string Version = "0.7.0";
+    public const string Version = "0.7.1";
 
     internal static ManualLogSource L = null!;
     internal static Harmony H = null!;
@@ -854,6 +854,9 @@ internal static class Collect
 internal static class Kits
 {
     private static readonly Dictionary<string, (string club, float at)> Pending = new();
+    // 공식 유니폼 그림은 이름이 없다("Local Asset Texture") → 주소를 부른 직후 '바로 다음' 그림 하나만 그 유니폼으로 본다
+    private static (string club, string kind, float at, long seq)? _last;
+    private static long _seq;
     private static readonly Dictionary<string, string> Saved = new();   // "682_home" -> 그림 이름
     private static readonly HashSet<IntPtr> Done = new();
     private static string KitDir => Path.Combine(Bridge.Dir, "kits");
@@ -895,7 +898,11 @@ internal static class Kits
             if (string.IsNullOrEmpty(__result)) return;
             var parts = __result.Split('_');      // kit2d_<클럽번호>_<home|away|third>
             if (parts.Length != 3 || parts[0] != "kit2d" || parts[1].Length == 0 || !parts[1].All(char.IsDigit)) return;
-            if (parts[2] is "home" or "away" or "third") Pending[parts[2]] = (parts[1], Time.realtimeSinceStartup);
+            if (parts[2] is "home" or "away" or "third")
+            {
+                Pending[parts[2]] = (parts[1], Time.realtimeSinceStartup);
+                _last = (parts[1], parts[2], Time.realtimeSinceStartup, _seq);
+            }
         }
         catch { }
     }
@@ -905,15 +912,31 @@ internal static class Kits
         try
         {
             if (__0 is null) return;
+            var seq = ++_seq;
+            var last = _last;
+            _last = null;                                   // 주소 다음 '첫 그림'만 본다
             var ptr = __0.Pointer;
             if (Done.Contains(ptr)) return;
             if (__0.width < 256 || __0.height < 256 || __0.width > 2048) return;
             var name = __0.name ?? "";
             string? kind = name.EndsWith(" home") ? "home" : name.EndsWith(" away") ? "away" : name.EndsWith(" third") ? "third" : null;
-            if (kind is null) return;
+            string club;
+            if (kind is not null)
+            {
+                // 유니폼 팩 그림 (이름에 home/away/third)
+                if (!Pending.TryGetValue(kind, out var p) || Time.realtimeSinceStartup - p.at > 5f) return;
+                club = p.club;
+            }
+            else
+            {
+                // 공식 유니폼 그림: 이름 없음, 정사각형, 주소 바로 다음, 1초 안
+                if (last is null || last.Value.seq != seq - 1 || Time.realtimeSinceStartup - last.Value.at > 1f) return;
+                if (__0.width != __0.height || name.StartsWith("NewgenPortrait") || name.StartsWith("FaceStudio")) return;
+                club = last.Value.club;
+                kind = last.Value.kind;
+            }
             Done.Add(ptr);
-            if (!Pending.TryGetValue(kind, out var p) || Time.realtimeSinceStartup - p.at > 5f) return;
-            var key = p.club + "_" + kind;
+            var key = club + "_" + kind;
             var file = Path.Combine(KitDir, key + ".raw");
             if (Saved.TryGetValue(key, out var old) && old == name && (File.Exists(file) || File.Exists(Path.Combine(KitDir, key + ".png")))) return;
             Collect.SaveRaw(__0, file);

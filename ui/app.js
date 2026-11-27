@@ -729,7 +729,7 @@ function renderGameKits() {
   const isPlayer = S.cur && S.cur.kind === "player";
   if (!ks.length) {
     el.hidden = !(isPlayer && S.cur && S.cur.cuid);
-    el.innerHTML = `<span class="hint">게임에서 이 클럽 정보(개요) 화면을 한 번 열면 실제 유니폼을 가져와요 · 플러그인</span>`;
+    el.innerHTML = `<span class="hint">게임에서 이 구단의 <b>구단 프로필</b> 화면을 한 번 열면 실제 유니폼을 가져와요 · 플러그인</span>`;
     return;
   }
   el.hidden = false;
@@ -1163,7 +1163,7 @@ function renderPop() {
       <div class="acts"><button class="btn" data-act="setgame">${ico("folder")}설치 폴더 지정</button>${!pOk && g.bepinex ? `<button class="btn primary" data-act="install">${ico("upload")}${g.plugin_installed ? "플러그인 업데이트" : "플러그인 설치"}</button>` : ""}
         ${g.connected ? `<button class="btn" data-act="refresh">${ico("refresh")}지금 반영</button>` : ""}</div>
       <hr><div class="k" style="font-size:12px;color:var(--muted);font-weight:700">이미지 수집 (유니폼 연구용)</div>
-      <div class="note" style="margin-top:6px">켜고 2분 동안 게임에서 클럽 정보 → 개요(유니폼이 보이는 화면)를 열어 주세요. 게임이 화면에 건 그림을 모아요. 끝나면 '모은 그림 폴더'를 눌러 폴더를 압축해서 보내 주세요.</div>
+      <div class="note" style="margin-top:6px">켜고 2분 동안 게임에서 구단 프로필(유니폼이 보이는 화면)을 열어 주세요. 게임이 화면에 건 그림을 모아요. 끝나면 '모은 그림 폴더'를 눌러 폴더를 압축해서 보내 주세요.</div>
       <div class="acts">${g.connected ? (g.heartbeat && g.heartbeat.collecting ? `<button class="btn" data-act="collectstop">수집 끝내기 (${g.heartbeat.collected || 0}장)</button>` : `<button class="btn" data-act="collect">이미지 수집 시작 (2분)</button>`) : `<span class="hint">게임을 켜고 세이브를 불러오면 쓸 수 있어요</span>`}<button class="btn" data-act="diagfolder">${ico("folder")}모은 그림 폴더</button></div>`;
   }
   el.innerHTML = html;
