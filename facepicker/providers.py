@@ -8,6 +8,7 @@ import base64
 import io
 import json
 import os
+import logging
 import shutil
 import subprocess
 import tempfile
@@ -16,6 +17,8 @@ import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
+
+log = logging.getLogger("providers")
 
 from PIL import Image
 
@@ -186,20 +189,23 @@ def gen_codex(cfg: dict, prompt: str, photo) -> Image.Image:
     if not exe:
         raise ProviderError("Codex CLI를 찾지 못했어요. 'npm i -g @openai/codex' 설치 후 'codex login'으로 로그인해 주세요.")
     work = Path(tempfile.mkdtemp(prefix="fs_codex_"))
-    args = [exe, "exec", "--skip-git-repo-check", "--full-auto", "-C", str(work)]
+    # "-": 프롬프트는 표준 입력으로 (한글·줄바꿈·따옴표가 codex.cmd 인자로 넘어가면 깨진다). 사진(-i)보다 앞에 둔다
+    args = [exe, "exec", "--skip-git-repo-check", "--full-auto", "-C", str(work), "-"]
     for i, ph in enumerate(_photos(photo)):
         ref = work / f"reference{i}.png"
         ref.write_bytes(_png_bytes(ph))
         args += ["-i", str(ref)]
     task = ("Use $imagegen to create one square image for this request, then save the final PNG as "
             f"result.png in the current directory. Request: {prompt}")
-    args.append(task)
     start = time.time()
     try:
-        proc = subprocess.run(args, capture_output=True, text=True, timeout=420, cwd=str(work),
-                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        proc = subprocess.run(args, input=task, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                              timeout=420, cwd=str(work), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except subprocess.TimeoutExpired:
         raise ProviderError("Codex 응답이 너무 오래 걸려요(7분 초과).") from None
+    except OSError as e:
+        raise ProviderError(f"Codex CLI를 실행하지 못했어요: {e}") from None
+    log.info("codex 종료 코드 %s\n%s", proc.returncode, (proc.stderr or "")[-2000:])
     pngs = sorted((p for p in work.rglob("*.png") if not p.name.startswith("reference") and p.stat().st_mtime >= start - 1),
                   key=lambda p: p.stat().st_mtime, reverse=True)
     if not pngs:
