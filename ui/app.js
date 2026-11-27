@@ -167,11 +167,11 @@ async function doSearch(reset = true) {
   renderBrowse(reset);
 }
 function cardHtml(p, i) {
-  const tag = p.queued ? '<span class="tag queued">대기 중</span>' : p.face_state === "ours" ? '<span class="tag ours">내가 넣은 사진</span>' : p.face_state === "none" ? '<span class="tag none">사진 없음</span>' : `<span class="tag">${esc(p.pack)}</span>`;
+  const tag = p.queued ? '<span class="tag queued">대기 중</span>' : p.face_state === "game" ? '<span class="tag game" title="사진이 없어서 게임 얼굴을 보여 줘요">게임 얼굴</span>' : p.face_state === "ours" ? '<span class="tag ours">내가 넣은 사진</span>' : p.face_state === "none" ? '<span class="tag none">사진 없음</span>' : `<span class="tag">${esc(p.pack)}</span>`;
   const tag2 = p.me ? '<span class="tag2">내 감독</span>' : p.newgen ? '<span class="tag2" style="background:rgba(31,209,165,.85);color:#03261c">뉴젠</span>' : "";
   const sq = p.squad && p.squad !== "1군" ? ` · ${esc(p.squad)}` : "";
   return `<div class="pcard2" data-i="${i}">${tag}${tag2}
-    <div class="ph2">${p.face ? `<img src="${p.face}" loading="lazy">` : "사진 없음"}<div class="dropcue">사진을 놓으면<br>바로 대기열에</div></div>
+    <div class="ph2${p.face_state === "game" ? " gameface" : ""}">${p.face ? `<img src="${p.face}" loading="lazy">` : "사진 없음"}<div class="dropcue">사진을 놓으면<br>바로 대기열에</div></div>
     <div class="nm">${esc(p.name)}</div>
     <div class="sub">${esc(p.club || "무소속")}${p.alt ? ` <span class="alt">(${esc(p.alt)})</span>` : ""}${sq}${p.age ? " · " + esc(p.age) + "세" : ""}${p.job && !p.me ? " · " + esc(p.job) : ""}</div></div>`;
 }
@@ -1764,6 +1764,13 @@ $("#abAll").onclick = () => { AB.sel = new Set(AB.people.map((p) => p.uid)); ren
 $("#abNone").onclick = () => { AB.sel.clear(); renderABPeople(); };
 $("#abNoFace").onclick = () => { AB.sel = new Set(AB.people.filter((p) => !p.has_face).map((p) => p.uid)); renderABPeople(); };
 $("#btnAB").onclick = openAB;
+$("#btnRefresh").onclick = () => { doSearch(false); toast("목록을 다시 읽었어요.", "ok", 1500); };
+$("#abRefresh").onclick = async () => {
+  const keep = new Set(AB.sel), old = new Set(AB.people.map((p) => p.uid));
+  await showABSetup();
+  AB.sel = new Set(AB.people.filter((p) => keep.has(p.uid) || !old.has(p.uid)).map((p) => p.uid));
+  renderABPeople();
+};
 $("#abClose").onclick = () => { $("#abModal").classList.remove("on"); stopABPoll(); };
 $("#abGo").onclick = async () => {
   const list = abTargets(), pr = AB.price || {};

@@ -25,7 +25,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.9.2"
+VERSION = "1.9.3"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -532,6 +532,10 @@ class Api:
             d["face"] = self._face_thumb(f["path"]) if f else ""
             d["face_state"] = "ours" if f and f.get("ours") else "has" if f else "none"
             d["pack"] = f["pack"] if f else ""
+            if not f and p.get("newgen"):          # 사진 없는 뉴젠 → 플러그인이 모은 게임 얼굴
+                gf = gamesetup.newgen_face(str(p["uid"]))
+                if gf:
+                    d["face"], d["face_state"] = self._face_thumb(str(gf)), "game"
             q = queued.get(str(p.get("uid", "")).removeprefix("r-"))
             if q:
                 d["queued"] = True
