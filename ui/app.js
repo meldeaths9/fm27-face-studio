@@ -1094,12 +1094,9 @@ function renderPop() {
       <div style="margin-top:10px"><label class="switch"><input type="checkbox" id="optAuto" ${ST.auto_refresh ? "checked" : ""}><i></i>적용 후 게임에 자동 반영</label></div>
       <div class="acts"><button class="btn" data-act="setgame">${ico("folder")}설치 폴더 지정</button>${!pOk && g.bepinex ? `<button class="btn primary" data-act="install">${ico("upload")}${g.plugin_installed ? "플러그인 업데이트" : "플러그인 설치"}</button>` : ""}
         ${g.connected ? `<button class="btn" data-act="refresh">${ico("refresh")}지금 반영</button>` : ""}</div>
-      <hr><div class="k" style="font-size:12px;color:var(--muted);font-weight:700">진단 (감독 사진·지원 스태프 작업용)</div>
-      <div class="note" style="margin-top:6px">진단을 켜고 2분 동안 게임에서 내 감독 프로필, 그리고 언론 담당자·개인 비서처럼 얼굴이 뜨는 화면(받은 메시지 등)을 차례로 열어 주세요. 끝나면 진단 파일을 보내 주시면 돼요.</div>
-      <div class="acts">${g.connected ? (diagOn ? `<button class="btn" data-act="diagstop">진단 끝내기</button>` : `<button class="btn" data-act="diag">진단 시작 (2분)</button>`) : ""}<button class="btn" data-act="diagfolder">${ico("folder")}진단 파일</button></div>
       <hr><div class="k" style="font-size:12px;color:var(--muted);font-weight:700">이미지 수집 (유니폼 연구용)</div>
-      <div class="note" style="margin-top:6px">켜고 2분 동안 게임에서 클럽 정보 → 개요(유니폼이 보이는 화면)를 열어 주세요. 게임이 화면에 건 그림을 모아요. 끝나면 '진단 파일'에서 모은 그림 폴더가 열려요.</div>
-      <div class="acts">${g.connected ? (g.heartbeat && g.heartbeat.collecting ? `<button class="btn" data-act="collectstop">수집 끝내기 (${g.heartbeat.collected || 0}장)</button>` : `<button class="btn" data-act="collect">이미지 수집 시작 (2분)</button>`) : `<span class="hint">게임을 켜고 세이브를 불러오면 쓸 수 있어요</span>`}</div>`;
+      <div class="note" style="margin-top:6px">켜고 2분 동안 게임에서 클럽 정보 → 개요(유니폼이 보이는 화면)를 열어 주세요. 게임이 화면에 건 그림을 모아요. 끝나면 '모은 그림 폴더'를 눌러 폴더를 압축해서 보내 주세요.</div>
+      <div class="acts">${g.connected ? (g.heartbeat && g.heartbeat.collecting ? `<button class="btn" data-act="collectstop">수집 끝내기 (${g.heartbeat.collected || 0}장)</button>` : `<button class="btn" data-act="collect">이미지 수집 시작 (2분)</button>`) : `<span class="hint">게임을 켜고 세이브를 불러오면 쓸 수 있어요</span>`}<button class="btn" data-act="diagfolder">${ico("folder")}모은 그림 폴더</button></div>`;
   }
   el.innerHTML = html;
   const b = $(`.pill[data-pop="${popKind}"]`).getBoundingClientRect();

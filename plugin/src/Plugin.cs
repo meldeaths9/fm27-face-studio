@@ -20,7 +20,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string Id = "kr.fm27facestudio.plugin";
     public const string Name = "FM Face Studio";
-    public const string Version = "0.6.0";
+    public const string Version = "0.6.1";
 
     internal static ManualLogSource L = null!;
     internal static Harmony H = null!;
@@ -738,10 +738,50 @@ internal static class Collect
     public static int Count;
     public static bool On => Time.realtimeSinceStartup < _until;
 
+    private static bool _patched;
+    private static void EnsurePatched()
+    {
+        if (_patched) return;
+        _patched = true;
+        var flags = System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic;
+        void P(Type t, string name, string patch, bool post = false)
+        {
+            foreach (var m in AccessTools.GetDeclaredMethods(t).Where(x => x.Name == name))
+            {
+                try
+                {
+                    var hm = new HarmonyMethod(typeof(Collect).GetMethod(patch, flags));
+                    if (post) Plugin.H.Patch(m, postfix: hm); else Plugin.H.Patch(m, prefix: hm);
+                }
+                catch (Exception e) { Plugin.L.LogWarning($"수집 감시 실패 {t.Name}.{name}: {e.Message}"); }
+            }
+        }
+        // FM27 화면은 UI Toolkit: 그림은 Image.image / Image.sprite 로도 걸린다
+        P(typeof(UnityEngine.UIElements.Image), "set_image", nameof(ImagePrefix));
+        P(typeof(UnityEngine.UIElements.Image), "set_sprite", nameof(SpritePrefix));
+        // 유니폼 그림 주소(리소스 ID)를 만드는 곳
+        P(typeof(FM.UI.DatabaseObjectImageHelpers), "GetKit2DResourceID", nameof(KitIdPost), true);
+        P(typeof(FM.UI.DatabaseObjectImageHelpers), "GetLicensedKit2DResourceID", nameof(KitIdPost), true);
+    }
+
+    private static void ImagePrefix(Texture __0) { if (On && __0 is not null) Take(__0, "UI.Image.image"); }
+    private static void SpritePrefix(Sprite __0)
+    {
+        if (!On || __0 is null) return;
+        try { var t = __0.texture; if (t is not null) Take(t, "UI.Image.sprite:" + (__0.name ?? "")); } catch { }
+    }
+    private static void KitIdPost(string __result)
+    {
+        if (!On || string.IsNullOrEmpty(__result)) return;
+        try { File.AppendAllText(Path.Combine(_dir, "index.txt"), $"KIT-ID\t{__result}\n", new UTF8Encoding(false)); } catch { }
+    }
+
     public static string Start(int seconds)
     {
+        EnsurePatched();
         _dir = Path.Combine(Bridge.DiagDir, $"images-{DateTime.Now:yyyyMMdd-HHmmss}");
         Directory.CreateDirectory(_dir);
+        File.WriteAllText(Path.Combine(_dir, "index.txt"), $"# FM Face Studio 이미지 수집, plugin {Plugin.Version}, {DateTime.Now:yyyy-MM-dd HH:mm:ss}\n", new UTF8Encoding(false));
         Seen.Clear();
         Count = 0;
         _until = Time.realtimeSinceStartup + Math.Clamp(seconds, 10, 600);
