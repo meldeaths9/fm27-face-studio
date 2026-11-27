@@ -68,7 +68,45 @@ def _steam_roots() -> list[Path]:
 
 
 def valid_game(path: str | Path | None) -> bool:
-    return bool(path) and (Path(path) / "fm.exe").exists()
+    """FM27 설치 폴더인지: fm.exe, 또는 (게임패스 등 exe 이름이 다를 때) GameAssembly.dll + exe."""
+    if not path:
+        return False
+    p = Path(path)
+    if (p / "fm.exe").exists():
+        return True
+    try:
+        return (p / "GameAssembly.dll").exists() and any(x.suffix.lower() == ".exe" for x in p.iterdir())
+    except OSError:
+        return False
+
+
+def normalize_game_dir(path: str) -> str:
+    """사용자가 고른 폴더가 한 단계 위(게임패스의 'Football Manager 27')여도 Content 를 찾아 준다."""
+    p = Path(path)
+    for c in (p, p / "Content", p / "content"):
+        if valid_game(c):
+            return str(c)
+    return ""
+
+
+def _gamepass_dirs() -> list[Path]:
+    out = []
+    if sys.platform != "win32":
+        return out
+    import string
+    for d in string.ascii_uppercase:
+        root = Path(f"{d}:\\")
+        for base in (root / "XboxGames", root / "Program Files" / "ModifiableWindowsApps"):
+            try:
+                if not base.is_dir():
+                    continue
+                for g in base.iterdir():
+                    n = g.name.lower()
+                    if "football manager" in n and ("27" in n or "2027" in n):
+                        out += [g / "Content", g]
+            except OSError:
+                continue
+    return out
 
 
 def find_game(saved: str = "") -> str:
@@ -76,6 +114,9 @@ def find_game(saved: str = "") -> str:
         return str(saved)
     for lib in _steam_roots():
         p = lib / "steamapps" / "common" / "Football Manager 27"
+        if valid_game(p):
+            return str(p)
+    for p in _gamepass_dirs():          # Xbox 앱 / PC 게임패스
         if valid_game(p):
             return str(p)
     return ""

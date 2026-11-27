@@ -24,7 +24,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.0.2"
+VERSION = "1.0.3"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -695,8 +695,11 @@ class Api:
             self._cfg.follow_save = bool(value)
             if value:
                 threading.Thread(target=self._maybe_reload, daemon=True).start()
-        elif key == "game_dir" and gamesetup.valid_game(value):
-            self._cfg.game_dir = str(value)
+        elif key == "game_dir":
+            g = gamesetup.normalize_game_dir(str(value or ""))
+            if not g:
+                return {"error": "FM27 설치 폴더가 아니에요. fm.exe(게임패스는 GameAssembly.dll)가 들어 있는 폴더를 골라 주세요.\n게임패스는 보통 C:\\XboxGames\\Football Manager 27\\Content 예요."}
+            self._cfg.game_dir = g
         else:
             return False
         self._cfg.save()

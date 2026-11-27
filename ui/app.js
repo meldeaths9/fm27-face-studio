@@ -1070,7 +1070,8 @@ function renderPop() {
       <div class="kv">${row("상태", g.running ? "실행 중" : "꺼짐", g.running ? "ok" : "")}
         ${row("게임 연결", g.connected ? `연결됨 (플러그인 ${g.heartbeat.plugin || ""})` : g.running ? "플러그인 응답 없음" : "-", g.connected ? "ok" : g.running ? "warn" : "")}
         ${row("설치 폴더", g.game_dir || "찾지 못함", "dim")}${row("graphics", ST.graphics_dir, "dim")}</div>
-      <div class="acts">${!g.running && g.game_found ? `<button class="btn primary" data-act="launch">FM27 켜기</button>` : ""}${g.game_found ? `<button class="btn" data-act="gamefolder">${ico("folder")}설치 폴더</button>` : ""}</div>
+      <div class="acts">${!g.running && g.game_found && /steamapps/i.test(g.game_dir) ? `<button class="btn primary" data-act="launch">FM27 켜기</button>` : ""}${g.game_found ? `<button class="btn" data-act="gamefolder">${ico("folder")}설치 폴더</button>` : ""}<button class="btn ${g.game_found ? "" : "primary"}" data-act="setgame">${ico("folder")}${g.game_found ? "다른 폴더 지정" : "설치 폴더 지정"}</button></div>
+      ${g.game_found ? "" : `<div class="note">스팀이 아닌 곳(게임패스·Xbox 앱 등)에 설치했으면 직접 지정해 주세요. 게임패스는 보통 <b>C:\\XboxGames\\Football Manager 27\\Content</b> 예요.</div>`}
       ${g.running && !g.connected ? `<div class="note">게임은 켜져 있는데 플러그인이 답하지 않아요. 플러그인이 설치돼 있는지, 세이브를 불러왔는지 확인해 주세요.</div>` : ""}`;
   } else if (popKind === "plugin") {
     const pOk = g.plugin_installed && g.plugin_up_to_date && g.bepinex;
@@ -1079,10 +1080,11 @@ function renderPop() {
       <div class="kv">${row("BepInEx", g.bepinex ? (g.bepinex_ready ? "설치됨" : "설치됨 · 게임을 한 번 켜야 준비돼요") : "없음 — 먼저 설치해 주세요", g.bepinex ? "ok" : "warn")}
         ${row("플러그인", g.plugin_installed ? (g.plugin_up_to_date ? "설치됨 (최신)" : "예전 버전") : "없음", g.plugin_installed && g.plugin_up_to_date ? "ok" : "warn")}
         ${row("게임 연결", g.connected ? "연결됨" : g.running ? "응답 없음" : "게임 꺼짐", g.connected ? "ok" : "")}
+        ${row("설치 폴더", g.game_dir || "찾지 못함 — 아래에서 지정해 주세요", g.game_dir ? "dim" : "warn")}
         ${g.heartbeat && g.heartbeat.last ? row("최근 결과", g.heartbeat.last, "dim") : ""}</div>
       <div class="note">플러그인이 있으면 '한 번에 적용' 후 게임을 끄지 않아도 사진이 바로 바뀌어요.${g.bepinex ? "" : `<br><b style="color:var(--warn)">BepInEx 6 (Unity IL2CPP, win-x64, be.793 이상)</b>를 먼저 FM27 설치 폴더에 설치하고 게임을 한 번 켰다 꺼 주세요. <a data-act="bepinex">BepInEx 받는 곳</a>`}</div>
       <div style="margin-top:10px"><label class="switch"><input type="checkbox" id="optAuto" ${ST.auto_refresh ? "checked" : ""}><i></i>적용 후 게임에 자동 반영</label></div>
-      <div class="acts">${!pOk && g.bepinex ? `<button class="btn primary" data-act="install">${ico("upload")}${g.plugin_installed ? "플러그인 업데이트" : "플러그인 설치"}</button>` : ""}
+      <div class="acts"><button class="btn" data-act="setgame">${ico("folder")}설치 폴더 지정</button>${!pOk && g.bepinex ? `<button class="btn primary" data-act="install">${ico("upload")}${g.plugin_installed ? "플러그인 업데이트" : "플러그인 설치"}</button>` : ""}
         ${g.connected ? `<button class="btn" data-act="refresh">${ico("refresh")}지금 반영</button>` : ""}</div>
       <hr><div class="k" style="font-size:12px;color:var(--muted);font-weight:700">진단 (감독 사진·지원 스태프 작업용)</div>
       <div class="note" style="margin-top:6px">진단을 켜고 2분 동안 게임에서 내 감독 프로필, 그리고 언론 담당자·개인 비서처럼 얼굴이 뜨는 화면(받은 메시지 등)을 차례로 열어 주세요. 끝나면 진단 파일을 보내 주시면 돼요.</div>
@@ -1103,6 +1105,14 @@ async function popAction(act, btn) {
   else if (act === "readcur") { closePop(); await readSaveNow("current"); }
   else if (act === "launch") { await call("launch_game"); toast("Steam으로 FM27을 켰어요.", "ok", 2500); }
   else if (act === "gamefolder") call("open_game_folder");
+  else if (act === "setgame") {
+    const r = await call("pick_folder", (ST.game && ST.game.game_dir) || "");
+    if (!r) return;
+    const ok = await call("set_option", "game_dir", r);
+    if (ok && ok.error) return toast(ok.error, "err", 6000);
+    toast("FM27 설치 폴더를 지정했어요.", "ok", 2500);
+    await pollStatus(); renderPop();
+  }
   else if (act === "diagfolder") call("open_diag_folder");
   else if (act === "bepinex") call("open_url", ST.bepinex_url);
   else if (act === "install") {
