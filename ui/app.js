@@ -157,7 +157,8 @@ async function doSearch(reset = true) {
   if (bLoading && !reset) return;
   bLoading = true;
   const n = $("#qName").value.trim(), t = $("#qTeam").value.trim();
-  const r = await call("browse", n, t, S.kind, S.filter, 0, 50, S.kind === "player" ? S.squad : "");
+  const club = S.teamClub && S.teamClub.name === t ? S.teamClub.cuid : "";
+  const r = await call("browse", n, t, S.kind, S.filter, 0, 50, S.kind === "player" ? S.squad : "", club);
   bLoading = false;
   if (!r) return;
   S.bTotal = r.total; S.bEmpty = r.empty_query; S.bIndex = r.index;
@@ -215,6 +216,31 @@ $$("#sqChips .chip").forEach((c) => c.onclick = () => {
 });
 let qTimer;
 ["#qName", "#qTeam"].forEach((s) => $(s).addEventListener("input", () => { clearTimeout(qTimer); qTimer = setTimeout(() => doSearch(true), 200); }));
+/* 팀 고르기: 이름이 같은 다른 클럽(예: 우루과이 리버풀)과 섞이지 않게 목록에서 정확히 고른다 */
+S.teamClub = null;
+let ddTimer;
+function setTeamClub(c) {
+  S.teamClub = c; $("#qTeamOk").hidden = !c; $("#qTeamF").classList.toggle("picked", !!c);
+}
+$("#qTeam").addEventListener("input", () => {
+  if (S.teamClub && $("#qTeam").value.trim() !== S.teamClub.name) setTeamClub(null);
+  clearTimeout(ddTimer);
+  ddTimer = setTimeout(async () => {
+    const q = $("#qTeam").value.trim(), dd = $("#teamDD");
+    if (!q || S.teamClub) { dd.hidden = true; return; }
+    const list = await call("clubs", q) || [];
+    if (!list.length) { dd.hidden = true; return; }
+    dd.innerHTML = list.map((c, i) => `<div class="tdi" data-i="${i}"><b>${esc(c.name)}</b>${c.mine ? ' <span class="tg">내 팀</span>' : ""}${c.alt ? ` <span class="tg2">${esc(c.alt)}</span>` : ""}<small>선수 ${c.players}명${c.example ? " · 예: " + esc(c.example) : ""}</small></div>`).join("");
+    $$(".tdi", dd).forEach((el) => el.onmousedown = (e) => {
+      e.preventDefault();
+      const c = list[+el.dataset.i];
+      $("#qTeam").value = c.name; setTeamClub(c); dd.hidden = true; doSearch(true);
+    });
+    dd.hidden = false;
+  }, 180);
+});
+$("#qTeam").addEventListener("blur", () => setTimeout(() => { $("#teamDD").hidden = true; }, 120));
+$("#qTeam").addEventListener("keydown", (e) => { if (e.key === "Escape") $("#teamDD").hidden = true; });
 $$("#fChips .chip").forEach((c) => c.onclick = () => {
   S.filter = c.dataset.f;
   $$("#fChips .chip").forEach((x) => x.classList.toggle("on", x === c));
@@ -226,6 +252,7 @@ $("#btnMyTeam").onclick = () => {
   const cur = $("#qTeam").value.trim();
   const i = clubs.indexOf(cur);
   $("#qTeam").value = i >= 0 && clubs.length > 1 ? clubs[(i + 1) % clubs.length] : clubs[0];
+  setTeamClub(null);
   doSearch(true);
 };
 $$("#kindSeg button").forEach((b) => b.onclick = () => { setKind(b.dataset.kind); doSearch(true); });
@@ -342,6 +369,8 @@ function fillPerson(p) {
 }
 async function pickPerson(p, idx) {
   resetEditor();          // 앞 사람 사진이 오른쪽 미리보기에 남지 않게 먼저 비운다
+  S.cur = p;
+  loadGameKits(p);
   S.selUid = p.uid;
   S.curIdx = typeof idx === "number" ? idx : -1;
   fillPerson(p);
@@ -672,6 +701,42 @@ $$("#aiMode .chip").forEach((c) => c.onclick = () => {
   S.promptDirty = false; autoPrompt(true);
   if (S.aiMode === "uniform" && !S.photo) toast("유니폼을 바꿀 선수 사진을 먼저 넣어 주세요.", "info", 3500);
 });
+/* 게임 유니폼 (플러그인이 클럽 화면에서 모아 둔 실제 유니폼 그림) */
+S.kitSrc = ""; S.gkits = {}; S.gkitKind = "";
+async function loadGameKits(p) {
+  S.gkits = {}; S.gkitKind = "";
+  if (S.kitSrc === "off") S.kitSrc = "";
+  const club = p && p.cuid;
+  if (club) { const r = await call("game_kits", String(club)); S.gkits = (r && r.kits) || {}; }
+  if (S.kitSrc !== "manual") {
+    const kind = p && p.kind === "player" ? ["home", "away", "third"].find((k) => S.gkits[k]) : "";
+    if (kind) await useGameKit(kind, true);
+    else if (S.kitSrc === "game") { await call("clear_kit"); S.kitSrc = ""; $("#kitImg").innerHTML = "<span>유니폼<br>사진</span>"; $("#btnKitX").hidden = true; }
+  }
+  renderGameKits();
+}
+async function useGameKit(kind, quiet) {
+  const club = S.cur && S.cur.cuid;
+  const r = await call("use_game_kit", String(club || ""), kind);
+  if (!r || r.error) return;
+  S.kitSrc = "game"; S.gkitKind = kind;
+  setKitThumb(r);
+  if (!quiet) toast(`게임 ${({ home: "홈", away: "원정", third: "서드" })[kind]} 유니폼을 넣었어요.`, "ok", 1800);
+  renderGameKits();
+}
+function renderGameKits() {
+  const el = $("#gameKits"), ks = Object.keys(S.gkits || {});
+  const isPlayer = S.cur && S.cur.kind === "player";
+  if (!ks.length) {
+    el.hidden = !(isPlayer && S.cur && S.cur.cuid);
+    el.innerHTML = `<span class="hint">게임에서 이 클럽 정보(개요) 화면을 한 번 열면 실제 유니폼을 가져와요 · 플러그인</span>`;
+    return;
+  }
+  el.hidden = false;
+  el.innerHTML = `<span class="hint">게임 유니폼</span>` + ["home", "away", "third"].filter((k) => S.gkits[k]).map((k) =>
+    `<button class="chip ${S.kitSrc === "game" && S.gkitKind === k ? "on" : ""}" data-k="${k}"><img src="${S.gkits[k]}">${({ home: "홈", away: "원정", third: "서드" })[k]}</button>`).join("");
+  $$("#gameKits .chip").forEach((b) => b.onclick = () => useGameKit(b.dataset.k));
+}
 function setKitThumb(r) {
   if (!r || !r.thumb) return;
   $("#kitImg").innerHTML = `<img src="${r.thumb}">`;
@@ -683,12 +748,14 @@ $("#kitFile").onchange = () => {
   const f = $("#kitFile").files[0];
   if (!f) return;
   const rd = new FileReader();
-  rd.onload = async () => setKitThumb(await call("set_kit", rd.result));
+  rd.onload = async () => { S.kitSrc = "manual"; setKitThumb(await call("set_kit", rd.result)); renderGameKits(); };
   rd.readAsDataURL(f);
   $("#kitFile").value = "";
 };
 $("#btnKitX").onclick = async () => {
   await call("clear_kit");
+  S.kitSrc = "off";             // 직접 뺐으면 이 사람에게는 게임 유니폼도 자동으로 안 넣는다
+  renderGameKits();
   $("#kitImg").innerHTML = "<span>유니폼<br>사진</span>";
   $("#btnKitX").hidden = true;
   if (!S.promptDirty) autoPrompt(true);

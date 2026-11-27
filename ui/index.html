@@ -76,7 +76,7 @@
       <div class="btool">
         <div class="seg seg4" id="kindSeg"><button class="on" data-kind="player">선수</button><button data-kind="staff">스태프</button><button data-kind="support">지원 스태프</button><button data-kind="manager">내 감독</button></div>
         <label class="field"><svg class="i"><use href="#i-search"/></svg><input id="qName" placeholder="이름" autocomplete="off"></label>
-        <label class="field"><svg class="i"><use href="#i-shield"/></svg><input id="qTeam" placeholder="팀" autocomplete="off"></label>
+        <div class="teamwrap"><label class="field" id="qTeamF"><svg class="i"><use href="#i-shield"/></svg><input id="qTeam" placeholder="팀" autocomplete="off"><span class="teamok" id="qTeamOk" hidden title="이 클럽만">✓</span></label><div class="teamdd" id="teamDD" hidden></div></div>
         <button class="btn" id="btnMyTeam" title="내가 맡은 팀만 보기">내 팀</button>
         <div class="sp"></div>
         <div class="chips" id="fChips"><button class="chip on" data-f="all">전체</button><button class="chip" data-f="none">사진 없음</button><button class="chip" data-f="has">사진 있음</button><button class="chip" data-f="ours">내가 넣은 사진</button></div>
@@ -179,6 +179,7 @@
           <div class="kitrow" id="kitRow">
             <div class="kitimg" id="kitImg"><span>유니폼<br>사진</span></div>
             <div class="hint grow" id="kitHint">유니폼 사진을 넣으면 그 유니폼을 입혀요. 없으면 <b>소속 팀의 홈 유니폼</b>으로 요청해요.</div>
+            <div class="gkits" id="gameKits" hidden></div>
             <button class="btn sm" id="btnKit">유니폼 사진</button><button class="btn sm ghost" id="btnKitX" hidden>빼기</button>
           </div>
           <div class="step2" id="step2" hidden><span><b>① 사진</b>을 사이트에 붙여넣었으면</span><button class="btn sm primary" id="btnStep2">② 프롬프트 복사</button><span class="hint">누른 다음 사이트에서 한 번 더 Ctrl+V</span><button class="x" id="btnStep2X" title="닫기"><svg class="i"><use href="#i-x"/></svg></button></div>

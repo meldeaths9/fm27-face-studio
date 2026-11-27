@@ -20,7 +20,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string Id = "kr.fm27facestudio.plugin";
     public const string Name = "FM Face Studio";
-    public const string Version = "0.6.1";
+    public const string Version = "0.7.0";
 
     internal static ManualLogSource L = null!;
     internal static Harmony H = null!;
@@ -33,6 +33,7 @@ public sealed class Plugin : BasePlugin
         AddComponent<Runner>();
         ManagerFace.Install();
         Appearance.Install();
+        Kits.Install();
         L.LogInfo($"{Name} {Version} 준비됨 — 통신 폴더: {Bridge.Dir}");
     }
 }
@@ -105,6 +106,7 @@ public sealed class Runner : MonoBehaviour
                 manager_shots = ManagerFace.Shots,
                 appearance_count = Appearance.Count,
                 collecting = Collect.On,
+                kits = Kits.Count,
                 collected = Collect.Count,
                 last = _lastResult,
             });
@@ -796,6 +798,31 @@ internal static class Collect
 
     public static void Tick(float now) { }
 
+    /// <summary>GPU 그림을 읽어 raw 파일(가로·세로 int32 + RGBA, 아래 줄부터)로 저장.</summary>
+    public static void SaveRaw(Texture tex, string file)
+    {
+        int w = tex.width, h = tex.height;
+        var rt = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGB32);
+        var prev = RenderTexture.active;
+        Graphics.Blit(tex, rt);
+        RenderTexture.active = rt;
+        var t2 = new Texture2D(w, h, TextureFormat.RGBA32, false);
+        t2.ReadPixels(new Rect(0, 0, w, h), 0, 0);
+        t2.Apply();
+        RenderTexture.active = prev;
+        RenderTexture.ReleaseTemporary(rt);
+        byte[] data = t2.GetRawTextureData();
+        UnityEngine.Object.Destroy(t2);
+        var tmp = file + ".part";
+        using (var fs = File.Create(tmp))
+        {
+            fs.Write(BitConverter.GetBytes(w));
+            fs.Write(BitConverter.GetBytes(h));
+            fs.Write(data);
+        }
+        File.Move(tmp, file, true);
+    }
+
     public static void Take(Texture tex, string via)
     {
         try
@@ -805,25 +832,8 @@ internal static class Collect
             if (!Seen.Add(ptr)) return;
             int w = tex.width, h = tex.height;
             if (w < 48 || h < 48 || w > 2048 || h > 2048) return;
-            var rt = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGB32);
-            var prev = RenderTexture.active;
-            Graphics.Blit(tex, rt);
-            RenderTexture.active = rt;
-            var t2 = new Texture2D(w, h, TextureFormat.RGBA32, false);
-            t2.ReadPixels(new Rect(0, 0, w, h), 0, 0);
-            t2.Apply();
-            RenderTexture.active = prev;
-            RenderTexture.ReleaseTemporary(rt);
-            byte[] data = t2.GetRawTextureData();
-            UnityEngine.Object.Destroy(t2);
             Count++;
-            var file = Path.Combine(_dir, $"{Count:000}.raw");
-            using (var fs = File.Create(file))
-            {
-                fs.Write(BitConverter.GetBytes(w));
-                fs.Write(BitConverter.GetBytes(h));
-                fs.Write(data);
-            }
+            SaveRaw(tex, Path.Combine(_dir, $"{Count:000}.raw"));
             var kind = tex.GetIl2CppType().Name;
             File.AppendAllText(Path.Combine(_dir, "index.txt"),
                 $"{Count:000}\t{w}x{h}\t{kind}\t{(tex.name ?? "").Replace('\t', ' ')}\t{via}\n", new UTF8Encoding(false));
@@ -832,5 +842,85 @@ internal static class Collect
         {
             try { Plugin.L.LogWarning("이미지 수집 실패: " + e.Message); } catch { }
         }
+    }
+}
+
+
+/// <summary>
+/// 게임이 클럽 화면에 거는 유니폼 그림(이름이 "marine home" 같은 1024px 그림)을 클럽 번호와 짝지어 저장한다.
+/// 짝: 그림을 걸기 직전에 게임이 만드는 주소 kit2d_<클럽번호>_<home|away|third>.
+/// 저장: kits/<클럽번호>_<종류>.raw + kits/index.json. png 변환은 앱이 한다.
+/// </summary>
+internal static class Kits
+{
+    private static readonly Dictionary<string, (string club, float at)> Pending = new();
+    private static readonly Dictionary<string, string> Saved = new();   // "682_home" -> 그림 이름
+    private static readonly HashSet<IntPtr> Done = new();
+    private static string KitDir => Path.Combine(Bridge.Dir, "kits");
+    public static int Count => Saved.Count;
+
+    public static void Install()
+    {
+        try
+        {
+            Directory.CreateDirectory(KitDir);
+            var idx = Path.Combine(KitDir, "index.json");
+            if (File.Exists(idx))
+                foreach (var kv in JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(idx)) ?? new())
+                    Saved[kv.Key] = kv.Value;
+        }
+        catch (Exception e) { Plugin.L.LogWarning("유니폼 기록 읽기 실패: " + e.Message); }
+        var flags = System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic;
+        void P(Type t, string name, string patch, bool post)
+        {
+            foreach (var m in AccessTools.GetDeclaredMethods(t).Where(x => x.Name == name))
+            {
+                try
+                {
+                    var hm = new HarmonyMethod(typeof(Kits).GetMethod(patch, flags));
+                    if (post) Plugin.H.Patch(m, postfix: hm); else Plugin.H.Patch(m, prefix: hm);
+                }
+                catch (Exception e) { Plugin.L.LogWarning($"유니폼 감시 실패 {t.Name}.{name}: {e.Message}"); }
+            }
+        }
+        P(typeof(FM.UI.DatabaseObjectImageHelpers), "GetKit2DResourceID", nameof(IdPost), true);
+        P(typeof(FM.UI.DatabaseObjectImageHelpers), "GetLicensedKit2DResourceID", nameof(IdPost), true);
+        P(typeof(UnityEngine.UIElements.Image), "set_image", nameof(ImagePrefix), false);
+    }
+
+    private static void IdPost(string __result)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(__result)) return;
+            var parts = __result.Split('_');      // kit2d_<클럽번호>_<home|away|third>
+            if (parts.Length != 3 || parts[0] != "kit2d" || parts[1].Length == 0 || !parts[1].All(char.IsDigit)) return;
+            if (parts[2] is "home" or "away" or "third") Pending[parts[2]] = (parts[1], Time.realtimeSinceStartup);
+        }
+        catch { }
+    }
+
+    private static void ImagePrefix(Texture __0)
+    {
+        try
+        {
+            if (__0 is null) return;
+            var ptr = __0.Pointer;
+            if (Done.Contains(ptr)) return;
+            if (__0.width < 256 || __0.height < 256 || __0.width > 2048) return;
+            var name = __0.name ?? "";
+            string? kind = name.EndsWith(" home") ? "home" : name.EndsWith(" away") ? "away" : name.EndsWith(" third") ? "third" : null;
+            if (kind is null) return;
+            Done.Add(ptr);
+            if (!Pending.TryGetValue(kind, out var p) || Time.realtimeSinceStartup - p.at > 5f) return;
+            var key = p.club + "_" + kind;
+            var file = Path.Combine(KitDir, key + ".raw");
+            if (Saved.TryGetValue(key, out var old) && old == name && (File.Exists(file) || File.Exists(Path.Combine(KitDir, key + ".png")))) return;
+            Collect.SaveRaw(__0, file);
+            Saved[key] = name;
+            Bridge.WriteJson(Path.Combine(KitDir, "index.json"), Saved);
+            Plugin.L.LogInfo($"유니폼 저장: {key} ({name})");
+        }
+        catch (Exception e) { try { Plugin.L.LogWarning("유니폼 저장 실패: " + e.Message); } catch { } }
     }
 }

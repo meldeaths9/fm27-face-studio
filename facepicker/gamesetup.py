@@ -373,6 +373,30 @@ def _command(cmd: str, timeout: float = 20.0, **extra) -> dict:
     return {"ok": False, "message": "플러그인이 답하지 않아요. 게임이 멈춰 있거나 로딩 중일 수 있어요."}
 
 
+def kit_images(club: str | int) -> dict:
+    """플러그인이 모은 이 클럽의 게임 유니폼 그림 {home|away|third: png 경로}. raw는 여기서 png로 바꾼다."""
+    import struct
+    from PIL import Image
+    club = str(club or "").strip()
+    out: dict = {}
+    if not club.isdigit():
+        return out
+    d = bridge_dir() / "kits"
+    for kind in ("home", "away", "third"):
+        raw, png = d / f"{club}_{kind}.raw", d / f"{club}_{kind}.png"
+        try:
+            if raw.exists() and (not png.exists() or raw.stat().st_mtime > png.stat().st_mtime):
+                b = raw.read_bytes()
+                w, h = struct.unpack("<ii", b[:8])
+                Image.frombytes("RGBA", (w, h), b[8:8 + w * h * 4]).transpose(Image.FLIP_TOP_BOTTOM).save(png)
+                raw.unlink()
+        except Exception as e:  # noqa: BLE001
+            log.warning("유니폼 그림 변환 실패 %s: %s", raw.name, e)
+        if png.exists():
+            out[kind] = png
+    return out
+
+
 def diag_dir() -> Path:
     d = bridge_dir() / "diag"
     d.mkdir(exist_ok=True)

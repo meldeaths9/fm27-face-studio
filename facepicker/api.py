@@ -24,7 +24,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.1.2"
+VERSION = "1.2.0"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -498,12 +498,16 @@ class Api:
         return url
 
     @_safe
+    def clubs(self, team: str) -> list[dict]:
+        return self._people.clubs(team)
+
+    @_safe
     def browse(self, name: str, team: str, kind: str, filt: str = "all", offset: int = 0, limit: int = 50,
-               squad: str = "") -> dict:
+               squad: str = "", club: str = "") -> dict:
         idx = self._index
         limit = min(int(limit), BROWSE_MAX)
         offset = 0
-        items = self._people.search(name, team, kind, limit=100000, mine_if_empty=True, squad=squad)
+        items = self._people.search(name, team, kind, limit=100000, mine_if_empty=True, squad=squad, club=club)
         def face_of(p):
             return idx.get(p["uid"])
         if filt == "none":
@@ -923,6 +927,31 @@ class Api:
     def clear_kit(self) -> bool:
         self._kit = None
         return True
+
+    @_safe
+    def game_kits(self, club: str) -> dict:
+        """이 클럽의 게임 유니폼 (플러그인이 클럽 화면에서 모아 둔 것)."""
+        kits = gamesetup.kit_images(club)
+        out = {}
+        for k, pth in kits.items():
+            try:
+                out[k] = _thumb_url(pth, 96)
+            except Exception:  # noqa: BLE001
+                pass
+        return {"kits": out}
+
+    @_safe
+    def use_game_kit(self, club: str, kind: str) -> dict:
+        pth = gamesetup.kit_images(club).get(kind)
+        if not pth:
+            return {"error": "이 클럽의 게임 유니폼이 아직 없어요."}
+        im = imaging.load_image(str(pth))
+        bg = Image.new("RGB", im.size, (235, 235, 235))      # 투명 배경 → 밝은 회색 (AI가 보기 쉽게)
+        bg.paste(im, mask=im.getchannel("A") if im.mode == "RGBA" else None)
+        self._kit = bg
+        t = bg.copy()
+        t.thumbnail((160, 160))
+        return {"thumb": _data_url(t)}
 
     def _lang(self) -> str:
         return "en" if self._cfg.prompt_lang == "en" or self._cfg.ai_provider == "cloudflare" else "ko"
