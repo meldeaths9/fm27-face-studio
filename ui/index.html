@@ -70,10 +70,12 @@
   <section class="view on panel" id="viewBrowse">
     <div class="ph"><span class="step">1</span><h2>대상 고르기</h2><div class="sp"></div>
       <span class="muted" id="bStat" style="font-size:12px"></span>
-      <button class="btn sm primary" id="btnAB" title="지금 목록의 사람들을 AI로 한꺼번에 그려요"><svg class="i"><use href="#i-wand"/></svg>AI로 한꺼번에</button>
-      <button class="btn sm" id="btnBulk" title="폴더 안 사진을 파일 이름으로 짝지어 한꺼번에"><svg class="i"><use href="#i-folder"/></svg>대량으로 바꾸기</button>
       <button class="btn sm" id="btnManual" title="세이브 없이 UID로 바로 편집"><svg class="i"><use href="#i-edit"/></svg>UID로 직접 편집</button></div>
     <div class="pb grow">
+      <div class="bigacts">
+        <button class="bigbtn prim" id="btnAB"><svg class="i"><use href="#i-wand"/></svg><span><b>AI로 한꺼번에 그리기</b><small id="abCnt">지금 목록의 사람들을 AI로 그려요</small></span></button>
+        <button class="bigbtn" id="btnBulk"><svg class="i"><use href="#i-folder"/></svg><span><b>사진 폴더로 한꺼번에 바꾸기</b><small>파일 이름으로 사람을 찾아 대기열에 넣어요</small></span></button>
+      </div>
       <div class="btool">
         <div class="seg seg4" id="kindSeg"><button class="on" data-kind="player">선수</button><button data-kind="staff">스태프</button><button data-kind="support">지원 스태프</button><button data-kind="manager">내 감독</button></div>
         <label class="field"><svg class="i"><use href="#i-search"/></svg><input id="qName" placeholder="이름" autocomplete="off"></label>
@@ -293,11 +295,12 @@
       <div class="abrow"><span class="lbl2">할 일</span><div class="seg abseg" id="abTask">
         <button data-v="face">새 얼굴</button><button data-v="kit">유니폼만 바꾸기</button><button data-v="gunzo" disabled title="다음 테스트 버전에 들어가요">건조 (준비 중)</button></div>
         <span class="hint" id="abTaskHint"></span></div>
-      <div class="abrow" id="abRefRow"><label class="switch"><input type="checkbox" id="abRef"><i></i>지금 사진을 참고해서 그리기</label><span class="hint">사진이 있는 사람만 · 똑같지 않고 닮은 사람 정도로 나와요</span></div>
+      <div class="abrow" id="abRefRow"><label class="switch"><input type="checkbox" id="abRef"><i></i>지금 얼굴을 참고해서 그리기</label><span class="hint">사진이 있으면 그 사진, 사진 없는 뉴젠은 게임 얼굴(게임에서 한 번 본 사람) · 똑같지 않고 닮은 사람 정도로 나와요</span></div>
       <div class="abrow"><label class="switch"><input type="checkbox" id="abKit" checked><i></i>게임 유니폼 입히기</label>
         <div class="seg abseg3" id="abKitKind"><button data-v="home">홈</button><button data-v="away">원정</button><button data-v="third">서드</button></div>
         <span class="hint">게임에서 구단 프로필을 연 구단만 · 없으면 구단 이름으로</span></div>
       <div class="abrow"><span class="lbl2">그리는 곳</span><select id="abEngine" class="sel"></select><span class="hint" id="abEngHint"></span></div>
+      <div class="abrow"><span class="lbl2">덧붙일 말</span><label class="field" style="flex:1;min-width:260px"><input id="abExtra" placeholder="모두에게 똑같이 붙여 보낼 말 (선택) · 예: 배경은 어두운 회색, 수염 없이" maxlength="500"></label></div>
       <div class="abcost" id="abCost"></div>
     </div>
     <div class="abpick"><span class="lbl2">그릴 사람</span><span class="hint" id="abPickSum"></span><div class="sp"></div>
@@ -319,7 +322,8 @@
 </div></div>
 <div class="modal" id="abBig"><div class="dlg" style="width:900px">
   <div class="dh"><h3 id="abBigName"></h3></div>
-  <div class="db abbig"><div><div class="hint">지금 사진</div><div id="abBefore"></div></div><div><div class="hint">AI가 그린 것</div><div id="abAfter"></div></div></div>
+  <div class="db abbig"><div><div class="hint" id="abBeforeLbl">지금 사진</div><div id="abBefore"></div></div><div><div class="hint">AI가 그린 것</div><div id="abAfter"></div></div></div>
+  <div class="db"><details class="abprompt"><summary>이 사람한테 보낸 프롬프트</summary><pre id="abPrompt"></pre></details></div>
   <div class="df"><button class="btn" id="abBigAgain">↻ 다시 그리기</button><button class="btn" id="abBigDrop">빼기</button><div class="sp"></div><button class="btn primary" id="abBigX">닫기</button></div>
 </div></div>
 <div class="modal" id="keysModal"><div class="dlg" style="width:520px">

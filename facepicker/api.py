@@ -25,7 +25,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.9.1"
+VERSION = "1.9.2"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -54,6 +54,12 @@ def _thumb_url(path: Path, size: int = 96) -> str:
     except Exception:
         return ""
 
+
+
+def _extra(prompt: str, meta: dict) -> str:
+    """대량 그리기의 '모두에게 덧붙일 말'."""
+    ex = str(meta.get("extra") or "").strip()
+    return f"{prompt}\n{ex}" if ex else prompt
 
 
 def _build_no() -> int:
@@ -318,7 +324,7 @@ class Api:
         for p in providers.PROVIDERS:
             cfg = self._cfg.ai_cfg.get(p["id"], {})
             out.append({**p, "status": providers.status(p["id"], cfg),
-                        "key": cfg.get("key", ""), "account": cfg.get("account", ""),
+                        "key": cfg.get("key", ""), "account": cfg.get("account", ""), "size": cfg.get("size", ""),
                         "model": cfg.get("model", ""), "default_model": providers.DEFAULT_MODELS.get(p["id"], ""),
                         "models": [{**m, "won": round(m["usd"] * 1450)} for m in providers.MODEL_CHOICES.get(p["id"], [])]})
         return out
@@ -375,7 +381,7 @@ class Api:
         if isinstance(s.get("ai_cfg"), dict):
             for pid, v in s["ai_cfg"].items():
                 if pid in providers.BY_ID and isinstance(v, dict):
-                    c.ai_cfg[pid] = {k: str(v.get(k, "")).strip() for k in ("key", "model", "account")}
+                    c.ai_cfg[pid] = {k: str(v.get(k, "")).strip() for k in ("key", "model", "account", "size")}
         if isinstance(s.get("deco"), dict):
             d = Deco.from_dict(s["deco"]).to_dict()
             d.pop("text", None)          # 글자는 인물마다 다르므로 저장하지 않음
@@ -1362,6 +1368,11 @@ class Api:
             d = {k: p.get(k, "") for k in ("uid", "name", "club", "cuid", "age", "nationality", "kind", "newgen", "me", "alt", "squad")}
             d["face"] = self._face_thumb(f["path"], 72) if f else ""
             d["has_face"] = bool(f)
+            if not f and p.get("newgen"):
+                gf = gamesetup.newgen_face(str(p["uid"]))
+                d["game_face"] = bool(gf)
+                if gf:
+                    d["face"] = self._face_thumb(str(gf), 72)
             d["kits"] = bool(gamesetup.kit_images(str(p.get("cuid", "")), self._cfg.kit_aliases)) if p.get("cuid") else False
             out.append(d)
         return {"items": out, "total": total, "max": self.BATCH_MAX}
@@ -1370,7 +1381,7 @@ class Api:
     def batch_price(self, engine: str) -> dict:
         from .batch import price_of, WON_PER_USD
         cfg = self._cfg.ai_cfg.get(engine, {})
-        pr = price_of(engine, cfg.get("model", ""))
+        pr = price_of(engine, cfg.get("model", ""), str(cfg.get("size") or ""))
         return {**pr, "won": round(pr["usd"] * WON_PER_USD), "model": cfg.get("model") or providers.DEFAULT_MODELS.get(engine, ""),
                 "ready": providers.status(engine, cfg) in ("키 있음", "설치됨")}
 
@@ -1387,14 +1398,36 @@ class Api:
         bg.paste(im, mask=im.getchannel("A") if im.mode == "RGBA" else None)
         return bg
 
-    def _batch_face(self, person: dict):
+    def _batch_face(self, person: dict, crop_banner: bool = True):
+        """지금 쓰이는 사진. 내가 넣은 사진은 아래 이름띠가 있을 수 있어 아래쪽을 잘라서 보낸다."""
         f = self._index.get(str(person.get("uid", "")).removeprefix("r-"))
         if not f:
             return None
         try:
-            return imaging.load_image(f["path"]).convert("RGB")
+            im = imaging.load_image(f["path"])
         except Exception:  # noqa: BLE001
             return None
+        if im.mode == "RGBA":          # 투명 배경 → 밝은 회색
+            bg = Image.new("RGB", im.size, (225, 225, 225))
+            bg.paste(im, mask=im.getchannel("A"))
+            im = bg
+        im = im.convert("RGB")
+        if crop_banner and f.get("ours"):
+            w, h = im.size
+            im = im.crop((0, 0, w, int(h * 0.78)))
+        return im
+
+    @staticmethod
+    def _game_face(person: dict):
+        if not person.get("newgen"):
+            return None
+        pth = gamesetup.newgen_face(str(person.get("uid", "")))
+        if not pth:
+            return None
+        im = imaging.load_image(str(pth))
+        bg = Image.new("RGB", im.size, (225, 225, 225))
+        bg.paste(im, mask=im.getchannel("A") if im.mode == "RGBA" else None)
+        return bg
 
     def _batch_job(self, it: dict, meta: dict):
         """사람 하나 → (프롬프트, 참고 사진들)."""
@@ -1408,19 +1441,24 @@ class Api:
             if face is None:
                 raise RuntimeError("지금 쓰이는 사진이 없어서 유니폼만 바꿀 수 없어요.")
             prompt = prompts.uniform_prompt(person, lang=lang, has_kit=kit is not None, club_hint=hint)
-            return prompt, [face] + ([kit] if kit is not None else [])
+            return _extra(prompt, meta), [face] + ([kit] if kit is not None else [])
         clean = str(person.get("uid", "")).removeprefix("r-")
         if clean and not person.get("look"):
             person["look"] = gamesetup.appearance(clean)
-        ref = self._batch_face(person) if meta.get("ref") else None
+        ref, ref_mode = None, "photo"
+        if meta.get("ref"):
+            ref = self._batch_face(person)
+            if ref is None:                      # 사진 없는 뉴젠 → 게임이 그린 3D 얼굴
+                ref = self._game_face(person)
+                ref_mode = "game"
+        if not providers.BY_ID.get(meta.get("engine"), {}).get("ref"):
+            ref, kit = None, None
         prompt, _ = prompts.face_prompt(
             person, lang=lang, template=self._cfg.prompt_template, has_ref=ref is not None, has_kit=kit is not None,
             expression=meta.get("expression") or self._cfg.expression, club_hint=hint,
-            manager_outfit=self._cfg.manager_outfit, ref_mode="photo")      # 참고는 지금 쓰이는 사진(게임 3D 얼굴 아님)
+            manager_outfit=self._cfg.manager_outfit, ref_mode=ref_mode)
         photos = ([ref] if ref is not None else []) + ([kit] if kit is not None else [])
-        if not providers.BY_ID.get(meta.get("engine"), {}).get("ref"):
-            photos = []
-        return prompt, photos
+        return _extra(prompt, meta), photos
 
     @_safe
     def batch_start(self, people: list, task: str, opts: dict) -> dict:
@@ -1445,7 +1483,8 @@ class Api:
             return {"error": "그릴 사람이 없어요." + (" 유니폼만 바꾸기는 지금 사진이 있는 사람만 돼요." if skipped else "")}
         meta = {"task": task, "engine": engine, "cfg": cfg, "kit_kind": opts.get("kit_kind", "home"),
                 "use_kit": bool(opts.get("use_kit", True)), "ref": bool(opts.get("ref")),
-                "expression": opts.get("expression", ""), "started": time.time()}
+                "expression": opts.get("expression", ""), "extra": str(opts.get("extra") or "").strip()[:500],
+                "started": time.time()}
         b.reset(people, meta)
         b.start(self._batch_job, workers=int(opts.get("workers") or 2))
         return {"ok": True, "count": len(people), "skipped": skipped}
@@ -1475,7 +1514,9 @@ class Api:
         it = self._batch().find(str(iid))
         if not it or not it.get("png"):
             return {"error": "그림이 없어요."}
-        f = self._batch_face(it["person"])
+        f = self._batch_face(it["person"], crop_banner=False)
+        if f is None:
+            f = self._game_face(it["person"])
         before = ""
         if f is not None:
             t = f.copy()

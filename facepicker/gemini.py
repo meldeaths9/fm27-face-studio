@@ -43,7 +43,7 @@ def _post(url: str, key: str, body: dict, timeout: int) -> dict:
         raise GeminiError(f"연결 실패: {e.reason}") from None
 
 
-def generate(key: str, model: str, prompt: str, photo=None, timeout: int = 180) -> Image.Image:
+def generate(key: str, model: str, prompt: str, photo=None, timeout: int = 180, size: str = "") -> Image.Image:
     """photo: 사진 한 장 또는 여러 장(list)."""
     if not key.strip():
         raise GeminiError("설정에서 제미나이 API 키를 먼저 입력하세요.")
@@ -55,12 +55,17 @@ def generate(key: str, model: str, prompt: str, photo=None, timeout: int = 180) 
         "contents": [{"role": "user", "parts": parts}],
         "generationConfig": {"responseModalities": ["TEXT", "IMAGE"], "imageConfig": {"aspectRatio": "1:1"}},
     }
+    if size:                                   # "512" · "1K" … 비우면 기본 1K
+        body["generationConfig"]["imageConfig"]["imageSize"] = size
     url = API.format(model=model.strip())
     try:
         data = _post(url, key.strip(), body, timeout)
     except GeminiError as e:
         # 일부 모델은 imageConfig를 지원하지 않음 → 빼고 재시도
-        if "imageConfig" in str(e) or "aspect" in str(e).lower():
+        if size and ("size" in str(e).lower() or "HTTP 400" in str(e)):     # 이 모델이 그 크기를 못 그림 → 기본 크기로
+            body["generationConfig"]["imageConfig"].pop("imageSize", None)
+            data = _post(url, key.strip(), body, timeout)
+        elif "imageConfig" in str(e) or "aspect" in str(e).lower():
             body["generationConfig"].pop("imageConfig", None)
             data = _post(url, key.strip(), body, timeout)
         else:

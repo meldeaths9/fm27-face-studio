@@ -576,6 +576,18 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 7px; border-radius: 6
 #kitUnhide { color: var(--accent2); cursor: pointer; text-decoration: underline; }
 
 /* ===== AI로 한꺼번에 ===== */
+.bigacts { display: grid; grid-template-columns: 1.25fr 1fr; gap: 12px; margin-bottom: 12px; }
+.bigbtn { display: flex; align-items: center; gap: 14px; text-align: left; padding: 16px 20px; min-height: 76px; border-radius: 16px; border: 1px solid var(--line2); background: var(--bg2); color: var(--text); cursor: pointer; transition: .15s; font: inherit; }
+.bigbtn:hover { border-color: var(--accent); transform: translateY(-1px); }
+.bigbtn .i { width: 30px; height: 30px; flex: none; color: var(--accent2); }
+.bigbtn b { display: block; font-size: 17px; font-weight: 800; }
+.bigbtn small { display: block; margin-top: 3px; font-size: 12.5px; color: var(--muted); }
+.bigbtn.prim { background: linear-gradient(135deg, #6c4dff, #4a7dff); border-color: transparent; box-shadow: 0 8px 24px rgba(108,77,255,.35); }
+.bigbtn.prim .i { color: #fff; }
+.bigbtn.prim small { color: rgba(255,255,255,.85); }
+.bigbtn.prim:hover { filter: brightness(1.08); }
+.abprompt summary { cursor: pointer; color: var(--muted); font-size: 12.5px; }
+.abprompt pre { white-space: pre-wrap; font-family: inherit; font-size: 12.5px; line-height: 1.6; color: #cfd7ec; background: var(--bg2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; max-height: 200px; overflow: auto; margin: 8px 0 0; }
 .dlg.ab .db { gap: 12px; }
 .abopts { display: flex; flex-direction: column; gap: 10px; background: var(--bg2); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
 .abrow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }

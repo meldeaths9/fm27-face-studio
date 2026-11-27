@@ -163,6 +163,7 @@ async function doSearch(reset = true) {
   if (!r) return;
   S.bTotal = r.total; S.bEmpty = r.empty_query; S.bIndex = r.index;
   S.bItems = r.items; S.bMax = r.max || 50;
+  $("#abCnt").textContent = r.total ? `지금 목록 ${r.total.toLocaleString()}명을 AI로 그려요` : "지금 목록의 사람들을 AI로 그려요";
   renderBrowse(reset);
 }
 function cardHtml(p, i) {
@@ -1083,7 +1084,7 @@ function openSettings(focusId) {
   const s = S.settings;
   $("#sG").value = s.graphics_dir || ""; $("#sSize").value = s.output_size || 512; $("#sTpl").value = s.prompt_template || ""; $("#sLang").value = s.prompt_lang || "ko"; $("#sUpd").checked = s.check_updates !== false; $("#sBeta").checked = !!s.beta_updates; $("#updVer").textContent = ""; $("#sPack").value = s.pack_folder || "zzz_FMFaceStudio"; packOrder();
   setAI = {};
-  S.ai.forEach((a) => setAI[a.id] = { key: a.key, account: a.account, model: a.model });
+  S.ai.forEach((a) => setAI[a.id] = { key: a.key, account: a.account, model: a.model, size: a.size || "" });
   setUse = s.ai_provider;
   setSel = focusId || s.ai_provider;
   renderAIList();
@@ -1120,17 +1121,27 @@ function renderAIDetail() {
         <label class="field" id="mCustom" style="margin-top:6px${known ? ";display:none" : ""}"><input data-f="model" value="${esc(known ? "" : cur)}" placeholder="모델 이름"></label></div>`;
     } else
       fields += `<div><span class="lbl">모델 <span class="hint">· 비우면 기본값 ${esc(a.default_model)}</span></span><label class="field"><input data-f="model" value="${esc(c.model || "")}" placeholder="${esc(a.default_model)}"></label></div>`;
+    if (a.id === "gemini") fields += `<div id="sizeRow"><span class="lbl">그림 크기 <span class="hint">· 512px는 나노 바나나 2에서만 돼요</span></span>
+        <select class="msel" id="sizeSel"><option value="">1K · 기본</option><option value="512">512px · 약 65원, 조금 덜 선명</option></select></div>`;
     if (KEY_URL[a.id]) fields += `<div class="hint"><a data-url="${KEY_URL[a.id]}">발급 페이지 열기</a></div>`;
   }
   $("#aiDetail").innerHTML = `<h4>${esc(a.name)}<span class="tag ${tc}">${tl}</span></h4>
     <div class="muted" style="font-size:12px">${esc(a.desc)}</div>
     <ol>${(HOWTO[a.id] || []).map((t) => `<li>${linkify(esc(t))}</li>`).join("")}</ol>${fields}`;
+  const zs = $("#sizeSel");
+  const sizeVis = () => { const m = (setAI[a.id] && setAI[a.id].model) || c.model || a.default_model; $("#sizeRow").style.display = m === "gemini-3.1-flash-image" ? "" : "none"; };
+  if (zs) {
+    zs.value = c.size || "";
+    zs.onchange = () => { setAI[a.id] = setAI[a.id] || {}; setAI[a.id].size = zs.value; };
+    sizeVis();
+  }
   const ms = $("#mSel");
   if (ms) ms.onchange = () => {
     const custom = ms.value === "@custom";
     $("#mCustom").style.display = custom ? "" : "none";
     setAI[a.id] = setAI[a.id] || {};
     setAI[a.id].model = custom ? $("#mCustom input").value : (ms.value === a.default_model ? "" : ms.value);
+    if (zs) sizeVis();
   };
   $$("#aiDetail [data-f]").forEach((inp) => inp.addEventListener("input", () => {
     setAI[a.id] = setAI[a.id] || {}; setAI[a.id][inp.dataset.f] = inp.value;
@@ -1657,7 +1668,7 @@ $("#bulkGo").onclick = async () => {
 /* ================================================================ AI로 한꺼번에 그리기 */
 const AB = { people: [], sel: new Set(), task: "face", kitKind: "home", thumbs: {}, ver: {}, items: [], pick: new Set(), timer: 0, running: false, price: null, big: null };
 const AB_ENG = ["gemini", "openai", "xai", "codex", "cloudflare"];
-const AB_TASK_HINT = { face: "게임 외모 설명(피부·머리)으로 새 얼굴을 그려요. 뉴젠에게 좋아요.", kit: "지금 사진의 얼굴은 두고 옷만 바꿔요. 지금 사진이 있는 사람만 돼요.", gunzo: "" };
+const AB_TASK_HINT = { face: "게임 외모 설명(피부·머리)으로 새 얼굴을 그려요.", kit: "지금 사진의 얼굴은 두고 옷만 바꿔요. 지금 사진이 있는 사람만 돼요.", gunzo: "" };
 const won = (n) => Math.round(n).toLocaleString("ko-KR");
 
 async function openAB() {
@@ -1727,7 +1738,7 @@ function renderABPeople() {
   g.innerHTML = AB.people.map((p, i) => {
     const off = AB.task === "kit" && !p.has_face;
     return `<div class="abp${AB.sel.has(p.uid) && !off ? " on" : ""}" data-i="${i}" style="${off ? "opacity:.35" : ""}" title="${off ? "지금 사진이 없어서 유니폼만 바꾸기를 못 해요" : ""}">
-      <span class="ck"></span>${p.kits ? '<span class="tg">유니폼</span>' : ""}
+      <span class="ck"></span>${p.game_face ? '<span class="tg" title="사진이 없어 게임 얼굴을 참고해요 (참고 켰을 때)">게임 얼굴</span>' : p.kits ? '<span class="tg">유니폼</span>' : ""}
       <div class="im">${p.face ? `<img src="${p.face}">` : "사진 없음"}</div>
       <div class="nm">${esc(p.name)}</div><div class="sb">${esc(p.club || "무소속")}${p.age ? " · " + esc(p.age) : ""}</div></div>`;
   }).join("");
@@ -1758,7 +1769,7 @@ $("#abGo").onclick = async () => {
   const list = abTargets(), pr = AB.price || {};
   if (!list.length) return;
   if (pr.kind === "paid" && !await confirmBox("요금 확인", `${list.length}명을 그려요. 예상 요금은 약 ${won(pr.won * list.length)}원이에요.\n\n요금은 API 키에 연결한 결제에서 빠져나가요. 시작할까요?`, "시작")) return;
-  const r = await call("batch_start", list, AB.task, { engine: $("#abEngine").value, kit_kind: AB.kitKind, use_kit: $("#abKit").checked, ref: $("#abRef").checked });
+  const r = await call("batch_start", list, AB.task, { engine: $("#abEngine").value, kit_kind: AB.kitKind, use_kit: $("#abKit").checked, ref: $("#abRef").checked, extra: $("#abExtra").value });
   if (!r) return;
   if (r.error === "need_key") { toast("연결 정보가 없어요. 설정에서 넣어 주세요.", "err"); $("#abModal").classList.remove("on"); openSettings(r.engine); return; }
   if (r.skipped) toast(`지금 사진이 없는 ${r.skipped}명은 빼고 그려요.`, "info", 3500);
@@ -1836,7 +1847,8 @@ async function openABBig(it) {
   if (!r || r.error) return;
   $("#abBigName").textContent = r.name;
   $("#abBefore").innerHTML = r.before ? `<img src="${r.before}">` : `<div class="none">사진 없음</div>`;
-  $("#abAfter").innerHTML = `<img src="${r.img}" title="${esc(r.prompt)}">`;
+  $("#abAfter").innerHTML = `<img src="${r.img}">`;
+  $("#abPrompt").textContent = r.prompt || "";
   $("#abBig").classList.add("on");
 }
 $("#abBigX").onclick = () => $("#abBig").classList.remove("on");

@@ -401,6 +401,26 @@ def _kit_png(num: str, kind: str) -> Path | None:
     return png if png.exists() else None
 
 
+def newgen_face(uid: str) -> Path | None:
+    """플러그인이 저장한 뉴젠 3D 얼굴 (게임에 얼굴이 한 번 뜬 사람만)."""
+    import struct
+    from PIL import Image
+    uid = str(uid).removeprefix("r-")
+    if not uid.isdigit():
+        return None
+    d = bridge_dir() / "newgen"
+    raw, png = d / f"{uid}.raw", d / f"{uid}.png"
+    try:
+        if raw.exists() and (not png.exists() or raw.stat().st_mtime > png.stat().st_mtime):
+            b = raw.read_bytes()
+            w, h = struct.unpack("<ii", b[:8])
+            Image.frombytes("RGBA", (w, h), b[8:8 + w * h * 4]).transpose(Image.FLIP_TOP_BOTTOM).save(png)
+            raw.unlink()
+    except Exception as e:  # noqa: BLE001
+        log.warning("뉴젠 얼굴 변환 실패 %s: %s", uid, e)
+    return png if png.exists() else None
+
+
 def kit_nums() -> list[str]:
     """모인 유니폼 번호들."""
     nums = set()

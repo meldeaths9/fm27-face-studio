@@ -20,7 +20,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string Id = "kr.fm27facestudio.plugin";
     public const string Name = "FM Face Studio";
-    public const string Version = "0.7.5";
+    public const string Version = "0.8.0";
 
     internal static ManualLogSource L = null!;
     internal static Harmony H = null!;
@@ -918,6 +918,8 @@ internal static class Kits
             _last = null;                                   // 주소 다음 '첫 그림'만 본다
             var ptr = __0.Pointer;
             if (Done.Contains(ptr)) return;
+            var nm0 = __0.name ?? "";
+            if (nm0.StartsWith("NewgenPortraitTexture-")) { Done.Add(ptr); NewgenFaces.Save(__0, nm0.Substring(22)); return; }
             if (__0.width < 256 || __0.height < 256 || __0.width > 2048) return;
             var name = __0.name ?? "";
             string? kind = name.EndsWith(" home") ? "home" : name.EndsWith(" away") ? "away" : name.EndsWith(" third") ? "third" : null;
@@ -946,5 +948,28 @@ internal static class Kits
             Plugin.L.LogInfo($"유니폼 저장: {key} ({name})");
         }
         catch (Exception e) { try { Plugin.L.LogWarning("유니폼 저장 실패: " + e.Message); } catch { } }
+    }
+}
+
+/// <summary>
+/// 게임이 그린 뉴젠 3D 얼굴(텍스처 이름 NewgenPortraitTexture-UID)을 사람별로 저장한다.
+/// 앱이 사진 없는 뉴젠을 AI로 그릴 때 참고 사진으로 쓴다.
+/// </summary>
+internal static class NewgenFaces
+{
+    private static readonly HashSet<string> Seen = new();
+    private static string Dir => Path.Combine(Bridge.Dir, "newgen");
+
+    public static void Save(Texture tex, string uid)
+    {
+        try
+        {
+            if (uid.Length == 0 || !uid.All(char.IsDigit) || Seen.Contains(uid)) return;
+            if (tex.width < 64 || tex.width > 1024) return;
+            Seen.Add(uid);
+            Directory.CreateDirectory(Dir);
+            Collect.SaveRaw(tex, Path.Combine(Dir, uid + ".raw"));
+        }
+        catch (Exception e) { try { Plugin.L.LogWarning("뉴젠 얼굴 저장 실패: " + e.Message); } catch { } }
     }
 }

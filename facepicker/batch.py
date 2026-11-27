@@ -28,13 +28,17 @@ WON_PER_USD = 1450
 AUTO_ENGINES = ("gemini", "openai", "xai", "codex", "cloudflare")
 
 
-def price_of(pid: str, model: str) -> dict:
+def price_of(pid: str, model: str, size: str = "") -> dict:
     """{"kind": "paid"|"free"|"sub", "usd": 1장 값}"""
     if pid == "cloudflare":
         return {"kind": "free", "usd": 0.0}
     if pid == "codex":
         return {"kind": "sub", "usd": 0.0}
     m = (model or providers.DEFAULT_MODELS.get(pid, "")).strip()
+    if size == "512":
+        small = next((x.get("small_usd") for ms in providers.MODEL_CHOICES.values() for x in ms if x["id"] == m), None)
+        if small:
+            return {"kind": "paid", "usd": small}
     usd = PRICE_USD.get(m)
     if usd is None:
         usd = next((v for k, v in PRICE_USD.items() if m.startswith(k.rsplit("-", 1)[0])), 0.07)

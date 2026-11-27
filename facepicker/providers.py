@@ -54,7 +54,7 @@ DEFAULT_MODELS = {
 # 설정 화면에서 고르는 모델 (이름, 1장 값 USD · 1024px 기준, 2026-11 요금표)
 MODEL_CHOICES = {
     "gemini": [
-        {"id": "gemini-3.1-flash-image", "name": "나노 바나나 2 · 기본, 추천", "usd": 0.067},
+        {"id": "gemini-3.1-flash-image", "name": "나노 바나나 2 · 기본, 추천", "usd": 0.067, "small_usd": 0.045},
         {"id": "gemini-nano-banana-2.1", "name": "나노 바나나 2.1 · 새 모델", "usd": 0.034},
         {"id": "gemini-3.1-flash-lite-image", "name": "나노 바나나 2 라이트 · 싸고 빠름", "usd": 0.034},
         {"id": "gemini-3-pro-image", "name": "나노 바나나 프로 · 가장 좋은 품질, 비쌈", "usd": 0.134},
@@ -182,7 +182,7 @@ def gen_gemini(cfg: dict, prompt: str, photo: Image.Image | None) -> Image.Image
     if not key:
         raise ProviderError("need_key")
     try:
-        return gemini.generate(key, cfg.get("model") or DEFAULT_MODELS["gemini"], prompt, photo)
+        return gemini.generate(key, cfg.get("model") or DEFAULT_MODELS["gemini"], prompt, photo, size=str(cfg.get("size") or ""))
     except gemini.GeminiError as e:
         msg = str(e)
         if "429" in msg or "quota" in msg.lower():
