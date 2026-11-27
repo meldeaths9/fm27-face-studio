@@ -737,6 +737,43 @@ function renderGameKits() {
     `<button class="chip ${S.kitSrc === "game" && S.gkitKind === k ? "on" : ""}" data-k="${k}"><img src="${S.gkits[k]}">${({ home: "홈", away: "원정", third: "서드" })[k]}</button>`).join("");
   $$("#gameKits .chip").forEach((b) => b.onclick = () => useGameKit(b.dataset.k));
 }
+/* 게임 유니폼 고르기 창: 모인 유니폼 전부를 구단 이름으로 검색, 아무 유니폼이나 입히기, 구단 짝 기억 */
+const KIND_KO = { home: "홈", away: "원정", third: "서드" };
+async function renderKitGrid() {
+  const r = await call("kit_list", $("#kitQ").value.trim());
+  const g = $("#kitGrid");
+  if (!r || !r.items) { g.innerHTML = ""; return; }
+  const cur = S.cur && S.cur.cuid ? String(S.cur.cuid) : "", curName = S.cur && S.cur.club;
+  if (!r.items.length) {
+    g.innerHTML = `<div class="hint" style="padding:30px;text-align:center">${$("#kitQ").value.trim() ? "찾는 구단의 유니폼이 없어요." : "아직 모인 유니폼이 없어요. 게임에서 구단 프로필을 열어 주세요 (플러그인 필요)."}</div>`;
+    return;
+  }
+  g.innerHTML = r.items.map((x, i) => `<div class="kcard ${cur && x.club === cur ? "mine" : ""}" data-i="${i}">
+      <div class="kh"><b>${esc(x.name || `유니폼 ${x.num}번`)}</b>${x.alt ? ` <span class="tg2">${esc(x.alt)}</span>` : ""}${!x.known ? ' <span class="tg2">구단 모름</span>' : ""}${x.user ? ' <span class="tg">직접 지정</span>' : ""}${cur && x.club === cur ? ' <span class="tg">이 선수 구단</span>' : ""}</div>
+      <div class="kk">${["home", "away", "third"].filter((k) => x.kits[k]).map((k) => `<button class="kimg" data-k="${k}" title="${KIND_KO[k]} 유니폼 입히기"><img src="${x.kits[k]}"><span>${KIND_KO[k]}</span></button>`).join("")}</div>
+      ${cur && x.club !== cur ? `<button class="btn sm ghost kmem">이 유니폼을 '${esc(curName || "이 선수 구단")}' 것으로 기억</button>` : ""}
+    </div>`).join("") + (r.total > r.items.length ? `<div class="hint">… 외 ${r.total - r.items.length}개 · 검색해서 찾아 주세요</div>` : "");
+  $$(".kcard", g).forEach((el) => {
+    const x = r.items[+el.dataset.i];
+    $$(".kimg", el).forEach((b) => b.onclick = async () => {
+      const res = await call("use_kit_num", x.num, b.dataset.k);
+      if (!res || res.error) return;
+      S.kitSrc = "manual"; setKitThumb(res); renderGameKits();
+      $("#kitModal").classList.remove("on");
+      toast(`${x.name || "유니폼 " + x.num + "번"} ${KIND_KO[b.dataset.k]} 유니폼을 입혀요.`, "ok", 2000);
+    });
+    const m = $(".kmem", el);
+    if (m) m.onclick = async () => {
+      if (!await confirmBox("유니폼 기억", `이 유니폼(${x.name || "유니폼 " + x.num + "번"})을 '${curName}' 구단 것으로 기억할까요?\n다음부터 ${curName} 선수에게 자동으로 들어가요.`, "기억하기")) return;
+      const res = await call("remember_kit", x.num, cur);
+      if (res && res.ok) { toast(`'${curName}' 유니폼으로 기억했어요.`, "ok", 2000); await loadGameKits(S.cur); renderKitGrid(); }
+    };
+  });
+}
+let kitQT;
+$("#btnKitPick").onclick = () => { $("#kitQ").value = (S.cur && S.cur.club) || ""; $("#kitModal").classList.add("on"); renderKitGrid(); setTimeout(() => $("#kitQ").select(), 50); };
+$("#kitQ").addEventListener("input", () => { clearTimeout(kitQT); kitQT = setTimeout(renderKitGrid, 200); });
+$("#kitX").onclick = () => $("#kitModal").classList.remove("on");
 function setKitThumb(r) {
   if (!r || !r.thumb) return;
   $("#kitImg").innerHTML = `<img src="${r.thumb}">`;

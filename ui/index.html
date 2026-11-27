@@ -180,6 +180,7 @@
             <div class="kitimg" id="kitImg"><span>유니폼<br>사진</span></div>
             <div class="hint grow" id="kitHint">유니폼 사진을 넣으면 그 유니폼을 입혀요. 없으면 <b>소속 팀의 홈 유니폼</b>으로 요청해요.</div>
             <div class="gkits" id="gameKits" hidden></div>
+            <button class="btn sm" id="btnKitPick">유니폼 고르기</button>
             <button class="btn sm" id="btnKit">유니폼 사진</button><button class="btn sm ghost" id="btnKitX" hidden>빼기</button>
           </div>
           <div class="step2" id="step2" hidden><span><b>① 사진</b>을 사이트에 붙여넣었으면</span><button class="btn sm primary" id="btnStep2">② 프롬프트 복사</button><span class="hint">누른 다음 사이트에서 한 번 더 Ctrl+V</span><button class="x" id="btnStep2X" title="닫기"><svg class="i"><use href="#i-x"/></svg></button></div>
@@ -299,6 +300,11 @@
   <div class="df"><button class="btn primary" id="keysX">닫기</button></div>
 </div></div>
 <div class="undostack" id="undoStack"></div>
+<div class="modal" id="kitModal"><div class="dlg" style="width:820px">
+  <div class="dh"><h3>게임 유니폼 고르기</h3><label class="field" style="flex:1;margin-left:14px"><svg class="i"><use href="#i-search"/></svg><input id="kitQ" placeholder="구단 이름 (예: 레알, 바르셀로나)" autocomplete="off"></label></div>
+  <div class="db kitgrid" id="kitGrid"></div>
+  <div class="df"><span class="hint grow" id="kitNote">게임에서 구단 프로필을 열면 그 구단 유니폼이 여기에 모여요 (플러그인).</span><button class="btn primary" id="kitX">닫기</button></div>
+</div></div>
 <div class="modal" id="updModal"><div class="dlg" style="width:420px"><div class="db" style="text-align:center;padding:26px 24px">
   <div class="spin" style="margin:0 auto 14px"></div><div id="updMsg" style="font-weight:800;font-size:15px">새 버전 받는 중…</div>
   <div class="updprog"><i id="updFill"></i></div><div class="hint" id="updSub"></div></div></div></div>

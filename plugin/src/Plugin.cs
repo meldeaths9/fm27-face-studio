@@ -20,7 +20,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string Id = "kr.fm27facestudio.plugin";
     public const string Name = "FM Face Studio";
-    public const string Version = "0.7.4";
+    public const string Version = "0.7.5";
 
     internal static ManualLogSource L = null!;
     internal static Harmony H = null!;
@@ -871,10 +871,6 @@ internal static class Kits
             if (File.Exists(idx))
                 foreach (var kv in JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(idx)) ?? new())
                     Saved[kv.Key] = kv.Value;
-            var own = Path.Combine(KitDir, "owners2.json");
-            if (File.Exists(own))
-                foreach (var kv in JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(own)) ?? new())
-                    Owners[kv.Key] = kv.Value;
         }
         catch (Exception e) { Plugin.L.LogWarning("유니폼 기록 읽기 실패: " + e.Message); }
         var flags = System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic;
@@ -892,48 +888,9 @@ internal static class Kits
         }
         P(typeof(FM.UI.DatabaseObjectImageHelpers), "GetKit2DResourceID", nameof(IdPost), true);
         P(typeof(FM.UI.DatabaseObjectImageHelpers), "GetLicensedKit2DResourceID", nameof(IdPost), true);
-        // 유니폼 주소의 번호는 '유니폼 번호'라 구단 번호와 다를 때가 있다(레알 마드리드 1736 ↔ 구단 1734).
-        // 주소를 만드는 바깥 함수에서 구단(dynRef)의 UID를 함께 받아 짝을 기록한다.
-        P(typeof(FM.UI.DatabaseObjectImageHelpers), "ConvertDynamicReferenceToAddressableID", nameof(OwnerPost), true);
         P(typeof(UnityEngine.UIElements.Image), "set_image", nameof(ImagePrefix), false);
     }
 
-    private static readonly Dictionary<string, string> Owner = new();   // 유니폼 번호 -> 구단 UID (이번 실행)
-    private static readonly Dictionary<string, string> Owners = new();  // 저장한 유니폼의 짝 (owners.json)
-
-    // 같은 구단 정보(dynRef 객체)로 엠블럼 주소(club_<UID>)와 유니폼 주소(kit2d_<번호>_…)를 둘 다 만든다.
-    // 같은 객체에서 나온 두 주소만 짝짓는다 (시간·순서로 짐작하지 않는다. 게임 함수를 직접 부르지도 않는다 — 0.7.3에서 게임이 꺼졌다).
-    private static readonly Dictionary<IntPtr, string> RefClub = new();
-    private static readonly Dictionary<IntPtr, string> RefKit = new();
-
-    private static void OwnerPost(SI.Bindable.DynamicReference __0, string __result)
-    {
-        try
-        {
-            if (__0 is null || string.IsNullOrEmpty(__result)) return;
-            var ptr = __0.Pointer;
-            if (RefClub.Count > 20000) { RefClub.Clear(); RefKit.Clear(); }
-            string? club = null, kit = null;
-            if (__result.StartsWith("club_"))
-            {
-                var u = __result.Substring(5);
-                if (u.Length == 0 || !u.All(char.IsDigit)) return;
-                RefClub[ptr] = u;
-                club = u;
-                RefKit.TryGetValue(ptr, out kit);
-            }
-            else if (__result.StartsWith("kit2d_"))
-            {
-                var parts = __result.Split('_');
-                if (parts.Length != 3 || !parts[1].All(char.IsDigit)) return;
-                RefKit[ptr] = parts[1];
-                kit = parts[1];
-                RefClub.TryGetValue(ptr, out club);
-            }
-            if (club is not null && kit is not null) Owner[kit] = club;
-        }
-        catch { }
-    }
 
     private static void IdPost(string __result)
     {
@@ -980,12 +937,6 @@ internal static class Kits
                 kind = last.Value.kind;
             }
             Done.Add(ptr);
-            // 유니폼 번호 → 구단 UID 짝 (번호가 구단 UID와 다를 때 앱이 찾을 수 있게). 파일 이름은 유니폼 번호 그대로.
-            if (Owner.TryGetValue(club, out var owner) && owner != club && (!Owners.TryGetValue(club, out var had) || had != owner))
-            {
-                Owners[club] = owner;
-                Bridge.WriteJson(Path.Combine(KitDir, "owners2.json"), Owners);
-            }
             var key = club + "_" + kind;
             var file = Path.Combine(KitDir, key + ".raw");
             if (Saved.TryGetValue(key, out var old) && old == name && (File.Exists(file) || File.Exists(Path.Combine(KitDir, key + ".png")))) return;

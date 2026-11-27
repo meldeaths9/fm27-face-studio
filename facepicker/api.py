@@ -24,7 +24,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.2.6"
+VERSION = "1.3.0"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -931,7 +931,7 @@ class Api:
     @_safe
     def game_kits(self, club: str) -> dict:
         """이 클럽의 게임 유니폼 (플러그인이 클럽 화면에서 모아 둔 것)."""
-        kits = gamesetup.kit_images(club)
+        kits = gamesetup.kit_images(club, self._cfg.kit_aliases)
         out = {}
         for k, pth in kits.items():
             try:
@@ -940,9 +940,71 @@ class Api:
                 pass
         return {"kits": out}
 
+    def _club_names(self) -> dict:
+        key = id(self._people.items)
+        if getattr(self, "_cn_key", None) != key:
+            m = {}
+            for p in self._people.items:
+                c = p.get("cuid")
+                if c and p.get("club") and str(c) not in m:
+                    m[str(c)] = (p["club"], p.get("alt", ""))
+            self._cn, self._cn_key = m, key
+        return self._cn
+
+    @_safe
+    def kit_list(self, query: str = "") -> dict:
+        """모인 게임 유니폼 전부 (검색). 구단 이름은 세이브 목록에서."""
+        names = self._club_names()
+        q = "".join(str(query or "").lower().split())
+        out = []
+        for num in gamesetup.kit_nums():
+            owner = gamesetup.kit_owner(num, self._cfg.kit_aliases)
+            name, alt = names.get(owner, ("", ""))
+            label = name or f"유니폼 {num}번"
+            if q and q not in "".join(label.lower().split()) and q not in num:
+                continue
+            files = gamesetup.kit_files(num)
+            if not files:
+                continue
+            if not hasattr(self, "_kthumb"):
+                self._kthumb = {}
+            thumbs = {}
+            for k, pth in files.items():
+                key = (str(pth), pth.stat().st_mtime)
+                if key not in self._kthumb:
+                    self._kthumb[key] = _thumb_url(pth, 110)
+                thumbs[k] = self._kthumb[key]
+            out.append({"num": num, "club": owner, "name": name, "alt": alt, "known": bool(name),
+                        "user": num in (self._cfg.kit_aliases or {}), "kits": thumbs})
+        out.sort(key=lambda x: (not x["known"], x["name"] or "", int(x["num"])))
+        return {"items": out[:80], "total": len(out)}
+
+    @_safe
+    def remember_kit(self, num: str, club: str) -> dict:
+        """'이 구단 유니폼으로 기억': 유니폼 번호를 이 구단 것으로."""
+        num, club = str(num), str(club)
+        if not (num.isdigit() and club.isdigit()):
+            return {"error": "구단 번호가 없어요."}
+        al = dict(self._cfg.kit_aliases or {})
+        if gamesetup.KIT_ALIASES.get(num, num) == club:
+            al.pop(num, None)
+        else:
+            al[num] = club
+        self._cfg.kit_aliases = al
+        self._cfg.save()
+        return {"ok": True}
+
+    @_safe
+    def use_kit_num(self, num: str, kind: str) -> dict:
+        pth = gamesetup.kit_files(num).get(kind)
+        return self._set_game_kit(pth)
+
     @_safe
     def use_game_kit(self, club: str, kind: str) -> dict:
-        pth = gamesetup.kit_images(club).get(kind)
+        pth = gamesetup.kit_images(club, self._cfg.kit_aliases).get(kind)
+        return self._set_game_kit(pth)
+
+    def _set_game_kit(self, pth) -> dict:
         if not pth:
             return {"error": "이 클럽의 게임 유니폼이 아직 없어요."}
         im = imaging.load_image(str(pth))

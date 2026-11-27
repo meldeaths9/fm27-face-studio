@@ -97,6 +97,7 @@ class Settings:
         self.game_dir: str = ""
         self.auto_refresh: bool = True
         self.pack_folder: str = PACK_FOLDER_NAME   # graphics 안 내 폴더 이름 (이름순으로 뒤일수록 이긴다)
+        self.kit_aliases: dict = {}        # 사용자가 '이 구단 유니폼으로 기억'한 짝: 유니폼 번호 -> 구단 번호
         self.bulk_crop: str = "face"      # 대량·끌어다 놓기 자르기: face(얼굴 맞춤) / keep(그대로, 위쪽 맞춤)
         self.bulk_deco: str = "follow"    # 대량·끌어다 놓기 꾸미기: follow(편집 화면 설정) / none
         self.check_updates: bool = True

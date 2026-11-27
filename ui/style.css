@@ -557,3 +557,16 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 7px; border-radius: 6
 .tdi .tg2 { font-size: 10px; padding: 1px 6px; border-radius: 6px; background: rgba(255,180,80,.18); color: #ffb450; }
 .field.picked { border-color: rgba(31,209,165,.6); }
 .teamok { color: #1fd1a5; font-weight: 800; margin-left: 4px; }
+
+/* v1.3 게임 유니폼 고르기 */
+.kitgrid { max-height: 62vh; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; white-space: normal; }
+.kcard { border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.kcard.mine { border-color: rgba(31,209,165,.6); }
+.kcard .kh { font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.kcard .kk { display: flex; gap: 6px; }
+.kimg { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; background: var(--bg2); border: 1px solid transparent; border-radius: 8px; padding: 4px; cursor: pointer; color: var(--muted); font-size: 11px; }
+.kimg:hover { border-color: var(--accent); color: var(--text); }
+.kimg img { width: 64px; height: 64px; object-fit: contain; }
+.kcard .tg { font-size: 10px; padding: 1px 6px; border-radius: 6px; background: rgba(31,209,165,.2); color: #1fd1a5; }
+.kcard .tg2 { font-size: 10px; padding: 1px 6px; border-radius: 6px; background: rgba(255,180,80,.18); color: #ffb450; }
+.kcard .kmem { align-self: flex-start; font-size: 11px; }
