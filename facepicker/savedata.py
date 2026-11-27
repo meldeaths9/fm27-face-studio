@@ -16,7 +16,7 @@ from .pack import looks_like_newgen
 from .settings import app_data_dir, default_fm_user_dir
 
 log = logging.getLogger("savedata")
-CACHE_VERSION = 4
+CACHE_VERSION = 5
 
 JOB_KO = {
     "COACH": "코치", "CHAIRPERSON": "회장", "DIRECTOR": "이사", "MANAGING_DIRECTOR": "대표이사",
@@ -28,6 +28,22 @@ JOB_KO = {
     "HEAD_PERFORMANCE_ANALYST": "수석 분석관", "HEAD_OF_YOUTH_DEVELOPMENT": "유스 총괄", "OWNER": "구단주",
     "PRESIDENT": "회장", "LOAN_MANAGER": "임대 담당", "TECHNICAL_DIRECTOR": "기술이사",
 }
+
+
+def _pos(pl) -> str:
+    """가장 잘하는 포지션 코드 (gk·dc·stc …). 모르면 빈칸."""
+    try:
+        nat = getattr(pl, "natural_positions", None) or getattr(pl, "accomplished_positions", None) or ()
+        if nat:
+            return str(nat[0]).lower()
+        ps = getattr(pl, "positions", None)
+        if ps is not None:
+            keys = ("gk", "sw", "dl", "dc", "dr", "dm", "ml", "mc", "mr", "aml", "amc", "amr", "stc", "wbl", "wbr")
+            best = max(keys, key=lambda k: int(getattr(ps, k, 0) or 0))
+            return best if int(getattr(ps, best, 0) or 0) > 0 else ""
+    except Exception:  # noqa: BLE001
+        pass
+    return ""
 
 
 def default_games_dir() -> Path:
@@ -154,7 +170,7 @@ def read_save(path: str | Path) -> dict:
                     "kind": "player", "newgen": looks_like_newgen(str(uid)), "job": "",
                     "mine": cuid is not None and cuid in my_club_uids, "me": False, "squad": "",
                     "cuid": cuid, "crep": getattr(pl, "club_reputation", None) or 0,
-                    "cnat": getattr(pl, "club_nation_id", None),
+                    "cnat": getattr(pl, "club_nation_id", None), "pos": _pos(pl),
                 })
             _label_squads([p for p in people if p["kind"] == "player"], squad_keys)
             for st in s.staff():

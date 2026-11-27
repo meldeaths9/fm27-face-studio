@@ -25,7 +25,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.9.3"
+VERSION = "1.9.4"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -1369,7 +1369,7 @@ class Api:
         out = []
         for p in items[:self.BATCH_MAX]:
             f = idx.get(p["uid"])
-            d = {k: p.get(k, "") for k in ("uid", "name", "club", "cuid", "age", "nationality", "kind", "newgen", "me", "alt", "squad")}
+            d = {k: p.get(k, "") for k in ("uid", "name", "club", "cuid", "age", "nationality", "kind", "newgen", "me", "alt", "squad", "pos")}
             d["face"] = self._face_thumb(f["path"], 72) if f else ""
             d["has_face"] = bool(f)
             if not f and p.get("newgen"):
@@ -1457,6 +1457,11 @@ class Api:
                 ref_mode = "game"
         if not providers.BY_ID.get(meta.get("engine"), {}).get("ref"):
             ref, kit = None, None
+        photos = ([ref] if ref is not None else []) + ([kit] if kit is not None else [])
+        if task == "gunzo":
+            prompt, _ = prompts.gunzo_prompt(person, lang=lang, has_ref=ref is not None, ref_mode=ref_mode,
+                                             has_kit=kit is not None, action=meta.get("action", "auto"), club_hint=hint)
+            return _extra(prompt, meta), photos
         prompt, _ = prompts.face_prompt(
             person, lang=lang, template=self._cfg.prompt_template, has_ref=ref is not None, has_kit=kit is not None,
             expression=meta.get("expression") or self._cfg.expression, club_hint=hint,
@@ -1488,6 +1493,7 @@ class Api:
         meta = {"task": task, "engine": engine, "cfg": cfg, "kit_kind": opts.get("kit_kind", "home"),
                 "use_kit": bool(opts.get("use_kit", True)), "ref": bool(opts.get("ref")),
                 "expression": opts.get("expression", ""), "extra": str(opts.get("extra") or "").strip()[:500],
+                "action": str(opts.get("action") or "auto"), "banner": str(opts.get("banner") or "gunzo"),
                 "started": time.time()}
         b.reset(people, meta)
         b.start(self._batch_job, workers=int(opts.get("workers") or 2))
@@ -1500,7 +1506,7 @@ class Api:
             items = [{"id": i["id"], "uid": i["uid"], "name": i["person"].get("name", ""), "club": i["person"].get("club", ""),
                       "status": i["status"], "err": i.get("err", ""), "ver": Path(i["png"]).name if i.get("png") else ""}
                      for i in b.items]
-            meta = {k: b.meta.get(k) for k in ("task", "engine", "kit_kind", "spent", "ref")}
+            meta = {k: b.meta.get(k) for k in ("task", "engine", "kit_kind", "spent", "ref", "banner")}
         return {"items": items, "running": b.running, "counts": b.counts(), "meta": meta}
 
     @_safe
@@ -1554,6 +1560,27 @@ class Api:
             b.start(self._batch_job, workers=2)
         return self.batch_status()
 
+    def _gunzo_args(self, src, person: dict, meta: dict):
+        """건조: 사진은 자르지 않고 통째로, 이름띠는 고른 대로."""
+        from .style import kit_color
+        w, h = src.size
+        side = float(min(w, h))
+        box = (w / 2, h / 2, side)
+        banner = meta.get("banner", "gunzo")
+        name = str(person.get("name", "")).strip()
+        if banner == "none":
+            return box, {}
+        if banner == "follow":
+            deco = dict(self._cfg.deco or {})
+            deco["text"] = name
+            return box, deco
+        kit = self._batch_kit(person, meta.get("kit_kind", "home"))
+        base = dict(self._cfg.deco or {})
+        return box, {"rounded": base.get("rounded", False), "radius": base.get("radius", 14),
+                     "border": base.get("border", False), "border_color": base.get("border_color", ""),
+                     "text": name, "band": "gunzo", "band_color": kit_color(kit) if kit is not None else "",
+                     "sub": prompts.pos_label(person)}
+
     @_safe
     def batch_to_queue(self, ids: list) -> dict:
         """다 그린 것들을 지금 자르기·꾸미기 설정대로 대기열에 넣는다."""
@@ -1568,7 +1595,10 @@ class Api:
             if not uid:
                 continue
             src = imaging.load_image(it["png"])
-            box, deco = self._quick_args(src, person)
+            if b.meta.get("task") == "gunzo":
+                box, deco = self._gunzo_args(src, person, b.meta)
+            else:
+                box, deco = self._quick_args(src, person)
             self._queue_put(person, uid, prefixed, src, box, deco)
             moved.append(it["id"])
         b.drop(moved)

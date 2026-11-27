@@ -40,6 +40,9 @@ class Deco:
     border: bool = False
     text_color: str = ""      # "#rrggbb" — 비우면 스타일 기본색
     border_color: str = ""
+    band: str = ""            # "gunzo" → 건조용 구단 색 띠 (caption 대신)
+    band_color: str = ""      # "#rrggbb" 구단 색
+    sub: str = ""             # 띠 왼쪽 작은 글자 (포지션: GK·DF·MF·FW)
 
     @classmethod
     def from_dict(cls, d: dict | None) -> "Deco":
@@ -51,7 +54,7 @@ class Deco:
         out.radius = max(0, min(50, out.radius))
         if out.style not in STYLES:
             out.style = "gold"
-        for k in ("text_color", "border_color"):
+        for k in ("text_color", "border_color", "band_color"):
             if _hex(getattr(out, k)) is None:
                 setattr(out, k, "")
         return out
@@ -105,7 +108,9 @@ def decorate(img: Image.Image, deco: Deco) -> Image.Image:
 
     # 하단 이름
     text = deco.text.strip()
-    if deco.caption and text:
+    if deco.band == "gunzo" and text:
+        _gunzo_band(im, text, deco.sub.strip(), _hex(deco.band_color) or (20, 30, 70))
+    elif deco.caption and text:
         top = int(S * 0.70)
         band = Image.new("RGBA", (S, S), (0, 0, 0, 0))
         bd = ImageDraw.Draw(band)
@@ -149,3 +154,72 @@ def decorate(img: Image.Image, deco: Deco) -> Image.Image:
             ov.putalpha(ImageChops.multiply(ov.getchannel("A"), _round_mask(S, radius_px)))
         im.alpha_composite(ov)
     return im
+
+
+def _gunzo_band(im: Image.Image, text: str, sub: str, rgb: tuple) -> None:
+    """건조용 이름띠: 아래쪽에 구단 색 띠, 위에 얇은 밝은 선, 왼쪽에 포지션 칸."""
+    S = im.width
+    top = int(S * 0.815)
+    lum = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]
+    fg = (20, 20, 24, 255) if lum > 170 else (255, 255, 255, 255)
+    dark = tuple(int(c * 0.55) for c in rgb)
+    ov = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    d = ImageDraw.Draw(ov)
+    for y in range(int(S * 0.70), top):            # 띠 위로 살짝 어두워지게
+        a = int(150 * max(0.0, (y - S * 0.70) / max(1, top - S * 0.70)) ** 1.6)
+        d.line((0, y, S, y), fill=(0, 0, 0, a))
+    d.rectangle((0, top, S, S), fill=rgb + (240,))
+    line = max(2, S // 110)
+    d.rectangle((0, top, S, top + line), fill=(255, 255, 255, 210))
+    x0 = 0
+    if sub:
+        w = int(S * 0.20)
+        slant = int(S * 0.045)
+        d.polygon([(0, top + line), (w + slant, top + line), (w, S), (0, S)], fill=dark + (255,))
+        fs = max(9, int(S * 0.06))
+        d.text(((w + slant / 2) / 2 + 1, (top + line + S) / 2), sub, font=caption_font(fs), anchor="mm",
+               fill=(255, 255, 255, 235))
+        x0 = w + slant
+    im.alpha_composite(ov)
+    d = ImageDraw.Draw(im)
+    size = max(10, int(S * 0.075))
+    font = caption_font(size)
+    max_w = S - x0 - S * 0.08
+    while d.textlength(text, font=font) > max_w and size > 10:
+        size -= 1
+        font = caption_font(size)
+    if d.textlength(text, font=font) > max_w:
+        while text and d.textlength(text + "…", font=font) > max_w:
+            text = text[:-1]
+        text += "…"
+    cy = (top + line + S) / 2
+    if sub:
+        d.text((x0 + S * 0.035, cy), text, font=font, anchor="lm", fill=fg)
+    else:
+        d.text((S / 2, cy), text, font=font, anchor="mm", fill=fg)
+
+
+def kit_color(kit: Image.Image) -> str:
+    """유니폼 그림에서 주된 색 (회색·흰색보다 색이 있는 쪽을 고른다) → "#rrggbb"."""
+    import colorsys
+    im = kit.convert("RGBA")
+    im.thumbnail((96, 96))
+    px = [p[:3] for p in im.getdata() if p[3] > 200]
+    px = [p for p in px if not (abs(p[0] - 235) < 6 and abs(p[1] - 235) < 6 and abs(p[2] - 235) < 6)]   # 깐 회색 배경 빼기
+    if not px:
+        return ""
+    q = Image.new("RGB", (len(px), 1))
+    q.putdata(px)
+    pal = q.quantize(colors=6)
+    counts = sorted(pal.getcolors(), reverse=True)
+    colors = pal.getpalette()
+    best, best_score = None, -1.0
+    total = sum(c for c, _ in counts)
+    for c, i in counts:
+        r, g, b = colors[i * 3:i * 3 + 3]
+        h, l, s = colorsys.rgb_to_hls(r / 255, g / 255, b / 255)
+        score = (c / total) * (0.35 + s) * (1.0 if 0.12 < l < 0.85 else 0.4)
+        if score > best_score:
+            best, best_score = (r, g, b), score
+    r, g, b = best
+    return f"#{r:02x}{g:02x}{b:02x}"

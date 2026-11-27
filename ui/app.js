@@ -1666,9 +1666,10 @@ $("#bulkGo").onclick = async () => {
 })();
 
 /* ================================================================ AI로 한꺼번에 그리기 */
-const AB = { people: [], sel: new Set(), task: "face", kitKind: "home", thumbs: {}, ver: {}, items: [], pick: new Set(), timer: 0, running: false, price: null, big: null };
+const AB = { banner: "gunzo", people: [], sel: new Set(), task: "face", kitKind: "home", thumbs: {}, ver: {}, items: [], pick: new Set(), timer: 0, running: false, price: null, big: null };
 const AB_ENG = ["gemini", "openai", "xai", "codex", "cloudflare"];
-const AB_TASK_HINT = { face: "게임 외모 설명(피부·머리)으로 새 얼굴을 그려요.", kit: "지금 사진의 얼굴은 두고 옷만 바꿔요. 지금 사진이 있는 사람만 돼요.", gunzo: "" };
+const AB_TASK_HINT = { face: "게임 외모 설명(피부·머리)으로 새 얼굴을 그려요.", kit: "지금 사진의 얼굴은 두고 옷만 바꿔요. 지금 사진이 있는 사람만 돼요.", gunzo: "경기장에서 뛰는 모습을 그려요. 얼굴 참고를 켜면 지금 얼굴로 그려요." };
+const AB_BANNER_HINT = { gunzo: "유니폼 색으로 띠를 칠하고 왼쪽에 포지션(GK·DF·MF·FW)을 넣어요", follow: "편집 화면의 꾸미기(이름띠·모서리·테두리) 그대로", none: "사진만" };
 const won = (n) => Math.round(n).toLocaleString("ko-KR");
 
 async function openAB() {
@@ -1711,7 +1712,10 @@ function renderABOpts() {
   $$("#abTask button").forEach((b) => b.classList.toggle("on", b.dataset.v === AB.task));
   $$("#abKitKind button").forEach((b) => b.classList.toggle("on", b.dataset.v === AB.kitKind));
   $("#abTaskHint").textContent = AB_TASK_HINT[AB.task] || "";
-  $("#abRefRow").style.display = AB.task === "face" ? "" : "none";
+  $("#abRefRow").style.display = AB.task !== "kit" ? "" : "none";
+  $$(".gzrow").forEach((r) => r.style.display = AB.task === "gunzo" ? "" : "none");
+  $$("#abBanner button").forEach((b) => b.classList.toggle("on", b.dataset.v === AB.banner));
+  $("#abBannerHint").textContent = AB_BANNER_HINT[AB.banner];
   $("#abKitKind").style.opacity = $("#abKit").checked ? 1 : .4;
   renderABCost();
 }
@@ -1758,6 +1762,7 @@ function renderABSum() {
 }
 $$("#abTask button").forEach((b) => b.onclick = () => { if (b.disabled) return; AB.task = b.dataset.v; renderABOpts(); renderABPeople(); });
 $$("#abKitKind button").forEach((b) => b.onclick = () => { AB.kitKind = b.dataset.v; renderABOpts(); });
+$$("#abBanner button").forEach((b) => b.onclick = () => { AB.banner = b.dataset.v; renderABOpts(); });
 $("#abKit").onchange = renderABOpts;
 $("#abEngine").onchange = abPrice;
 $("#abAll").onclick = () => { AB.sel = new Set(AB.people.map((p) => p.uid)); renderABPeople(); };
@@ -1776,7 +1781,7 @@ $("#abGo").onclick = async () => {
   const list = abTargets(), pr = AB.price || {};
   if (!list.length) return;
   if (pr.kind === "paid" && !await confirmBox("요금 확인", `${list.length}명을 그려요. 예상 요금은 약 ${won(pr.won * list.length)}원이에요.\n\n요금은 API 키에 연결한 결제에서 빠져나가요. 시작할까요?`, "시작")) return;
-  const r = await call("batch_start", list, AB.task, { engine: $("#abEngine").value, kit_kind: AB.kitKind, use_kit: $("#abKit").checked, ref: $("#abRef").checked, extra: $("#abExtra").value });
+  const r = await call("batch_start", list, AB.task, { engine: $("#abEngine").value, kit_kind: AB.kitKind, use_kit: $("#abKit").checked, ref: $("#abRef").checked, extra: $("#abExtra").value, action: $("#abAction").value, banner: AB.banner });
   if (!r) return;
   if (r.error === "need_key") { toast("연결 정보가 없어요. 설정에서 넣어 주세요.", "err"); $("#abModal").classList.remove("on"); openSettings(r.engine); return; }
   if (r.skipped) toast(`지금 사진이 없는 ${r.skipped}명은 빼고 그려요.`, "info", 3500);
@@ -1809,7 +1814,7 @@ async function renderABRun(st) {
   [...AB.pick].forEach((k) => { if (!ids.has(k)) AB.pick.delete(k); });
   const c = st.counts, tot = st.items.length, fin = c.done + c.fail;
   $("#abFill").style.width = tot ? `${fin / tot * 100}%` : "0";
-  const task = { face: "새 얼굴", kit: "유니폼만 바꾸기" }[st.meta.task] || "";
+  const task = { face: "새 얼굴", kit: "유니폼만 바꾸기", gunzo: "건조" }[st.meta.task] || "";
   $("#abProgText").textContent = `${task} · ${c.done}명 완료${c.fail ? ` · 실패 ${c.fail}` : ""}${c.wait + c.running ? ` · 남은 ${c.wait + c.running}명` : ""}${st.running ? "" : c.wait ? " · 멈춤" : " · 끝"}`;
   $("#abSum").textContent = tot ? `${tot}명` : "";
   $("#abStop").hidden = !st.running;

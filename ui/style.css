@@ -372,6 +372,9 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px;
 /* v0.7 */
 .seg4{display:grid;grid-template-columns:repeat(4,auto)}
 .btool2{display:flex;align-items:center;gap:6px;margin:-2px 0 10px}
+.btool2 .sqin{display:flex;align-items:center;gap:6px}
+.btool2 .sqin[hidden]{display:none}
+.refbtn{margin-left:auto;height:36px;padding:0 18px;font-size:13.5px;font-weight:800}
 .btool2[hidden],.exprrow[hidden]{display:none!important}
 .lbl2{font-size:11.5px;color:var(--muted);font-weight:700;margin-right:4px;white-space:nowrap}
 .exprrow{display:flex;align-items:center;gap:4px;margin-bottom:8px;flex-wrap:wrap}

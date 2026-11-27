@@ -233,3 +233,91 @@ def strip_ref(text: str) -> str:
     for r in list(REF.values()) + list(REF_GAME.values()):
         text = text.replace(r, "").replace(r.strip(), "")
     return text.strip()
+
+
+# ---------------------------------------------------------------- 건조 (경기 중 모습)
+POS_GROUP = {"gk": "gk", "sw": "df", "dl": "df", "dc": "df", "dr": "df", "wbl": "df", "wbr": "df",
+             "dm": "mf", "ml": "mf", "mc": "mf", "mr": "mf", "aml": "fw", "amc": "fw", "amr": "fw", "stc": "fw"}
+POS_LABEL = {"gk": "GK", "df": "DF", "mf": "MF", "fw": "FW"}
+
+ACTIONS = {
+    "dribble": ("공을 몰고 앞으로 드리블하는 모습", "dribbling the ball forward at speed"),
+    "shoot": ("힘껏 슈팅하는 순간", "striking a powerful shot"),
+    "celebrate": ("골을 넣고 두 팔을 벌려 환호하며 세리머니하는 모습", "celebrating a goal with arms spread wide, shouting with joy"),
+    "tackle": ("몸을 던져 태클하는 순간", "making a committed sliding tackle"),
+    "header": ("높이 뛰어올라 헤딩하는 순간", "leaping high to head the ball"),
+    "pass": ("고개를 들고 정확하게 패스하는 순간", "playing a precise pass with head up"),
+    "run": ("전력으로 질주하는 모습", "sprinting at full speed"),
+    "save": ("몸을 날려 공을 막아 내는 골키퍼", "a goalkeeper diving full stretch to make a save, wearing goalkeeper gloves"),
+    "catch": ("높은 공을 두 손으로 잡아 내는 골키퍼", "a goalkeeper catching a high ball with both hands, wearing goalkeeper gloves"),
+    "touchline": ("터치라인에서 손짓하며 지시하는 모습", "standing on the touchline, gesturing and giving instructions"),
+}
+AUTO_ACTIONS = {
+    "gk": ["save", "catch"],
+    "df": ["tackle", "header", "run", "pass"],
+    "mf": ["pass", "dribble", "run", "shoot"],
+    "fw": ["shoot", "celebrate", "dribble", "header"],
+    "": ["dribble", "shoot", "celebrate", "run", "pass"],
+}
+GUNZO = {
+    "ko": ("{ref}{subject}의 실제 경기 중 사진을 만들어 주세요. {action}. {features}{outfit}"
+           "프로 스포츠 사진기자가 망원 렌즈(300mm)로 찍은 듯한 사진이에요. 빠른 셔터로 움직임이 또렷하고, 땀과 근육의 긴장감이 살아 있게 해 주세요. "
+           "배경은 밤 경기 축구장으로, 관중석과 조명이 크게 흐려져(보케) 있고 잔디가 보여요. "
+           "{realism}1:1 정사각형 구도에 허리 위 상반신이 크게 들어오게, 얼굴이 잘 보이게 해 주세요. "
+           "사진 아래쪽 20%는 나중에 이름띠를 얹을 자리라 중요한 부분(얼굴, 공)이 들어가지 않게 해 주세요. "
+           "글자, 등번호 숫자, 워터마크는 새로 넣지 마세요{badge_note}."),
+    "en": ("{ref}Create a real in-match action photo of {subject}, {action}. {features}{outfit}"
+           "Shot by a professional sports photographer with a 300mm telephoto lens: fast shutter, crisp motion, visible sweat "
+           "and muscle tension. Background is a floodlit football stadium at night with the crowd and lights in heavy bokeh, "
+           "grass visible. {realism}Square 1:1 framing, waist-up, face clearly visible. Keep the bottom 20% free of the face "
+           "and ball (a name banner goes there later). Do not add text, shirt numbers or watermarks{badge_note}."),
+}
+
+
+def pick_action(person: dict, action: str) -> str:
+    if action in ACTIONS:
+        return action
+    if person.get("kind", "player") != "player":
+        return "touchline"
+    grp = POS_GROUP.get(str(person.get("pos", "")).lower(), "")
+    return random.choice(AUTO_ACTIONS[grp])
+
+
+def gunzo_prompt(person: dict, *, lang: str, has_ref: bool, ref_mode: str, has_kit: bool, action: str,
+                 club_hint: str) -> tuple[str, str]:
+    """(프롬프트, 고른 동작)"""
+    lang = "en" if lang == "en" else "ko"
+    ko = lang == "ko"
+    kind = person.get("kind", "player")
+    act = pick_action(person, action)
+    age = str(person.get("age", "")).strip()
+    nat = str(person.get("nationality", "")).strip()
+    plain_club = str(person.get("club", "")).strip()
+    club = club_text(plain_club, club_hint, lang)
+    role = ROLE.get(kind, ROLE["staff"])[lang]
+    if ko:
+        subject = " ".join(x for x in [f"{club} 소속" if club else "", f"{age}세" if age else "", f"{nat} 출신" if nat else "", role] if x)
+    else:
+        subject = " ".join([f"a {age}-year-old" if age else "a", role]) + (f" from {nat}" if nat else "") + (f" at {club}" if club else "")
+    kit_index = (2 if has_ref else 1) if has_kit else 0
+    if act == "touchline":
+        outfit, badge_ok = outfit_text(kind, plain_club, kit_index, "training", lang)
+    else:
+        outfit, badge_ok = outfit_text("player", plain_club, kit_index, "", lang)
+    vars_ = {
+        "ref": ((REF_GAME if ref_mode == "game" else REF)[lang]) if has_ref else "",
+        "subject": subject, "action": ACTIONS[act][0 if ko else 1], "outfit": outfit,
+        "features": _features(person, age, lang, has_ref, ref_mode),
+        "realism": REALISM[lang],
+        "badge_note": (" (유니폼의 엠블럼과 스폰서는 괜찮아요)" if ko else " (the kit's badge and sponsor are fine)") if badge_ok else "",
+    }
+    text = GUNZO[lang].format(**vars_)
+    while "  " in text:
+        text = text.replace("  ", " ")
+    return text.strip(), act
+
+
+def pos_label(person: dict) -> str:
+    if person.get("kind", "player") != "player":
+        return ""
+    return POS_LABEL.get(POS_GROUP.get(str(person.get("pos", "")).lower(), ""), "")
