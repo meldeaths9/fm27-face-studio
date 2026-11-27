@@ -25,7 +25,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.9.6"
+VERSION = "1.9.7"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -1495,6 +1495,8 @@ class Api:
                 "expression": opts.get("expression", ""), "extra": str(opts.get("extra") or "").strip()[:500],
                 "action": str(opts.get("action") or "auto"), "banner": str(opts.get("banner") or "none"),
                 "started": time.time()}
+        pr = self.batch_price(engine)
+        meta["won"] = pr.get("won", 0) if isinstance(pr, dict) and pr.get("kind") == "paid" else 0
         b.reset(people, meta)
         b.start(self._batch_job, workers=int(opts.get("workers") or 2))
         return {"ok": True, "count": len(people), "skipped": skipped}
@@ -1506,7 +1508,7 @@ class Api:
             items = [{"id": i["id"], "uid": i["uid"], "name": i["person"].get("name", ""), "club": i["person"].get("club", ""),
                       "status": i["status"], "err": i.get("err", ""), "ver": Path(i["png"]).name if i.get("png") else ""}
                      for i in b.items]
-            meta = {k: b.meta.get(k) for k in ("task", "engine", "kit_kind", "spent", "ref", "banner")}
+            meta = {k: b.meta.get(k) for k in ("task", "engine", "kit_kind", "spent", "ref", "banner", "won")}
         return {"items": items, "running": b.running, "counts": b.counts(), "meta": meta}
 
     @_safe

@@ -18,6 +18,7 @@ const HOWTO = {
   openai: ["platform.openai.com/api-keys 에서 키를 만들어요.", "크레딧 충전이 필요해요.", "키를 아래에 넣어요."],
   xai: ["console.x.ai 에서 키를 만들어요.", "크레딧 충전이 필요해요.", "키를 아래에 넣어요. 참고 사진은 못 보내요."],
 };
+const BILLING_URL = { gemini: "https://aistudio.google.com/billing", openai: "https://platform.openai.com/settings/organization/billing/overview", xai: "https://console.x.ai/" };
 const KEY_URL = { gemini: "https://aistudio.google.com/apikey", openai: "https://platform.openai.com/api-keys", xai: "https://console.x.ai/", cloudflare: "https://dash.cloudflare.com/" };
 
 const S = {
@@ -1123,7 +1124,7 @@ function renderAIDetail() {
       fields += `<div><span class="lbl">모델 <span class="hint">· 비우면 기본값 ${esc(a.default_model)}</span></span><label class="field"><input data-f="model" value="${esc(c.model || "")}" placeholder="${esc(a.default_model)}"></label></div>`;
     if (a.id === "gemini") fields += `<div id="sizeRow"><span class="lbl">그림 크기 <span class="hint">· 512px는 나노 바나나 2에서만 돼요</span></span>
         <select class="msel" id="sizeSel"><option value="">1K · 기본</option><option value="512">512px · 약 65원, 조금 덜 선명</option></select></div>`;
-    if (KEY_URL[a.id]) fields += `<div class="hint"><a data-url="${KEY_URL[a.id]}">발급 페이지 열기</a></div>`;
+    if (KEY_URL[a.id]) fields += `<div class="hint"><a data-url="${KEY_URL[a.id]}">발급 페이지 열기</a>${BILLING_URL[a.id] ? ` · <a data-url="${BILLING_URL[a.id]}">잔액 보기</a>` : ""}</div>`;
   }
   $("#aiDetail").innerHTML = `<h4>${esc(a.name)}<span class="tag ${tc}">${tl}</span></h4>
     <div class="muted" style="font-size:12px">${esc(a.desc)}</div>
@@ -1731,7 +1732,8 @@ function renderABCost() {
   if (!pr.ready) warn = ` <a id="abKey">${esc(a.name)} 연결 정보 넣기</a>`;
   if (pr.kind === "free") el.innerHTML = `무료 사용량 안에서 그려요 (하루 한도가 있어요). 참고 사진은 못 보내서 <b>유니폼·지금 사진 참고가 빠져요</b>.${warn}`;
   else if (pr.kind === "sub") el.innerHTML = `ChatGPT 구독 사용량으로 그려요. 많이 그리면 한도에 걸릴 수 있어요.${warn}`;
-  else el.innerHTML = `1장 약 <b>${won(pr.won)}원</b> × ${n}명 = 약 <b>${won(pr.won * n)}원</b> <span class="hint">(${esc(pr.model)} · 예상값이에요. 다시 그리면 그만큼 더 나가요)</span>${warn}`;
+  else el.innerHTML = `1장 약 <b>${won(pr.won)}원</b> × ${n}명 = 약 <b>${won(pr.won * n)}원</b> <span class="hint">(${esc(pr.model)} · 예상값이에요. 다시 그리면 그만큼 더 나가요)</span>${warn}${BILLING_URL[eng] ? ` <a class="billink" data-url="${BILLING_URL[eng]}">잔액 보기</a>` : ""}`;
+  $$("#abCost [data-url]").forEach((l) => l.onclick = () => call("open_url", l.dataset.url));
   const k = $("#abKey"); if (k) k.onclick = () => { $("#abModal").classList.remove("on"); openSettings(eng); };
   $("#abGo").disabled = !n;
   $("#abGo").textContent = n ? `${n}명 그리기 시작` : "그리기 시작";
@@ -1815,7 +1817,8 @@ async function renderABRun(st) {
   const c = st.counts, tot = st.items.length, fin = c.done + c.fail;
   $("#abFill").style.width = tot ? `${fin / tot * 100}%` : "0";
   const task = { face: "새 얼굴", kit: "유니폼만 바꾸기", gunzo: "건조" }[st.meta.task] || "";
-  $("#abProgText").textContent = `${task} · ${c.done}명 완료${c.fail ? ` · 실패 ${c.fail}` : ""}${c.wait + c.running ? ` · 남은 ${c.wait + c.running}명` : ""}${st.running ? "" : c.wait ? " · 멈춤" : " · 끝"}`;
+  const spent = st.meta.won && st.meta.spent ? ` · 이번에 ${st.meta.spent}장, 약 ${won(st.meta.won * st.meta.spent)}원` : "";
+  $("#abProgText").textContent = `${task}${spent} · ${c.done}명 완료${c.fail ? ` · 실패 ${c.fail}` : ""}${c.wait + c.running ? ` · 남은 ${c.wait + c.running}명` : ""}${st.running ? "" : c.wait ? " · 멈춤" : " · 끝"}`;
   $("#abSum").textContent = tot ? `${tot}명` : "";
   $("#abStop").hidden = !st.running;
   $("#abResume").hidden = st.running || !c.wait;

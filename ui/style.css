@@ -632,3 +632,4 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 7px; border-radius: 6
 .aidetail .msel { display: block; width: 100%; height: 38px; background: var(--bg2); border: 1px solid var(--line2); color: var(--text); border-radius: 10px; padding: 0 10px; font: inherit; font-weight: 600; outline: 0; }
 .ph2.gameface img { opacity: .72; filter: saturate(.85); }
 .pcard2 .tag.game { background: rgba(20,24,40,.85); color: #c9d2ee; }
+.abcost .billink { margin-left: 8px; color: var(--accent2); cursor: pointer; text-decoration: underline; white-space: nowrap; }
