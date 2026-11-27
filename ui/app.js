@@ -163,7 +163,7 @@ async function doSearch(reset = true) {
   if (!r) return;
   S.bTotal = r.total; S.bEmpty = r.empty_query; S.bIndex = r.index;
   S.bItems = r.items; S.bMax = r.max || 50;
-  $("#abCnt").textContent = r.total ? `지금 목록 ${r.total.toLocaleString()}명을 AI로 그려요` : "지금 목록의 사람들을 AI로 그려요";
+  $("#abCnt").textContent = r.total ? `지금 목록 ${r.total.toLocaleString()}명 중에서 골라 AI로 그려요` : "지금 목록의 사람들을 AI로 그려요";
   renderBrowse(reset);
 }
 function cardHtml(p, i) {
@@ -1691,7 +1691,7 @@ async function showABSetup() {
   const r = await call("batch_people", n, t, S.kind, S.filter, S.kind === "player" ? S.squad : "", club);
   if (!r) return;
   AB.people = r.items;
-  AB.sel = new Set(r.items.map((p) => p.uid));
+  AB.sel = new Set();          // 처음엔 아무도 안 고른 채로 (실수로 많이 그리지 않게)
   AB.total = r.total; AB.max = r.max;
   renderABPeople();
 }
