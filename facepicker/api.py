@@ -24,7 +24,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.1.1"
+VERSION = "1.1.2"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -53,6 +53,14 @@ def _thumb_url(path: Path, size: int = 96) -> str:
     except Exception:
         return ""
 
+
+
+def _build_no() -> int:
+    try:
+        from . import buildinfo
+        return int(buildinfo.BUILD)
+    except Exception:  # noqa: BLE001
+        return 0
 
 
 def _desktop_dir() -> Path:
@@ -270,14 +278,15 @@ class Api:
             return {"available": False, "off": True}
         if not getattr(sys, "frozen", False) and not manual:
             return {"available": False}
-        rel = updater.latest()
+        rel = updater.latest(beta=bool(getattr(self._cfg, "beta_updates", False)))
         if not rel:
             return {"available": False, "error": "업데이트 정보를 못 받았어요." if manual else ""}
-        newer = updater.is_newer(rel["version"], VERSION)
+        local = f"{VERSION}.{_build_no()}"
+        newer = updater.is_newer(rel["version"], local)
         skipped = not manual and rel["version"] == self._cfg.skip_version
         self._update = rel if newer else None
-        return {"available": newer and not skipped, "version": rel["version"], "current": VERSION,
-                "notes": rel.get("notes", "")[:1500], "url": rel.get("page", "")}
+        return {"available": newer and not skipped, "version": rel["version"], "label": rel.get("label", rel["version"]),
+                "current": local, "notes": rel.get("notes", "")[:1500], "url": rel.get("page", "")}
 
     @_safe
     def do_update(self) -> dict:
@@ -318,7 +327,7 @@ class Api:
         return {
             "version": VERSION, "pack_moved": getattr(self, "_pack_moved", ""),
             "settings": {
-                "graphics_dir": c.graphics_dir, "output_size": c.output_size, "check_updates": c.check_updates, "pack_folder": c.pack_name, "bulk_crop": c.bulk_crop, "bulk_deco": c.bulk_deco,
+                "graphics_dir": c.graphics_dir, "output_size": c.output_size, "check_updates": c.check_updates, "beta_updates": bool(getattr(c, "beta_updates", False)), "pack_folder": c.pack_name, "bulk_crop": c.bulk_crop, "bulk_deco": c.bulk_deco,
                 "prompt_template": c.prompt_template, "send_photo": c.send_photo,
                 "ai_provider": c.ai_provider, "deco": c.deco, "prompt_lang": c.prompt_lang,
                 "expression": c.expression, "manager_outfit": c.manager_outfit, "ref_mode": c.ref_mode, "club_hints": c.club_hints,
@@ -732,6 +741,8 @@ class Api:
             self._cfg.bulk_deco = value
         elif key == "check_updates":
             self._cfg.check_updates = bool(value)
+        elif key == "beta_updates":
+            self._cfg.beta_updates = bool(value)
         elif key == "skip_version":
             self._cfg.skip_version = str(value or "")
         elif key == "follow_save":

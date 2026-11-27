@@ -974,7 +974,7 @@ async function showConflicts(list) {
 let setAI = {}, setSel = null, setUse = null;
 function openSettings(focusId) {
   const s = S.settings;
-  $("#sG").value = s.graphics_dir || ""; $("#sSize").value = s.output_size || 512; $("#sTpl").value = s.prompt_template || ""; $("#sLang").value = s.prompt_lang || "ko"; $("#sUpd").checked = s.check_updates !== false; $("#updVer").textContent = ""; $("#sPack").value = s.pack_folder || "zzz_FMFaceStudio"; packOrder();
+  $("#sG").value = s.graphics_dir || ""; $("#sSize").value = s.output_size || 512; $("#sTpl").value = s.prompt_template || ""; $("#sLang").value = s.prompt_lang || "ko"; $("#sUpd").checked = s.check_updates !== false; $("#sBeta").checked = !!s.beta_updates; $("#updVer").textContent = ""; $("#sPack").value = s.pack_folder || "zzz_FMFaceStudio"; packOrder();
   setAI = {};
   S.ai.forEach((a) => setAI[a.id] = { key: a.key, account: a.account, model: a.model });
   setUse = s.ai_provider;
@@ -1086,7 +1086,8 @@ function renderPop() {
     const diagOn = g.connected && g.heartbeat && g.heartbeat.diagnosing;
     html = `<h4><i class="${pOk ? "ok" : "warn"}"></i>${pOk ? "플러그인이 설치되어 있어요" : g.plugin_installed ? "플러그인을 업데이트해야 해요" : "플러그인이 설치되어 있지 않아요"}</h4>
       <div class="kv">${row("BepInEx", g.bepinex ? (g.bepinex_ready ? "설치됨" : "설치됨 · 게임을 한 번 켜야 준비돼요") : "없음 — 먼저 설치해 주세요", g.bepinex ? "ok" : "warn")}
-        ${row("플러그인", g.plugin_installed ? (g.plugin_up_to_date ? "설치됨 (최신)" : "예전 버전") : "없음", g.plugin_installed && g.plugin_up_to_date ? "ok" : "warn")}
+        ${row("플러그인", (g.plugin_installed ? (g.plugin_up_to_date ? "설치됨 (최신)" : "예전 버전") : "없음") + (g.plugin_installed && (g.plugin_file_version || (g.heartbeat && g.heartbeat.plugin)) ? ` · ${g.plugin_file_version || g.heartbeat.plugin}` : ""), g.plugin_installed && g.plugin_up_to_date ? "ok" : "warn")}
+        ${g.connected && g.heartbeat && g.heartbeat.plugin && g.plugin_file_version && g.heartbeat.plugin !== g.plugin_file_version ? row("게임 안", `아직 ${g.heartbeat.plugin} 이 돌고 있어요 — 게임을 껐다 켜 주세요`, "warn") : ""}
         ${row("게임 연결", g.connected ? "연결됨" : g.running ? "응답 없음" : "게임 꺼짐", g.connected ? "ok" : "")}
         ${row("설치 폴더", g.game_dir || "찾지 못함 — 아래에서 지정해 주세요", g.game_dir ? "dim" : "warn")}
         ${g.heartbeat && g.heartbeat.last ? row("최근 결과", g.heartbeat.last, "dim") : ""}</div>
@@ -1191,10 +1192,10 @@ let UPD = null;
 async function checkUpdate(manual) {
   const r = await call("check_update", manual);
   if (!r) return;
-  if (manual) $("#updVer").textContent = r.version ? `지금 ${r.current} · 최신 ${r.version}` : (r.error || "");
+  if (manual) $("#updVer").textContent = r.version ? `지금 ${r.current} · 최신 ${r.label || r.version}` : (r.error || "");
   if (r.available) {
     UPD = r;
-    $("#updText").textContent = `새 버전 ${r.version}이 나왔어요 (지금 ${r.current})`;
+    $("#updText").textContent = `새 버전 ${r.label || r.version}이 나왔어요 (지금 ${r.current})`;
     $("#updBar").hidden = false;
   } else if (manual) toast(r.error || "최신 버전을 쓰고 있어요.", r.error ? "err" : "ok", 2500);
 }
@@ -1232,6 +1233,7 @@ $("#btnPack").onclick = async () => {
 };
 $("#btnUpdNow").onclick = () => checkUpdate(true);
 $("#sUpd").onchange = (e) => call("set_option", "check_updates", e.target.checked);
+$("#sBeta").onchange = async (e) => { await call("set_option", "beta_updates", e.target.checked); if (e.target.checked) checkUpdate(true); };
 
 
 /* ------------------------------------------------------------------ 단축키 */

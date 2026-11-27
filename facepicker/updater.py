@@ -36,21 +36,40 @@ def _ver(s: str) -> tuple:
     return tuple(int(n) for n in nums) + (0,) * (3 - len(nums))
 
 
+def _full(s: str) -> tuple:
+    nums = [int(n) for n in re.findall(r"\d+", str(s or ""))[:4]]
+    return tuple(nums + [0] * (4 - len(nums)))
+
+
 def is_newer(remote: str, local: str) -> bool:
-    return _ver(remote) > _ver(local)
+    """1.2.3.40 처럼 빌드 번호까지 비교 (테스트 버전이 같은 번호로 여러 번 나와도 구분)."""
+    return _full(remote) > _full(local)
 
 
-def latest(timeout: float = 6) -> dict | None:
+def _get(url: str, timeout: float):
+    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "application/vnd.github+json"})
+    with urllib.request.urlopen(req, timeout=timeout, context=_ctx()) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def latest(timeout: float = 6, beta: bool = False) -> dict | None:
+    """최신 릴리스. beta=True면 테스트 버전(prerelease)까지 포함해 가장 새 것."""
     try:
-        req = urllib.request.Request(API, headers={"User-Agent": UA, "Accept": "application/vnd.github+json"})
-        with urllib.request.urlopen(req, timeout=timeout, context=_ctx()) as r:
-            data = json.loads(r.read().decode("utf-8"))
+        if beta:
+            rels = [x for x in _get(API.rsplit("/", 1)[0] + "?per_page=15", timeout) if not x.get("draft")]
+            rels.sort(key=lambda x: (_ver(str(x.get("tag_name", "")).lstrip("vV")), x.get("created_at", "")), reverse=True)
+            data = rels[0] if rels else None
+            if data is None:
+                return None
+        else:
+            data = _get(API, timeout)
     except Exception as e:  # noqa: BLE001
         log.info("업데이트 확인 실패: %s", e)
         return None
     tag = str(data.get("tag_name", "")).lstrip("vV")
     setup = next((a for a in data.get("assets", []) if a.get("name") == SETUP_NAME), None)
-    return {"version": ".".join(str(n) for n in _ver(tag)), "tag": tag,
+    return {"version": ".".join(str(n) for n in _full(tag)), "label": ".".join(str(n) for n in _ver(tag)) + (" 테스트" if data.get("prerelease") else ""), "tag": tag,
+            "prerelease": bool(data.get("prerelease")),
             "setup": setup.get("browser_download_url") if setup else "",
             "size": int(setup.get("size", 0)) if setup else 0,
             "notes": data.get("body", "") or "", "page": data.get("html_url", "")}

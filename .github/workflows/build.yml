@@ -2,7 +2,7 @@ name: Build Windows exe
 
 on:
   push:
-    branches: [main]
+    branches: [main, beta]
   workflow_dispatch:
 
 permissions:
@@ -29,6 +29,11 @@ jobs:
           New-Item -ItemType Directory -Force models | Out-Null
           Invoke-WebRequest -Uri "https://raw.githubusercontent.com/Linzaer/Ultra-Light-Fast-Generic-Face-Detector-1MB/master/models/onnx/version-RFB-320.onnx" -OutFile models/ultraface-rfb-320.onnx
           Get-Item models/ultraface-rfb-320.onnx | Select-Object Name, Length
+
+      - name: Stamp build number
+        shell: pwsh
+        run: |
+          "BUILD = ${{ github.run_number }}`nCHANNEL = `"${{ github.ref_name }}`"" | Out-File -Encoding utf8 facepicker/buildinfo.py
 
       - name: Build app folder (for installer)
         run: >
@@ -73,7 +78,22 @@ jobs:
         shell: pwsh
         run: |
           $v = (Select-String -Path facepicker/api.py -Pattern 'VERSION = "([^"]+)"').Matches[0].Groups[1].Value
-          "tag=v$v.${{ github.run_number }}" >> $env:GITHUB_OUTPUT
+          $suffix = if ("${{ github.ref_name }}" -eq "beta") { "-beta" } else { "" }
+          "tag=v$v.${{ github.run_number }}$suffix" >> $env:GITHUB_OUTPUT
+
+      - name: Publish beta (test) release
+        if: github.ref == 'refs/heads/beta'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: "[테스트] FM Face Studio ${{ steps.ver.outputs.tag }}"
+          target_commitish: ${{ github.sha }}
+          files: |
+            dist/FMFaceStudio-Setup.exe
+          prerelease: true
+          make_latest: false
+          body: |
+            테스트 버전이에요. 설정 → 업데이트에서 '테스트 버전 받기'를 켠 PC에만 업데이트 알림이 가요.
 
       - name: Publish release
         if: github.ref == 'refs/heads/main'

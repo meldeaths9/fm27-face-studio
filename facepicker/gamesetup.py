@@ -159,6 +159,27 @@ def _md5(path: Path) -> str:
         return ""
 
 
+_VER: dict = {}
+
+
+def dll_version(path: Path) -> str:
+    """플러그인 dll의 BepInPlugin 버전 (속성 데이터에서 이름 다음 문자열)."""
+    try:
+        st = path.stat()
+        key = (str(path), st.st_size, st.st_mtime_ns)
+        if key not in _VER:
+            b = path.read_bytes()
+            i = b.find(b"\x0eFM Face Studio")
+            v = ""
+            if i >= 0:
+                n = b[i + 15]
+                v = b[i + 16:i + 16 + n].decode("ascii", "ignore") if n < 20 else ""
+            _VER[key] = v
+        return _VER[key]
+    except (OSError, IndexError):
+        return ""
+
+
 _RUN = {"t": 0.0, "v": False}
 
 
@@ -218,6 +239,7 @@ def status(game_dir: str) -> dict:
         "bepinex_ready": bool(initialized),
         "plugin_installed": installed,
         "plugin_up_to_date": bool(up_to_date),
+        "plugin_file_version": dll_version(installed_dll) if installed else "",
         "plugin_available": PLUGIN_DLL.exists(),
         "connected": bool(hb and hb.get("alive")),
         "heartbeat": hb or {},
