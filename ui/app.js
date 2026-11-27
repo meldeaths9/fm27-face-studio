@@ -1635,3 +1635,213 @@ $("#bulkGo").onclick = async () => {
     if (files.length) bulkFromFiles(files);
   });
 })();
+
+/* ================================================================ AI로 한꺼번에 그리기 */
+const AB = { people: [], sel: new Set(), task: "face", kitKind: "home", thumbs: {}, ver: {}, items: [], pick: new Set(), timer: 0, running: false, price: null, big: null };
+const AB_ENG = ["gemini", "openai", "xai", "codex", "cloudflare"];
+const AB_TASK_HINT = { face: "게임 외모 설명(피부·머리)으로 새 얼굴을 그려요. 뉴젠에게 좋아요.", kit: "지금 사진의 얼굴은 두고 옷만 바꿔요. 지금 사진이 있는 사람만 돼요.", gunzo: "" };
+const won = (n) => Math.round(n).toLocaleString("ko-KR");
+
+async function openAB() {
+  $("#abModal").classList.add("on");
+  const st = await call("batch_status");
+  if (st && st.items.length) { showABRun(st); return; }
+  showABSetup();
+}
+async function showABSetup() {
+  stopABPoll();
+  $("#abSetup").hidden = false; $("#abRun").hidden = true;
+  ["#abNew", "#abStop", "#abResume", "#abSelAll", "#abQueue"].forEach((k) => $(k).hidden = true);
+  $("#abGo").hidden = false;
+  renderABEngines();
+  renderABOpts();
+  $("#abPeople").innerHTML = `<div class="empty" style="grid-column:1/-1;padding:30px"><div><div class="spin"></div>목록을 모으는 중…</div></div>`;
+  const n = $("#qName").value.trim(), t = $("#qTeam").value.trim();
+  const club = S.teamClub && S.teamClub.name === t ? S.teamClub.cuid : "";
+  const r = await call("batch_people", n, t, S.kind, S.filter, S.kind === "player" ? S.squad : "", club);
+  if (!r) return;
+  AB.people = r.items;
+  AB.sel = new Set(r.items.map((p) => p.uid));
+  AB.total = r.total; AB.max = r.max;
+  renderABPeople();
+}
+function renderABEngines() {
+  const sel = $("#abEngine"), cur = sel.value || (AB_ENG.includes(S.settings.ai_provider) ? S.settings.ai_provider : "gemini");
+  sel.innerHTML = AB_ENG.map((id) => {
+    const a = S.ai.find((x) => x.id === id); if (!a) return "";
+    return `<option value="${id}">${esc(a.name)} · ${esc(a.status)}</option>`;
+  }).join("");
+  sel.value = cur;
+  abPrice();
+}
+async function abPrice() {
+  AB.price = await call("batch_price", $("#abEngine").value);
+  renderABCost();
+}
+function renderABOpts() {
+  $$("#abTask button").forEach((b) => b.classList.toggle("on", b.dataset.v === AB.task));
+  $$("#abKitKind button").forEach((b) => b.classList.toggle("on", b.dataset.v === AB.kitKind));
+  $("#abTaskHint").textContent = AB_TASK_HINT[AB.task] || "";
+  $("#abRefRow").style.display = AB.task === "face" ? "" : "none";
+  $("#abKitKind").style.opacity = $("#abKit").checked ? 1 : .4;
+  renderABCost();
+}
+function abTargets() {
+  return AB.people.filter((p) => AB.sel.has(p.uid) && (AB.task !== "kit" || p.has_face));
+}
+function renderABCost() {
+  const el = $("#abCost"), pr = AB.price, n = abTargets().length;
+  if (!pr) { el.textContent = ""; return; }
+  el.classList.toggle("free", pr.kind !== "paid");
+  const eng = $("#abEngine").value, a = S.ai.find((x) => x.id === eng) || {};
+  let warn = "";
+  if (!pr.ready) warn = ` <a id="abKey">${esc(a.name)} 연결 정보 넣기</a>`;
+  if (pr.kind === "free") el.innerHTML = `무료 사용량 안에서 그려요 (하루 한도가 있어요). 참고 사진은 못 보내서 <b>유니폼·지금 사진 참고가 빠져요</b>.${warn}`;
+  else if (pr.kind === "sub") el.innerHTML = `ChatGPT 구독 사용량으로 그려요. 많이 그리면 한도에 걸릴 수 있어요.${warn}`;
+  else el.innerHTML = `1장 약 <b>${won(pr.won)}원</b> × ${n}명 = 약 <b>${won(pr.won * n)}원</b> <span class="hint">(${esc(pr.model)} · 예상값이에요. 다시 그리면 그만큼 더 나가요)</span>${warn}`;
+  const k = $("#abKey"); if (k) k.onclick = () => { $("#abModal").classList.remove("on"); openSettings(eng); };
+  $("#abGo").disabled = !n;
+  $("#abGo").textContent = n ? `${n}명 그리기 시작` : "그리기 시작";
+}
+function renderABPeople() {
+  const g = $("#abPeople");
+  if (!AB.people.length) { g.innerHTML = `<div class="empty" style="grid-column:1/-1;padding:30px">지금 목록에 사람이 없어요. 첫 화면에서 이름·팀·필터로 먼저 골라 주세요.</div>`; renderABSum(); return; }
+  g.innerHTML = AB.people.map((p, i) => {
+    const off = AB.task === "kit" && !p.has_face;
+    return `<div class="abp${AB.sel.has(p.uid) && !off ? " on" : ""}" data-i="${i}" style="${off ? "opacity:.35" : ""}" title="${off ? "지금 사진이 없어서 유니폼만 바꾸기를 못 해요" : ""}">
+      <span class="ck"></span>${p.kits ? '<span class="tg">유니폼</span>' : ""}
+      <div class="im">${p.face ? `<img src="${p.face}">` : "사진 없음"}</div>
+      <div class="nm">${esc(p.name)}</div><div class="sb">${esc(p.club || "무소속")}${p.age ? " · " + esc(p.age) : ""}</div></div>`;
+  }).join("");
+  $$(".abp", g).forEach((c) => c.onclick = () => {
+    const p = AB.people[+c.dataset.i];
+    if (AB.task === "kit" && !p.has_face) return;
+    AB.sel.has(p.uid) ? AB.sel.delete(p.uid) : AB.sel.add(p.uid);
+    c.classList.toggle("on", AB.sel.has(p.uid));
+    renderABSum();
+  });
+  renderABSum();
+}
+function renderABSum() {
+  const n = abTargets().length;
+  $("#abPickSum").textContent = `지금 목록 ${AB.people.length}명 중 ${n}명${AB.total > AB.max ? ` · 목록이 ${AB.total.toLocaleString()}명이라 앞 ${AB.max}명만 보여요` : ""}`;
+  renderABCost();
+}
+$$("#abTask button").forEach((b) => b.onclick = () => { if (b.disabled) return; AB.task = b.dataset.v; renderABOpts(); renderABPeople(); });
+$$("#abKitKind button").forEach((b) => b.onclick = () => { AB.kitKind = b.dataset.v; renderABOpts(); });
+$("#abKit").onchange = renderABOpts;
+$("#abEngine").onchange = abPrice;
+$("#abAll").onclick = () => { AB.sel = new Set(AB.people.map((p) => p.uid)); renderABPeople(); };
+$("#abNone").onclick = () => { AB.sel.clear(); renderABPeople(); };
+$("#abNoFace").onclick = () => { AB.sel = new Set(AB.people.filter((p) => !p.has_face).map((p) => p.uid)); renderABPeople(); };
+$("#btnAB").onclick = openAB;
+$("#abClose").onclick = () => { $("#abModal").classList.remove("on"); stopABPoll(); };
+$("#abGo").onclick = async () => {
+  const list = abTargets(), pr = AB.price || {};
+  if (!list.length) return;
+  if (pr.kind === "paid" && !await confirmBox("요금 확인", `${list.length}명을 그려요. 예상 요금은 약 ${won(pr.won * list.length)}원이에요.\n\n요금은 API 키에 연결한 결제에서 빠져나가요. 시작할까요?`, "시작")) return;
+  const r = await call("batch_start", list, AB.task, { engine: $("#abEngine").value, kit_kind: AB.kitKind, use_kit: $("#abKit").checked, ref: $("#abRef").checked });
+  if (!r) return;
+  if (r.error === "need_key") { toast("연결 정보가 없어요. 설정에서 넣어 주세요.", "err"); $("#abModal").classList.remove("on"); openSettings(r.engine); return; }
+  if (r.skipped) toast(`지금 사진이 없는 ${r.skipped}명은 빼고 그려요.`, "info", 3500);
+  AB.thumbs = {}; AB.ver = {}; AB.pick.clear();
+  showABRun(await call("batch_status"));
+};
+
+function showABRun(st) {
+  $("#abSetup").hidden = true; $("#abRun").hidden = false; $("#abGo").hidden = true;
+  ["#abNew", "#abSelAll", "#abQueue"].forEach((k) => $(k).hidden = false);
+  renderABRun(st);
+  startABPoll();
+}
+function startABPoll() { stopABPoll(); AB.timer = setInterval(pollAB, 1500); }
+function stopABPoll() { if (AB.timer) clearInterval(AB.timer); AB.timer = 0; }
+async function pollAB() {
+  if (!$("#abModal").classList.contains("on")) { stopABPoll(); return; }
+  const st = await call("batch_status");
+  if (st) renderABRun(st);
+  if (st && !st.running) stopABPoll();
+}
+async function renderABRun(st) {
+  AB.items = st.items; AB.running = st.running;
+  const need = st.items.filter((i) => i.ver && AB.ver[i.id] !== i.ver).map((i) => i.id);
+  if (need.length) {
+    const r = await call("batch_thumbs", need);
+    if (r) for (const [k, v] of Object.entries(r.thumbs)) { AB.thumbs[k] = v; AB.ver[k] = st.items.find((i) => i.id === k).ver; }
+  }
+  const ids = new Set(st.items.map((i) => i.id));
+  [...AB.pick].forEach((k) => { if (!ids.has(k)) AB.pick.delete(k); });
+  const c = st.counts, tot = st.items.length, fin = c.done + c.fail;
+  $("#abFill").style.width = tot ? `${fin / tot * 100}%` : "0";
+  const task = { face: "새 얼굴", kit: "유니폼만 바꾸기" }[st.meta.task] || "";
+  $("#abProgText").textContent = `${task} · ${c.done}명 완료${c.fail ? ` · 실패 ${c.fail}` : ""}${c.wait + c.running ? ` · 남은 ${c.wait + c.running}명` : ""}${st.running ? "" : c.wait ? " · 멈춤" : " · 끝"}`;
+  $("#abSum").textContent = tot ? `${tot}명` : "";
+  $("#abStop").hidden = !st.running;
+  $("#abResume").hidden = st.running || !c.wait;
+  const g = $("#abResults");
+  g.innerHTML = st.items.map((it, i) => {
+    const im = it.status === "done" ? `<img src="${AB.thumbs[it.id] || ""}">` : it.status === "running" ? `<div class="spin" style="margin:0"></div>` : it.status === "fail" ? esc(it.err || "실패") : "기다리는 중";
+    return `<div class="abp ${it.status}${AB.pick.has(it.id) ? " on" : ""}" data-i="${i}">${it.status === "done" ? '<span class="ck"></span>' : ""}
+      <div class="im">${im}</div><div class="nm">${esc(it.name)}</div><div class="sb">${esc(it.club || "")}</div>
+      <div class="acts">${it.status === "done" ? `<button data-a="big" title="크게 보기 · 지금 사진과 비교">크게</button>` : ""}${it.status !== "running" ? `<button data-a="again" title="다시 그리기">↻ 다시</button>` : ""}<button data-a="drop" title="빼기">✕</button></div></div>`;
+  }).join("") || `<div class="empty" style="grid-column:1/-1">비어 있어요.</div>`;
+  $$(".abp", g).forEach((el) => {
+    const it = st.items[+el.dataset.i];
+    el.onclick = (e) => {
+      const a = e.target.closest("button")?.dataset.a;
+      if (a === "again") { abAgain([it.id]); return; }
+      if (a === "drop") { abDrop([it.id]); return; }
+      if (a === "big") { openABBig(it); return; }
+      if (it.status !== "done") return;
+      AB.pick.has(it.id) ? AB.pick.delete(it.id) : AB.pick.add(it.id);
+      el.classList.toggle("on"); abQueueBtn();
+    };
+  });
+  abQueueBtn();
+}
+function abQueueBtn() {
+  const n = AB.items.filter((i) => i.status === "done" && AB.pick.has(i.id)).length;
+  $("#abQueue").disabled = !n;
+  $("#abQueue").textContent = n ? `${n}명 대기열에 넣기` : "고른 것 대기열에 넣기";
+}
+async function abAgain(ids) {
+  const st = await call("batch_again", ids);
+  if (st) { ids.forEach((k) => { delete AB.ver[k]; AB.pick.delete(k); }); renderABRun(st); startABPoll(); }
+}
+async function abDrop(ids) {
+  const st = await call("batch_drop", ids);
+  if (st) renderABRun(st);
+}
+async function openABBig(it) {
+  AB.big = it;
+  const r = await call("batch_big", it.id);
+  if (!r || r.error) return;
+  $("#abBigName").textContent = r.name;
+  $("#abBefore").innerHTML = r.before ? `<img src="${r.before}">` : `<div class="none">사진 없음</div>`;
+  $("#abAfter").innerHTML = `<img src="${r.img}" title="${esc(r.prompt)}">`;
+  $("#abBig").classList.add("on");
+}
+$("#abBigX").onclick = () => $("#abBig").classList.remove("on");
+$("#abBigAgain").onclick = () => { $("#abBig").classList.remove("on"); if (AB.big) abAgain([AB.big.id]); };
+$("#abBigDrop").onclick = () => { $("#abBig").classList.remove("on"); if (AB.big) abDrop([AB.big.id]); };
+$("#abStop").onclick = async () => { await call("batch_stop"); toast("지금 그리는 것까지만 하고 멈춰요.", "info", 2500); };
+$("#abResume").onclick = async () => { const st = await call("batch_resume"); if (st) { renderABRun(st); startABPoll(); } };
+$("#abSelAll").onclick = () => { AB.items.filter((i) => i.status === "done").forEach((i) => AB.pick.add(i.id)); abQueueBtn(); $$("#abResults .abp.done").forEach((e) => e.classList.add("on")); };
+$("#abNew").onclick = async () => {
+  if (AB.running) { toast("그리는 중이에요. 먼저 멈춰 주세요.", "err"); return; }
+  const done = AB.items.filter((i) => i.status === "done").length;
+  if (done && !await confirmBox("새로 시작", `대기열에 안 넣은 그림 ${done}장이 지워져요. 새로 시작할까요?`, "지우고 새로", true)) return;
+  await call("batch_drop", AB.items.map((i) => i.id));
+  showABSetup();
+};
+$("#abQueue").onclick = async () => {
+  const ids = AB.items.filter((i) => i.status === "done" && AB.pick.has(i.id)).map((i) => i.id);
+  if (!ids.length) return;
+  $("#abQueue").disabled = true;
+  const r = await call("batch_to_queue", ids);
+  if (!r) return;
+  S.queue = r.queue; renderQueue();
+  toast(`${r.count}명을 대기열에 넣었어요. 오른쪽 '한 번에 적용'을 누르면 게임에 들어가요.`, "ok", 3500);
+  doSearch(true);
+  if (!r.items.length) showABSetup(); else renderABRun(r);
+};

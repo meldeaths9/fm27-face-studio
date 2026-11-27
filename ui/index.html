@@ -70,6 +70,7 @@
   <section class="view on panel" id="viewBrowse">
     <div class="ph"><span class="step">1</span><h2>대상 고르기</h2><div class="sp"></div>
       <span class="muted" id="bStat" style="font-size:12px"></span>
+      <button class="btn sm primary" id="btnAB" title="지금 목록의 사람들을 AI로 한꺼번에 그려요"><svg class="i"><use href="#i-wand"/></svg>AI로 한꺼번에</button>
       <button class="btn sm" id="btnBulk" title="폴더 안 사진을 파일 이름으로 짝지어 한꺼번에"><svg class="i"><use href="#i-folder"/></svg>대량으로 바꾸기</button>
       <button class="btn sm" id="btnManual" title="세이브 없이 UID로 바로 편집"><svg class="i"><use href="#i-edit"/></svg>UID로 직접 편집</button></div>
     <div class="pb grow">
@@ -284,6 +285,42 @@
   </div>
   <div class="df"><span class="hint grow" id="bulkNote">위에서 고른 자르기·꾸미기는 첫 화면 카드에 사진을 끌어다 놓을 때도 똑같이 쓰여요.</span>
     <button class="btn" id="bulkClose">닫기</button><button class="btn primary" id="bulkGo" disabled>대기열에 넣기</button></div>
+</div></div>
+<div class="modal" id="abModal"><div class="dlg bulk ab">
+  <div class="dh"><svg class="i"><use href="#i-wand"/></svg><h3>AI로 한꺼번에 그리기</h3><div class="sp"></div><span class="hint" id="abSum"></span></div>
+  <div class="db" id="abSetup">
+    <div class="abopts">
+      <div class="abrow"><span class="lbl2">할 일</span><div class="seg abseg" id="abTask">
+        <button data-v="face">새 얼굴</button><button data-v="kit">유니폼만 바꾸기</button><button data-v="gunzo" disabled title="다음 테스트 버전에 들어가요">건조 (준비 중)</button></div>
+        <span class="hint" id="abTaskHint"></span></div>
+      <div class="abrow" id="abRefRow"><label class="switch"><input type="checkbox" id="abRef"><i></i>지금 사진을 참고해서 그리기</label><span class="hint">사진이 있는 사람만 · 똑같지 않고 닮은 사람 정도로 나와요</span></div>
+      <div class="abrow"><label class="switch"><input type="checkbox" id="abKit" checked><i></i>게임 유니폼 입히기</label>
+        <div class="seg abseg3" id="abKitKind"><button data-v="home">홈</button><button data-v="away">원정</button><button data-v="third">서드</button></div>
+        <span class="hint">게임에서 구단 프로필을 연 구단만 · 없으면 구단 이름으로</span></div>
+      <div class="abrow"><span class="lbl2">그리는 곳</span><select id="abEngine" class="sel"></select><span class="hint" id="abEngHint"></span></div>
+      <div class="abcost" id="abCost"></div>
+    </div>
+    <div class="abpick"><span class="lbl2">그릴 사람</span><span class="hint" id="abPickSum"></span><div class="sp"></div>
+      <button class="btn sm" id="abAll">모두 고르기</button><button class="btn sm" id="abNone">모두 빼기</button><button class="btn sm" id="abNoFace">사진 없는 사람만</button></div>
+    <div class="abgrid" id="abPeople"></div>
+  </div>
+  <div class="db" id="abRun" hidden>
+    <div class="abprog"><div class="abbar"><i id="abFill"></i></div><span id="abProgText"></span></div>
+    <div class="abgrid big" id="abResults"></div>
+  </div>
+  <div class="df"><span class="hint grow" id="abNote">다 그린 뒤 마음에 드는 그림을 눌러 고르고 대기열에 넣어요. 대기열 사진은 '대량으로 바꾸기'의 자르기·꾸미기 설정을 따라요.</span>
+    <button class="btn" id="abClose">닫기</button>
+    <button class="btn" id="abNew" hidden>새로 시작</button>
+    <button class="btn" id="abStop" hidden>멈추기</button>
+    <button class="btn" id="abResume" hidden>이어서 그리기</button>
+    <button class="btn" id="abSelAll" hidden>다 된 것 모두 고르기</button>
+    <button class="btn primary" id="abGo">그리기 시작</button>
+    <button class="btn primary" id="abQueue" hidden disabled>고른 것 대기열에 넣기</button></div>
+</div></div>
+<div class="modal" id="abBig"><div class="dlg" style="width:900px">
+  <div class="dh"><h3 id="abBigName"></h3></div>
+  <div class="db abbig"><div><div class="hint">지금 사진</div><div id="abBefore"></div></div><div><div class="hint">AI가 그린 것</div><div id="abAfter"></div></div></div>
+  <div class="df"><button class="btn" id="abBigAgain">↻ 다시 그리기</button><button class="btn" id="abBigDrop">빼기</button><div class="sp"></div><button class="btn primary" id="abBigX">닫기</button></div>
 </div></div>
 <div class="modal" id="keysModal"><div class="dlg" style="width:520px">
   <div class="dh"><span style="font-size:16px">⌨</span><h3>단축키</h3></div>

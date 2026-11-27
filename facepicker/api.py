@@ -11,6 +11,7 @@ import logging
 import os
 import sys
 import threading
+import time
 import traceback
 import uuid
 import webbrowser
@@ -24,7 +25,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.3.1"
+VERSION = "1.9.0"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -1332,6 +1333,200 @@ class Api:
         box, deco = self._quick_args(src, person)
         self._queue_put(person, uid, prefixed, src, box, deco)
         return {"ok": True, "count": len(self._queue)}
+
+    # ---------------------------------------------------------------- AI로 한꺼번에 그리기
+    BATCH_MAX = 500
+
+    def _batch(self):
+        if getattr(self, "_batch_obj", None) is None:
+            from .batch import Batch
+            self._batch_obj = Batch(self._qdir.parent / "batch")
+        return self._batch_obj
+
+    @_safe
+    def batch_people(self, name: str, team: str, kind: str, filt: str = "all", squad: str = "", club: str = "") -> dict:
+        """지금 목록 조건 그대로 사람들을 (최대 500명) 돌려준다."""
+        idx = self._index
+        items = self._people.search(name, team, kind, limit=100000, mine_if_empty=True, squad=squad, club=club)
+        if filt == "none":
+            items = [p for p in items if not idx.get(p["uid"])]
+        elif filt == "has":
+            items = [p for p in items if idx.get(p["uid"])]
+        elif filt == "ours":
+            items = [p for p in items if (idx.get(p["uid"]) or {}).get("ours")]
+        total = len(items)
+        out = []
+        for p in items[:self.BATCH_MAX]:
+            f = idx.get(p["uid"])
+            d = {k: p.get(k, "") for k in ("uid", "name", "club", "cuid", "age", "nationality", "kind", "newgen", "me", "alt", "squad")}
+            d["face"] = self._face_thumb(f["path"], 72) if f else ""
+            d["has_face"] = bool(f)
+            d["kits"] = bool(gamesetup.kit_images(str(p.get("cuid", "")), self._cfg.kit_aliases)) if p.get("cuid") else False
+            out.append(d)
+        return {"items": out, "total": total, "max": self.BATCH_MAX}
+
+    @_safe
+    def batch_price(self, engine: str) -> dict:
+        from .batch import price_of, WON_PER_USD
+        cfg = self._cfg.ai_cfg.get(engine, {})
+        pr = price_of(engine, cfg.get("model", ""))
+        return {**pr, "won": round(pr["usd"] * WON_PER_USD), "model": cfg.get("model") or providers.DEFAULT_MODELS.get(engine, ""),
+                "ready": providers.status(engine, cfg) in ("키 있음", "설치됨")}
+
+    def _batch_kit(self, person: dict, kind: str):
+        cuid = str(person.get("cuid", "") or "")
+        if not cuid:
+            return None
+        kits = gamesetup.kit_images(cuid, self._cfg.kit_aliases)
+        pth = kits.get(kind) or kits.get("home")
+        if not pth:
+            return None
+        im = imaging.load_image(str(pth))
+        bg = Image.new("RGB", im.size, (235, 235, 235))
+        bg.paste(im, mask=im.getchannel("A") if im.mode == "RGBA" else None)
+        return bg
+
+    def _batch_face(self, person: dict):
+        f = self._index.get(str(person.get("uid", "")).removeprefix("r-"))
+        if not f:
+            return None
+        try:
+            return imaging.load_image(f["path"]).convert("RGB")
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _batch_job(self, it: dict, meta: dict):
+        """사람 하나 → (프롬프트, 참고 사진들)."""
+        person = dict(it["person"])
+        task = meta.get("task", "face")
+        lang = "en" if self._cfg.prompt_lang == "en" or meta.get("engine") == "cloudflare" else "ko"
+        kit = self._batch_kit(person, meta.get("kit_kind", "home")) if meta.get("use_kit", True) else None
+        hint = self._hint(person)
+        if task == "kit":
+            face = self._batch_face(person)
+            if face is None:
+                raise RuntimeError("지금 쓰이는 사진이 없어서 유니폼만 바꿀 수 없어요.")
+            prompt = prompts.uniform_prompt(person, lang=lang, has_kit=kit is not None, club_hint=hint)
+            return prompt, [face] + ([kit] if kit is not None else [])
+        clean = str(person.get("uid", "")).removeprefix("r-")
+        if clean and not person.get("look"):
+            person["look"] = gamesetup.appearance(clean)
+        ref = self._batch_face(person) if meta.get("ref") else None
+        prompt, _ = prompts.face_prompt(
+            person, lang=lang, template=self._cfg.prompt_template, has_ref=ref is not None, has_kit=kit is not None,
+            expression=meta.get("expression") or self._cfg.expression, club_hint=hint,
+            manager_outfit=self._cfg.manager_outfit, ref_mode="photo")      # 참고는 지금 쓰이는 사진(게임 3D 얼굴 아님)
+        photos = ([ref] if ref is not None else []) + ([kit] if kit is not None else [])
+        if not providers.BY_ID.get(meta.get("engine"), {}).get("ref"):
+            photos = []
+        return prompt, photos
+
+    @_safe
+    def batch_start(self, people: list, task: str, opts: dict) -> dict:
+        from .batch import AUTO_ENGINES
+        b = self._batch()
+        if b.running:
+            return {"error": "이미 그리는 중이에요."}
+        engine = str(opts.get("engine") or "gemini")
+        if engine not in AUTO_ENGINES:
+            return {"error": "이 방식은 한꺼번에 그릴 수 없어요."}
+        cfg = self._cfg.ai_cfg.get(engine, {})
+        if providers.status(engine, cfg) not in ("키 있음", "설치됨"):
+            return {"error": "need_key", "engine": engine}
+        if task == "kit" and not providers.BY_ID[engine]["ref"]:
+            return {"error": "이 방식은 사진을 보낼 수 없어서 유니폼만 바꾸기를 못 해요. 제미나이 API를 골라 주세요."}
+        people = [p for p in (people or []) if isinstance(p, dict) and p.get("uid")][:self.BATCH_MAX]
+        skipped = 0
+        if task == "kit":
+            keep = [p for p in people if self._index.get(str(p["uid"]).removeprefix("r-"))]
+            skipped, people = len(people) - len(keep), keep
+        if not people:
+            return {"error": "그릴 사람이 없어요." + (" 유니폼만 바꾸기는 지금 사진이 있는 사람만 돼요." if skipped else "")}
+        meta = {"task": task, "engine": engine, "cfg": cfg, "kit_kind": opts.get("kit_kind", "home"),
+                "use_kit": bool(opts.get("use_kit", True)), "ref": bool(opts.get("ref")),
+                "expression": opts.get("expression", ""), "started": time.time()}
+        b.reset(people, meta)
+        b.start(self._batch_job, workers=int(opts.get("workers") or 2))
+        return {"ok": True, "count": len(people), "skipped": skipped}
+
+    @_safe
+    def batch_status(self) -> dict:
+        b = self._batch()
+        with b.lock:
+            items = [{"id": i["id"], "uid": i["uid"], "name": i["person"].get("name", ""), "club": i["person"].get("club", ""),
+                      "status": i["status"], "err": i.get("err", ""), "ver": Path(i["png"]).name if i.get("png") else ""}
+                     for i in b.items]
+            meta = {k: b.meta.get(k) for k in ("task", "engine", "kit_kind", "spent", "ref")}
+        return {"items": items, "running": b.running, "counts": b.counts(), "meta": meta}
+
+    @_safe
+    def batch_thumbs(self, ids: list) -> dict:
+        b = self._batch()
+        out = {}
+        for iid in ids or []:
+            it = b.find(str(iid))
+            if it and it.get("png"):
+                out[it["id"]] = _thumb_url(Path(it["png"]), 220)
+        return {"thumbs": out}
+
+    @_safe
+    def batch_big(self, iid: str) -> dict:
+        it = self._batch().find(str(iid))
+        if not it or not it.get("png"):
+            return {"error": "그림이 없어요."}
+        f = self._batch_face(it["person"])
+        before = ""
+        if f is not None:
+            t = f.copy()
+            t.thumbnail((420, 420))
+            before = _data_url(t)
+        return {"img": _thumb_url(Path(it["png"]), 520), "before": before, "prompt": it.get("prompt", ""),
+                "name": it["person"].get("name", "")}
+
+    @_safe
+    def batch_again(self, ids: list) -> dict:
+        b = self._batch()
+        b.again([str(i) for i in ids or []])
+        if not b.running:
+            b.start(self._batch_job, workers=2)
+        return self.batch_status()
+
+    @_safe
+    def batch_drop(self, ids: list) -> dict:
+        self._batch().drop([str(i) for i in ids or []])
+        return self.batch_status()
+
+    @_safe
+    def batch_stop(self) -> dict:
+        self._batch().stop()
+        return {"ok": True}
+
+    @_safe
+    def batch_resume(self) -> dict:
+        b = self._batch()
+        if not b.running and b.counts().get("wait"):
+            b.start(self._batch_job, workers=2)
+        return self.batch_status()
+
+    @_safe
+    def batch_to_queue(self, ids: list) -> dict:
+        """다 그린 것들을 지금 자르기·꾸미기 설정대로 대기열에 넣는다."""
+        b = self._batch()
+        ids = {str(i) for i in ids or []}
+        moved = []
+        for it in list(b.items):
+            if it["id"] not in ids or it["status"] != "done" or not it.get("png"):
+                continue
+            person = it["person"]
+            uid, prefixed = _clean_uid(person.get("uid"))
+            if not uid:
+                continue
+            src = imaging.load_image(it["png"])
+            box, deco = self._quick_args(src, person)
+            self._queue_put(person, uid, prefixed, src, box, deco)
+            moved.append(it["id"])
+        b.drop(moved)
+        return {"count": len(moved), "queue": self._queue_view(), **self.batch_status()}
 
     @_safe
     def queue_view(self) -> dict:

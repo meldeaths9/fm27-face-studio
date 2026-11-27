@@ -574,3 +574,41 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 7px; border-radius: 6
 .kcard .khide { margin-left: auto; font-size: 11px; background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 2px; }
 .kcard .khide:hover { color: #ff6b6b; }
 #kitUnhide { color: var(--accent2); cursor: pointer; text-decoration: underline; }
+
+/* ===== AI로 한꺼번에 ===== */
+.dlg.ab .db { gap: 12px; }
+.abopts { display: flex; flex-direction: column; gap: 10px; background: var(--bg2); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+.abrow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.abrow .lbl2 { min-width: 64px; }
+.abseg { grid-template-columns: repeat(3, auto); width: auto; }
+.abseg button, .abseg3 button { padding: 0 14px; }
+.abseg button:disabled { opacity: .45; cursor: not-allowed; }
+.abseg3 { grid-template-columns: repeat(3, auto); width: auto; }
+.abrow .sel { height: 32px; min-width: 240px; background: var(--panel2, var(--bg2)); color: var(--text); border: 1px solid var(--line2); border-radius: 9px; padding: 0 10px; font: inherit; }
+.abcost { font-size: 13px; color: #dfe5f5; padding: 8px 12px; border-radius: 10px; background: rgba(123,97,255,.12); border: 1px solid rgba(123,97,255,.35); }
+.abcost.free { background: rgba(31,209,165,.1); border-color: rgba(31,209,165,.35); }
+.abcost b { color: #fff; }
+.abpick { display: flex; align-items: center; gap: 8px; }
+.abgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; }
+.abgrid.big { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.abp { position: relative; border: 1px solid var(--line); border-radius: 11px; padding: 6px; background: var(--bg2); cursor: pointer; font-size: 11.5px; text-align: center; user-select: none; }
+.abp.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: rgba(123,97,255,.12); }
+.abp .im { aspect-ratio: 1; border-radius: 8px; background: rgba(255,255,255,.04); display: grid; place-items: center; overflow: hidden; color: var(--muted); font-size: 11px; margin-bottom: 5px; }
+.abp .im img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.abp .nm { font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.abp .sb { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.abp .ck { position: absolute; top: 9px; left: 9px; width: 18px; height: 18px; border-radius: 5px; border: 2px solid rgba(255,255,255,.6); background: rgba(0,0,0,.35); z-index: 1; }
+.abp.on .ck { background: var(--accent); border-color: var(--accent); }
+.abp.on .ck::after { content: "✓"; color: #fff; font-size: 12px; font-weight: 900; position: absolute; inset: 0; display: grid; place-items: center; line-height: 1; }
+.abp .tg { position: absolute; top: 9px; right: 9px; font-size: 10px; padding: 1px 6px; border-radius: 99px; background: rgba(0,0,0,.55); color: #dfe5f5; z-index: 1; }
+.abp.fail .im { color: #ff8b8b; padding: 8px; font-size: 11px; line-height: 1.4; }
+.abp .acts { display: flex; gap: 4px; justify-content: center; margin-top: 5px; }
+.abp .acts button { border: 1px solid var(--line2); background: var(--panel); color: var(--muted); border-radius: 7px; font-size: 11px; padding: 2px 8px; cursor: pointer; }
+.abp .acts button:hover { color: var(--text); }
+.abp .spin { width: 22px; height: 22px; margin: 0; }
+.abprog { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+.abbar { flex: 1; height: 8px; border-radius: 99px; background: var(--bg2); overflow: hidden; border: 1px solid var(--line); }
+.abbar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+.abbig { display: grid !important; grid-template-columns: 1fr 1fr; gap: 16px; }
+.abbig img { width: 100%; border-radius: 12px; display: block; margin-top: 6px; }
+.abbig .none { aspect-ratio: 1; border-radius: 12px; background: var(--bg2); display: grid; place-items: center; color: var(--muted); margin-top: 6px; }
