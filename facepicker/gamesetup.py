@@ -373,6 +373,72 @@ def _command(cmd: str, timeout: float = 20.0, **extra) -> dict:
     return {"ok": False, "message": "플러그인이 답하지 않아요. 게임이 멈춰 있거나 로딩 중일 수 있어요."}
 
 
+# 게임 유니폼 번호가 구단 번호와 다른 구단 (기본 데이터베이스 기준, 확인된 것만). 유니폼 번호 -> 구단 번호
+KIT_ALIASES = {
+    "1736": "1734",   # 레알 마드리드
+    "1733": "1730",   # 레알 베티스
+}
+
+
+def kit_dir() -> Path:
+    return bridge_dir() / "kits"
+
+
+def _kit_png(num: str, kind: str) -> Path | None:
+    """유니폼 번호·종류의 png (raw면 여기서 png로 바꾼다)."""
+    import struct
+    from PIL import Image
+    d = kit_dir()
+    raw, png = d / f"{num}_{kind}.raw", d / f"{num}_{kind}.png"
+    try:
+        if raw.exists() and (not png.exists() or raw.stat().st_mtime > png.stat().st_mtime):
+            b = raw.read_bytes()
+            w, h = struct.unpack("<ii", b[:8])
+            Image.frombytes("RGBA", (w, h), b[8:8 + w * h * 4]).transpose(Image.FLIP_TOP_BOTTOM).save(png)
+            raw.unlink()
+    except Exception as e:  # noqa: BLE001
+        log.warning("유니폼 그림 변환 실패 %s: %s", raw.name, e)
+    return png if png.exists() else None
+
+
+def kit_nums() -> list[str]:
+    """모인 유니폼 번호들."""
+    nums = set()
+    try:
+        for f in kit_dir().iterdir():
+            if f.suffix in (".png", ".raw") and "_" in f.stem:
+                n, k = f.stem.rsplit("_", 1)
+                if n.isdigit() and k in ("home", "away", "third"):
+                    nums.add(n)
+    except OSError:
+        pass
+    return sorted(nums, key=int)
+
+
+def kit_owner(num: str, user: dict | None = None) -> str:
+    """유니폼 번호의 구단 번호 (사용자 지정 > 기본 목록 > 번호 그대로)."""
+    num = str(num)
+    return str((user or {}).get(num) or KIT_ALIASES.get(num) or num)
+
+
+def kit_files(num: str) -> dict:
+    return {k: p for k in ("home", "away", "third") if (p := _kit_png(str(num), k))}
+
+
+def kit_images(club: str | int, user: dict | None = None) -> dict:
+    """이 구단의 게임 유니폼 {home|away|third: png}. 구단 번호로 짝지어진 유니폼 번호를 먼저 본다."""
+    club = str(club or "").strip()
+    if not club.isdigit():
+        return {}
+    for num in [n for n in kit_nums() if kit_owner(n, user) == club and n != club] + [club]:
+        if kit_owner(num, user) != club:
+            continue                    # 이 번호는 다른 구단 것으로 짝지어져 있다
+        f = kit_files(num)
+        if f:
+            return f
+    return {}
+
+
 def diag_dir() -> Path:
     d = bridge_dir() / "diag"
     d.mkdir(exist_ok=True)

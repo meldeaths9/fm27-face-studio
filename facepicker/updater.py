@@ -72,7 +72,7 @@ def latest(timeout: float = 6, beta: bool = False) -> dict | None:
             "prerelease": bool(data.get("prerelease")),
             "setup": setup.get("browser_download_url") if setup else "",
             "size": int(setup.get("size", 0)) if setup else 0,
-            "notes": data.get("body", "") or "", "page": data.get("html_url", "")}
+            "notes": (data.get("body", "") or "").split("\n---")[0].split("테스트 버전이에요.")[0].replace("### ", "").strip(), "page": data.get("html_url", "")}
 
 
 def download(url: str, size: int, progress=None) -> Path:

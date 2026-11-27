@@ -81,6 +81,18 @@ jobs:
           $suffix = if ("${{ github.ref_name }}" -eq "beta") { "-beta" } else { "" }
           "tag=v$v.${{ github.run_number }}$suffix" >> $env:GITHUB_OUTPUT
 
+      - name: Patch notes
+        id: notes
+        shell: bash
+        run: |
+          git log -1 --format=%B | grep -v -E '^(Co-Authored-By|Claude-Session):' | sed -e '/^\s*$/N;/^\s*\n$/D' > notes.txt
+          {
+            echo "body<<EOF_NOTES"
+            echo "### 바뀐 점"
+            cat notes.txt
+            echo "EOF_NOTES"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Publish beta (test) release
         if: github.ref == 'refs/heads/beta'
         uses: softprops/action-gh-release@v2
@@ -93,6 +105,8 @@ jobs:
           prerelease: true
           make_latest: false
           body: |
+            ${{ steps.notes.outputs.body }}
+
             테스트 버전이에요. 설정 → 업데이트에서 '테스트 버전 받기'를 켠 PC에만 업데이트 알림이 가요.
 
       - name: Publish release
@@ -106,6 +120,9 @@ jobs:
             dist/FMFaceStudio-Setup.exe
           make_latest: true
           body: |
+            ${{ steps.notes.outputs.body }}
+
+            ---
             **`FMFaceStudio-Setup.exe`** 를 받아 실행하면 설치돼요 (관리자 권한 필요 없음, 시작 메뉴·바탕화면 바로가기).
             한 번 설치하면 다음부터는 프로그램이 새 버전을 알려 주고, 버튼 한 번으로 업데이트돼요.
 

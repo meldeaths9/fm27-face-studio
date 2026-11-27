@@ -24,6 +24,27 @@ class People:
         self._keys = [(norm(p.get("name")) + " " + p.get("uid", ""), norm(p.get("club"))) for p in self.items]
         self.version = getattr(self, "version", 0) + 1
 
+    def clubs(self, team: str, limit: int = 12) -> list[dict]:
+        """팀 이름 입력 → 고를 수 있는 클럽 목록 (같은 이름이어도 클럽 번호로 따로)."""
+        t_toks = norm(team).split()
+        if not t_toks:
+            return []
+        acc: dict = {}
+        for p, (_nk, tk) in zip(self.items, self._keys):
+            cu = p.get("cuid")
+            if not cu or not p.get("club") or not all(t in tk for t in t_toks):
+                continue
+            c = acc.setdefault(str(cu), {"cuid": str(cu), "name": p["club"], "alt": p.get("alt", ""), "mine": bool(p.get("mine")),
+                                         "players": 0, "rep": p.get("crep") or 0, "_best": None})
+            if p.get("kind") == "player":
+                c["players"] += 1
+                if not p.get("newgen") and c["_best"] is None:
+                    c["_best"] = p.get("name")
+        out = sorted(acc.values(), key=lambda c: (not c["mine"], bool(c["alt"]), -(c["rep"] or 0), c["name"]))[:limit]
+        for c in out:
+            c["example"] = c.pop("_best") or ""
+        return out
+
     @staticmethod
     def _kind_ok(p: dict, kind: str) -> bool:
         if not kind:
@@ -35,8 +56,15 @@ class People:
         return p.get("kind") == kind
 
     def search(self, name: str, team: str, kind: str, limit: int = 200, mine_if_empty: bool = False,
-               squad: str = "") -> list[dict]:
+               squad: str = "", club: str = "") -> list[dict]:
         n_toks, t_toks = norm(name).split(), norm(team).split()
+        if club:          # 목록에서 고른 클럽 하나 (이름이 같은 다른 나라 클럽은 빼고)
+            res = [p for p, (nk, _tk) in zip(self.items, self._keys)
+                   if str(p.get("cuid", "")) == str(club) and self._kind_ok(p, kind)
+                   and (not squad or p.get("squad") == squad) and all(t in nk for t in n_toks)]
+            order = {"1군": 0, "2군": 1, "U-21": 2, "U-18": 3}
+            res.sort(key=lambda p: (not p.get("me"), order.get(p.get("squad", ""), 9), norm(p.get("name"))))
+            return res[:limit]
         if not n_toks and not t_toks:
             if not mine_if_empty and kind != "manager":
                 return []

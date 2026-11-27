@@ -540,3 +540,37 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 7px; border-radius: 6
 .dcol .mini { font-size: 11px; padding: 2px 7px; border-radius: 6px; border: 1px solid var(--line2); background: transparent; color: var(--muted); cursor: pointer; visibility: hidden; }
 .dcol.custom .mini { visibility: visible; }
 .dcol.custom span { color: var(--text); font-weight: 700; }
+
+/* v1.2 게임 유니폼 */
+.gkits { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.gkits .chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px 2px 3px; }
+.gkits .chip img { width: 22px; height: 22px; object-fit: contain; border-radius: 4px; background: rgba(255,255,255,.08); }
+
+/* v1.2 팀 고르기 */
+.teamwrap { position: relative; }
+.teamdd { position: absolute; top: calc(100% + 4px); left: 0; min-width: 300px; z-index: 60; background: var(--panel2, #1b2238); border: 1px solid var(--line2);
+  border-radius: 10px; box-shadow: 0 12px 30px rgba(0,0,0,.45); padding: 4px; max-height: 320px; overflow: auto; }
+.tdi { padding: 7px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.tdi:hover { background: var(--bg2); }
+.tdi small { flex-basis: 100%; color: var(--muted); font-size: 11px; }
+.tdi .tg { font-size: 10px; padding: 1px 6px; border-radius: 6px; background: rgba(31,209,165,.2); color: #1fd1a5; }
+.tdi .tg2 { font-size: 10px; padding: 1px 6px; border-radius: 6px; background: rgba(255,180,80,.18); color: #ffb450; }
+.field.picked { border-color: rgba(31,209,165,.6); }
+.teamok { color: #1fd1a5; font-weight: 800; margin-left: 4px; }
+
+/* v1.3 게임 유니폼 고르기 */
+.kitgrid { max-height: 62vh; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; white-space: normal; }
+.kcard { border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.kcard.mine { border-color: rgba(31,209,165,.6); }
+.kcard .kh { font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.kcard .kk { display: flex; gap: 6px; }
+.kimg { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; background: var(--bg2); border: 1px solid transparent; border-radius: 8px; padding: 4px; cursor: pointer; color: var(--muted); font-size: 11px; }
+.kimg:hover { border-color: var(--accent); color: var(--text); }
+.kimg img { width: 64px; height: 64px; object-fit: contain; }
+.kcard .tg { font-size: 10px; padding: 1px 6px; border-radius: 6px; background: rgba(31,209,165,.2); color: #1fd1a5; }
+.kcard .tg2 { font-size: 10px; padding: 1px 6px; border-radius: 6px; background: rgba(255,180,80,.18); color: #ffb450; }
+.kcard .kmem { align-self: flex-start; font-size: 11px; }
+
+.kcard .khide { margin-left: auto; font-size: 11px; background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 2px; }
+.kcard .khide:hover { color: #ff6b6b; }
+#kitUnhide { color: var(--accent2); cursor: pointer; text-decoration: underline; }
