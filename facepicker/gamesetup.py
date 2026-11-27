@@ -166,10 +166,23 @@ def heartbeat() -> dict | None:
     return data
 
 
+_PROXIES = ("winhttp.dll", "version.dll", "winmm.dll", "dxgi.dll", "dinput8.dll", "d3d11.dll")
+
+
+def has_bepinex(g: Path) -> bool:
+    """BepInEx(IL2CPP)가 깔려 있는지. 게임패스 등은 winhttp.dll 대신 다른 이름의 로더를 쓰기도 해서
+    core dll + (로더 dll 하나 또는 doorstop 설정 또는 이미 돈 흔적) 이면 깔린 것으로 본다."""
+    core = g / "BepInEx" / "core" / "BepInEx.Unity.IL2CPP.dll"
+    if not core.exists():
+        return False
+    return (any((g / n).exists() for n in _PROXIES) or (g / "doorstop_config.ini").exists()
+            or (g / "BepInEx" / "LogOutput.log").exists() or (g / "BepInEx" / "interop").is_dir())
+
+
 def status(game_dir: str) -> dict:
     g = Path(game_dir) if game_dir else None
     ok_game = valid_game(g)
-    has_loader = ok_game and (g / "winhttp.dll").exists() and (g / "BepInEx" / "core" / "BepInEx.Unity.IL2CPP.dll").exists()
+    has_loader = ok_game and has_bepinex(g)
     initialized = ok_game and (g / "BepInEx" / "interop").is_dir() and any((g / "BepInEx" / "interop").glob("*.dll"))
     installed_dll = (g / "BepInEx" / "plugins" / PLUGIN_FOLDER / "FM27FaceStudio.dll") if ok_game else None
     installed = bool(installed_dll and installed_dll.exists())
@@ -206,7 +219,7 @@ def install(game_dir: str) -> list[str]:
     if not valid_game(g):
         raise RuntimeError("FM27 게임 폴더가 아니에요 (fm.exe가 없음).")
     done: list[str] = []
-    if not ((g / "winhttp.dll").exists() and (g / "BepInEx" / "core").is_dir()):
+    if not has_bepinex(g):
         raise RuntimeError(BEPINEX_HELP)
     if not PLUGIN_DLL.exists():
         raise RuntimeError("프로그램 안에 플러그인 파일이 없어요.")

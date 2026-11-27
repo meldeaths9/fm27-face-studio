@@ -24,7 +24,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -646,6 +646,13 @@ class Api:
         out.append("\n== crash.log ==\n" + tail(ad / "crash.log", 200))
         out.append("\n== 플러그인 status.json ==\n" + tail(gamesetup.bridge_dir() / "status.json", 50))
         if c.game_dir:
+            try:      # 설치 폴더 구성 (게임패스 등 BepInEx 인식 문제 확인용, 파일 이름만)
+                gd = Path(c.game_dir)
+                top = sorted(x.name + ("/" if x.is_dir() else "") for x in gd.iterdir())
+                bep = sorted(str(x.relative_to(gd)) for x in (gd / "BepInEx").glob("*/*"))[:60] if (gd / "BepInEx").is_dir() else []
+                out.append("\n== 게임 폴더 ==\n" + "\n".join(top[:80]) + "\n-- BepInEx --\n" + "\n".join(bep))
+            except OSError as e:
+                out.append(f"\n== 게임 폴더 == 못 읽음: {e}")
             out.append("\n== BepInEx LogOutput.log (끝 200줄) ==\n" + tail(Path(c.game_dir) / "BepInEx" / "LogOutput.log", 200))
         desk = _desktop_dir()
         if not desk.exists():
