@@ -599,6 +599,8 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 7px; border-radius: 6
 .abseg button, .abseg3 button { padding: 0 14px; }
 .abseg button:disabled { opacity: .45; cursor: not-allowed; }
 .abseg3 { grid-template-columns: repeat(3, auto); width: auto; }
+.abseg2 { grid-template-columns: repeat(2, auto); width: auto; }
+.abseg2 button { padding: 0 14px; }
 .abrow .sel { height: 32px; min-width: 240px; background: var(--panel2, var(--bg2)); color: var(--text); border: 1px solid var(--line2); border-radius: 9px; padding: 0 10px; font: inherit; }
 .abcost { font-size: 13px; color: #dfe5f5; padding: 8px 12px; border-radius: 10px; background: rgba(123,97,255,.12); border: 1px solid rgba(123,97,255,.35); }
 .abcost.free { background: rgba(31,209,165,.1); border-color: rgba(31,209,165,.35); }

@@ -1518,7 +1518,7 @@ function decoSummary() {
   return out.length ? out.join(" · ") : "꾸미기 없음";
 }
 function renderBulkOpts() {
-  const st = S.settings || {}, crop = st.bulk_crop || "face", deco = st.bulk_deco || "follow";
+  const st = S.settings || {}, crop = st.bulk_crop || "face", deco = st.bulk_deco || "none";
   $$("#bCrop button").forEach((b) => b.classList.toggle("on", b.dataset.v === crop));
   $$("#bDeco button").forEach((b) => b.classList.toggle("on", b.dataset.v === deco));
   $("#bOptSum").textContent = (crop === "face" ? "얼굴을 찾아 가운데로" : "사진 구도 그대로 (세로 사진은 위쪽 맞춤)") +
@@ -1666,10 +1666,10 @@ $("#bulkGo").onclick = async () => {
 })();
 
 /* ================================================================ AI로 한꺼번에 그리기 */
-const AB = { banner: "gunzo", people: [], sel: new Set(), task: "face", kitKind: "home", thumbs: {}, ver: {}, items: [], pick: new Set(), timer: 0, running: false, price: null, big: null };
+const AB = { banner: "none", people: [], sel: new Set(), task: "face", kitKind: "home", thumbs: {}, ver: {}, items: [], pick: new Set(), timer: 0, running: false, price: null, big: null };
 const AB_ENG = ["gemini", "openai", "xai", "codex", "cloudflare"];
 const AB_TASK_HINT = { face: "게임 외모 설명(피부·머리)으로 새 얼굴을 그려요.", kit: "지금 사진의 얼굴은 두고 옷만 바꿔요. 지금 사진이 있는 사람만 돼요.", gunzo: "경기장에서 뛰는 모습을 그려요. 얼굴 참고를 켜면 지금 얼굴로 그려요." };
-const AB_BANNER_HINT = { gunzo: "유니폼 색으로 띠를 칠하고 왼쪽에 포지션(GK·DF·MF·FW)을 넣어요", follow: "편집 화면의 꾸미기(이름띠·모서리·테두리) 그대로", none: "사진만" };
+const AB_BANNER_HINT = { follow: "편집 화면의 꾸미기(이름띠·모서리·테두리) 그대로", none: "사진만 넣어요. 꾸미기는 나중에 더할 수 있어요" };
 const won = (n) => Math.round(n).toLocaleString("ko-KR");
 
 async function openAB() {
@@ -1885,5 +1885,6 @@ $("#abQueue").onclick = async () => {
   S.queue = r.queue; renderQueue();
   toast(`${r.count}명을 대기열에 넣었어요. 오른쪽 '한 번에 적용'을 누르면 게임에 들어가요.`, "ok", 3500);
   doSearch(true);
-  if (!r.items.length) showABSetup(); else renderABRun(r);
+  if (!r.items.length) { stopABPoll(); $("#abModal").classList.remove("on"); }   // 다 넣었으면 첫 화면으로
+  else renderABRun(r);
 };

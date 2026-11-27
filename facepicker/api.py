@@ -25,7 +25,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.9.4"
+VERSION = "1.9.5"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -1493,7 +1493,7 @@ class Api:
         meta = {"task": task, "engine": engine, "cfg": cfg, "kit_kind": opts.get("kit_kind", "home"),
                 "use_kit": bool(opts.get("use_kit", True)), "ref": bool(opts.get("ref")),
                 "expression": opts.get("expression", ""), "extra": str(opts.get("extra") or "").strip()[:500],
-                "action": str(opts.get("action") or "auto"), "banner": str(opts.get("banner") or "gunzo"),
+                "action": str(opts.get("action") or "auto"), "banner": str(opts.get("banner") or "none"),
                 "started": time.time()}
         b.reset(people, meta)
         b.start(self._batch_job, workers=int(opts.get("workers") or 2))
@@ -1562,24 +1562,16 @@ class Api:
 
     def _gunzo_args(self, src, person: dict, meta: dict):
         """건조: 사진은 자르지 않고 통째로, 이름띠는 고른 대로."""
-        from .style import kit_color
         w, h = src.size
         side = float(min(w, h))
         box = (w / 2, h / 2, side)
-        banner = meta.get("banner", "gunzo")
-        name = str(person.get("name", "")).strip()
-        if banner == "none":
-            return box, {}
-        if banner == "follow":
+        if h > w:
+            box = (w / 2, side / 2, side)
+        if meta.get("banner") == "follow":
             deco = dict(self._cfg.deco or {})
-            deco["text"] = name
+            deco["text"] = str(person.get("name", "")).strip()
             return box, deco
-        kit = self._batch_kit(person, meta.get("kit_kind", "home"))
-        base = dict(self._cfg.deco or {})
-        return box, {"rounded": base.get("rounded", False), "radius": base.get("radius", 14),
-                     "border": base.get("border", False), "border_color": base.get("border_color", ""),
-                     "text": name, "band": "gunzo", "band_color": kit_color(kit) if kit is not None else "",
-                     "sub": prompts.pos_label(person)}
+        return box, {}
 
     @_safe
     def batch_to_queue(self, ids: list) -> dict:
@@ -1598,7 +1590,8 @@ class Api:
             if b.meta.get("task") == "gunzo":
                 box, deco = self._gunzo_args(src, person, b.meta)
             else:
-                box, deco = self._quick_args(src, person)
+                box, _ = self._quick_args(src, person)
+                deco = self._gunzo_args(src, person, b.meta)[1]      # 꾸미기는 그리기 창에서 고른 대로
             self._queue_put(person, uid, prefixed, src, box, deco)
             moved.append(it["id"])
         b.drop(moved)

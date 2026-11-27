@@ -264,13 +264,12 @@ GUNZO = {
            "프로 스포츠 사진기자가 망원 렌즈(300mm)로 찍은 듯한 사진이에요. 빠른 셔터로 움직임이 또렷하고, 땀과 근육의 긴장감이 살아 있게 해 주세요. "
            "배경은 밤 경기 축구장으로, 관중석과 조명이 크게 흐려져(보케) 있고 잔디가 보여요. "
            "{realism}1:1 정사각형 구도에 허리 위 상반신이 크게 들어오게, 얼굴이 잘 보이게 해 주세요. "
-           "사진 아래쪽 20%는 나중에 이름띠를 얹을 자리라 중요한 부분(얼굴, 공)이 들어가지 않게 해 주세요. "
            "글자, 등번호 숫자, 워터마크는 새로 넣지 마세요{badge_note}."),
     "en": ("{ref}Create a real in-match action photo of {subject}, {action}. {features}{outfit}"
            "Shot by a professional sports photographer with a 300mm telephoto lens: fast shutter, crisp motion, visible sweat "
            "and muscle tension. Background is a floodlit football stadium at night with the crowd and lights in heavy bokeh, "
-           "grass visible. {realism}Square 1:1 framing, waist-up, face clearly visible. Keep the bottom 20% free of the face "
-           "and ball (a name banner goes there later). Do not add text, shirt numbers or watermarks{badge_note}."),
+           "grass visible. {realism}Square 1:1 framing, waist-up, face clearly visible. "
+           "Do not add text, shirt numbers or watermarks{badge_note}."),
 }
 
 

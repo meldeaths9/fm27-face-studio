@@ -158,7 +158,7 @@ class Batch:
                 return
             try:
                 prompt, photos = make_job(it, self.meta)
-                im = self._gen(pid, cfg, prompt, photos)
+                im = _square(self._gen(pid, cfg, prompt, photos))
                 png = self.dir / f"{it['id']}_{int(time.time())}.png"
                 im.save(png, "PNG")
                 with self.lock:
@@ -200,6 +200,17 @@ class Batch:
         for it in self.items:
             c[it["status"]] = c.get(it["status"], 0) + 1
         return c
+
+
+def _square(im):
+    """AI가 가끔 정사각형이 아닌 그림을 준다 → 가운데 기준으로 잘라 맞춘다."""
+    w, h = im.size
+    if w == h:
+        return im
+    s = min(w, h)
+    left = (w - s) // 2
+    top = 0 if h > w else (h - s) // 2          # 세로로 길면 위쪽(머리) 기준
+    return im.crop((left, top, left + s, top + s))
 
 
 def _friendly(msg: str) -> str:

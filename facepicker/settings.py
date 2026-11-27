@@ -22,7 +22,7 @@ def valid_pack_name(name: str) -> bool:
 def pack_sort_key(name: str) -> str:
     return str(name).casefold()
 FM_FOLDER_NAME = "Football Manager 27"
-SETTINGS_VERSION = 4
+SETTINGS_VERSION = 5
 
 GEMINI_MODELS = [
     "gemini-3.1-flash-image",
@@ -100,7 +100,7 @@ class Settings:
         self.kit_hidden: list = []         # 유니폼 고르기에서 숨긴 유니폼 번호
         self.kit_aliases: dict = {}        # 사용자가 '이 구단 유니폼으로 기억'한 짝: 유니폼 번호 -> 구단 번호
         self.bulk_crop: str = "face"      # 대량·끌어다 놓기 자르기: face(얼굴 맞춤) / keep(그대로, 위쪽 맞춤)
-        self.bulk_deco: str = "follow"    # 대량·끌어다 놓기 꾸미기: follow(편집 화면 설정) / none
+        self.bulk_deco: str = "none"      # 대량·끌어다 놓기 꾸미기: follow(편집 화면 설정) / none
         self.check_updates: bool = True
         self.beta_updates: bool = False   # 테스트 버전(prerelease)도 받기   # 켤 때 GitHub에서 새 버전 확인
         self.skip_version: str = ""       # '이 버전 건너뛰기'
@@ -148,6 +148,8 @@ class Settings:
             self.follow_save = False
             if self.prompt_template.strip() == DEFAULT_PROMPT.strip():
                 self.prompt_template = ""
+        if old_version < 5:              # 기본 꾸미기를 '없음'으로 (꾸민 건 지우기 어려우니)
+            self.bulk_deco = "none"
         if old_version < SETTINGS_VERSION:
             self.settings_version = SETTINGS_VERSION
             self.save()
