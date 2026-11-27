@@ -18,9 +18,8 @@ log = logging.getLogger("batch")
 
 # 1장 예상 요금 (미국 달러, 1024px 한 장 기준 · 참고 사진 입력 포함 대략값)
 PRICE_USD = {
-    "gemini-3.1-flash-image": 0.07,
-    "gemini-2.5-flash-image": 0.04,
-    "gemini-3-pro-image": 0.14,
+    **{m["id"]: m["usd"] for ms in providers.MODEL_CHOICES.values() for m in ms},
+    "gemini-2.5-flash-image": 0.039,
     "gpt-image-2": 0.06,
     "gpt-image-1": 0.05,
     "grok-imagine-image-2.0": 0.07,

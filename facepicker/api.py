@@ -25,7 +25,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.9.0"
+VERSION = "1.9.1"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -319,7 +319,8 @@ class Api:
             cfg = self._cfg.ai_cfg.get(p["id"], {})
             out.append({**p, "status": providers.status(p["id"], cfg),
                         "key": cfg.get("key", ""), "account": cfg.get("account", ""),
-                        "model": cfg.get("model", ""), "default_model": providers.DEFAULT_MODELS.get(p["id"], "")})
+                        "model": cfg.get("model", ""), "default_model": providers.DEFAULT_MODELS.get(p["id"], ""),
+                        "models": [{**m, "won": round(m["usd"] * 1450)} for m in providers.MODEL_CHOICES.get(p["id"], [])]})
         return out
 
     @_safe

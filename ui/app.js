@@ -1099,6 +1099,10 @@ function renderAIList() {
   $$("#aiList .airow").forEach((r) => r.onclick = () => { setSel = r.dataset.id; setUse = r.dataset.id; renderAIList(); });
   renderAIDetail();
 }
+/* 설명 속 주소(aistudio.google.com/apikey 같은)를 누를 수 있게 */
+function linkify(html) {
+  return html.replace(/\b((?:[a-z0-9-]+\.)+(?:com|ai|dev)(?:\/[\w\-\/]*)?)/gi, (m) => `<a data-url="https://${m}">${m}</a>`);
+}
 function renderAIDetail() {
   const a = S.ai.find((x) => x.id === setSel);
   if (!a) return;
@@ -1108,12 +1112,26 @@ function renderAIDetail() {
   if (a.group === "api" || a.id === "cloudflare") {
     if (a.id === "cloudflare") fields += `<div><span class="lbl">계정 ID (Account ID)</span><label class="field"><input data-f="account" value="${esc(c.account || "")}"></label></div>`;
     fields += `<div><span class="lbl">${a.id === "cloudflare" ? "토큰 (API Token)" : "API 키"}</span><div class="rowf"><label class="field"><input data-f="key" type="password" value="${esc(c.key || "")}"></label><button class="btn" id="btnShowKey">보기</button></div></div>`;
-    fields += `<div><span class="lbl">모델 <span class="hint">· 비우면 기본값 ${esc(a.default_model)}</span></span><label class="field"><input data-f="model" value="${esc(c.model || "")}" placeholder="${esc(a.default_model)}"></label></div>`;
+    if (a.models && a.models.length) {
+      const cur = c.model || "", known = a.models.some((m) => m.id === cur) || !cur;
+      fields += `<div><span class="lbl">모델 <span class="hint">· 1장 예상 요금 (1024px)</span></span>
+        <select class="msel" id="mSel">${a.models.map((m) => `<option value="${m.id}"${(cur || a.default_model) === m.id ? " selected" : ""}>${esc(m.name)} — 약 ${m.won}원</option>`).join("")}
+        <option value="@custom"${known ? "" : " selected"}>직접 입력</option></select>
+        <label class="field" id="mCustom" style="margin-top:6px${known ? ";display:none" : ""}"><input data-f="model" value="${esc(known ? "" : cur)}" placeholder="모델 이름"></label></div>`;
+    } else
+      fields += `<div><span class="lbl">모델 <span class="hint">· 비우면 기본값 ${esc(a.default_model)}</span></span><label class="field"><input data-f="model" value="${esc(c.model || "")}" placeholder="${esc(a.default_model)}"></label></div>`;
     if (KEY_URL[a.id]) fields += `<div class="hint"><a data-url="${KEY_URL[a.id]}">발급 페이지 열기</a></div>`;
   }
   $("#aiDetail").innerHTML = `<h4>${esc(a.name)}<span class="tag ${tc}">${tl}</span></h4>
     <div class="muted" style="font-size:12px">${esc(a.desc)}</div>
-    <ol>${(HOWTO[a.id] || []).map((t) => `<li>${esc(t)}</li>`).join("")}</ol>${fields}`;
+    <ol>${(HOWTO[a.id] || []).map((t) => `<li>${linkify(esc(t))}</li>`).join("")}</ol>${fields}`;
+  const ms = $("#mSel");
+  if (ms) ms.onchange = () => {
+    const custom = ms.value === "@custom";
+    $("#mCustom").style.display = custom ? "" : "none";
+    setAI[a.id] = setAI[a.id] || {};
+    setAI[a.id].model = custom ? $("#mCustom input").value : (ms.value === a.default_model ? "" : ms.value);
+  };
   $$("#aiDetail [data-f]").forEach((inp) => inp.addEventListener("input", () => {
     setAI[a.id] = setAI[a.id] || {}; setAI[a.id][inp.dataset.f] = inp.value;
   }));
