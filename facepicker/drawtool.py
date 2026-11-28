@@ -34,9 +34,11 @@ MODELS = {
     "std": {"name": "실사 표준 (FLUX.2 klein 4B)", "repo": "black-forest-labs/FLUX.2-klein-4B", "dir": "klein4b",
             "allow": ["model_index.json", "scheduler/*", "text_encoder/*", "tokenizer/*", "transformer/*", "vae/*"],
             "size": 15.98e9, "required": True},
-    "adv": {"name": "실사 고급 (Z-Image-Turbo)", "repo": "Tongyi-MAI/Z-Image-Turbo", "dir": "zimage",
-            "allow": ["model_index.json", "scheduler/*", "text_encoder/*", "tokenizer/*", "transformer/*", "vae/*"],
-            "size": 32.85e9, "required": False},
+    # 원본 저장소는 그림 본체가 32비트(24.6GB)라, 본체만 같은 모델을 16비트로 바꿔 둔 저장소(12.3GB)에서 받는다
+    "adv": {"name": "실사 고급 (Z-Image-Turbo)", "repo": "Tongyi-MAI/Z-Image-Turbo", "dir": "zimage", "kind": "zimage",
+            "sources": [("Tongyi-MAI/Z-Image-Turbo", ["model_index.json", "scheduler/*", "text_encoder/*", "tokenizer/*", "vae/*"]),
+                        ("dimitribarbot/Z-Image-Turbo-BF16", ["transformer/*"])],
+            "size": 20.6e9, "required": False, "steps": 9, "guidance": 0.0, "refs": False},
 }
 
 
@@ -373,7 +375,8 @@ class DrawTool:
                     self.task.pop("files", None)
                 code = ("import sys\nfrom huggingface_hub import snapshot_download\n"
                         "snapshot_download(sys.argv[1], local_dir=sys.argv[2], allow_patterns=sys.argv[3].split(','), max_workers=8)\n")
-                self._run([self.py, "-c", code, m["repo"], self.model_dir(k), ",".join(m["allow"])])
+                for repo, allow in m.get("sources") or [(m["repo"], m["allow"])]:
+                    self._run([self.py, "-c", code, repo, self.model_dir(k), ",".join(allow)])
                 st = self.state()
                 st["models"] = sorted(set(st.get("models", [])) | {k})
                 self._save_state(st)
@@ -428,8 +431,12 @@ def say(**kw):
 try:
     import torch
     from PIL import Image
-    from diffusers import Flux2KleinPipeline
     model_dir = sys.argv[1]
+    kind = sys.argv[2] if len(sys.argv) > 2 else "klein"
+    if kind == "zimage":
+        from diffusers import ZImagePipeline as Flux2KleinPipeline     # 실사 고급 (글로만 그림)
+    else:
+        from diffusers import Flux2KleinPipeline
     t0 = time.time()
     vram = torch.cuda.get_device_properties(0).total_memory / 2**30
     mode = "bf16"
@@ -494,7 +501,7 @@ for line in sys.stdin:
                 im.thumbnail((side, side))     # 참고 사진은 작게 (메모리·속도)
                 out.append(im)
             return out
-        refs = load_refs(640)
+        refs = load_refs(640) if kind != "zimage" else []
         cap()
         seed = int(req.get("seed") or random.randint(1, 2**31 - 1))
         kw = dict(prompt=req["prompt"], height=int(req.get("h", 1024)), width=int(req.get("w", 1024)),
@@ -595,6 +602,7 @@ class Runner:
 
     def _start(self, key: str = "std"):
         dt = self.dt
+        self.key = key
         mdir = dt.model_dir(key)
         if not (mdir / "model_index.json").exists():
             raise RuntimeError("그림도구 모델이 없어요. 'AI로 한꺼번에 그리기'에서 설치해 주세요.")
@@ -613,7 +621,7 @@ class Runner:
         script.write_text(SERVER_PY, encoding="utf-8")
         logf = open(dt.root / "draw.log", "ab")
         self.state = "loading"
-        self.proc = subprocess.Popen([str(dt.py), "-u", str(script), str(mdir)], stdin=subprocess.PIPE,
+        self.proc = subprocess.Popen([str(dt.py), "-u", str(script), str(mdir), MODELS[key].get("kind", "klein")], stdin=subprocess.PIPE,
                                      stdout=subprocess.PIPE, stderr=logf, env=dt._env(), cwd=str(dt.root),
                                      creationflags=NO_WINDOW)
         r = self._read(900)
@@ -658,12 +666,23 @@ class Runner:
                     pass
         return True
 
-    def draw(self, prompt: str, refs: list, out: Path, steps: int = 4, seed: int = 0) -> dict:
+    def draw(self, prompt: str, refs: list, out: Path, steps: int = 0, seed: int = 0, key: str = "std") -> dict:
+        key = key if key in MODELS else "std"
+        m = MODELS[key]
+        steps = steps or m.get("steps", 4)
+        if not m.get("refs", True):
+            refs = []
         with self.lock:
             self.killed = False
+            if self.proc and self.proc.poll() is None and getattr(self, "key", "std") != key:
+                p, self.proc = self.proc, None          # 다른 모델로 바꿈 → 껐다 다시 켠다
+                try:
+                    p.stdin.write(b'{"quit":true}\n'); p.stdin.flush(); p.wait(15)
+                except Exception:  # noqa: BLE001
+                    p.kill()
             if not self.proc or self.proc.poll() is not None:
                 try:
-                    self._start()
+                    self._start(key)
                 except Exception:
                     self.stop()
                     raise
@@ -675,7 +694,7 @@ class Runner:
                 im.convert("RGB").save(p)
                 paths.append(str(p))
             req = {"id": int(time.time() * 1000), "prompt": prompt, "refs": paths, "out": str(out),
-                   "steps": steps, "seed": seed}
+                   "steps": steps, "seed": seed, "guidance": m.get("guidance", 1.0)}
             self.proc.stdin.write((json.dumps(req, ensure_ascii=False) + "\n").encode("utf-8"))   # type: ignore[union-attr]
             self.proc.stdin.flush()                                                               # type: ignore[union-attr]
             try:

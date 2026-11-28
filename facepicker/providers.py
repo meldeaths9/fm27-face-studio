@@ -249,7 +249,8 @@ def gen_local(cfg: dict, prompt: str, photo) -> Image.Image:
     fd, name = tempfile.mkstemp(suffix=".png", dir=str(out))
     os.close(fd)
     try:
-        drawtool.runner(root).draw(prompt, [r for r in refs if r is not None], Path(name))
+        drawtool.runner(root).draw(prompt, [r for r in refs if r is not None], Path(name),
+                                   key=str(cfg.get("model") or "std"))
         im = Image.open(name)
         im.load()
         return im.convert("RGBA")

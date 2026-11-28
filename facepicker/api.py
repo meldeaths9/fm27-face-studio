@@ -25,7 +25,7 @@ from .people import People, plain
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.9.33"
+VERSION = "1.9.34"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -1549,6 +1549,8 @@ class Api:
                 ref_mode = "game"
         if not providers.BY_ID.get(meta.get("engine"), {}).get("ref"):
             ref, kit = None, None
+        if meta.get("engine") == "local" and (meta.get("cfg") or {}).get("model") == "adv":
+            ref, kit = None, None                # 실사 고급은 글로만 그린다 (참고 사진을 못 봄)
         photos = ([ref] if ref is not None else []) + ([kit] if kit is not None else [])
         if meta.get("engine") == "local":        # 그림도구는 짧게, 중요한 것부터
             prompt, _ = prompts.local_prompt(person, task=task, has_ref=ref is not None, ref_mode=ref_mode,
@@ -1583,7 +1585,12 @@ class Api:
                 return {"error": "먼저 아래 칸에서 그림도구를 설치해 주세요."}
         cfg = self._cfg.ai_cfg.get(engine, {})
         if engine == "local":
-            cfg = dict(cfg, dir=str(self._drawtool().root))
+            want = str(opts.get("local_model") or "std")
+            if want not in self._drawtool().models_ready():
+                want = "std"
+            cfg = dict(cfg, dir=str(self._drawtool().root), model=want)
+            if want == "adv" and task == "kit":
+                return {"error": "실사 고급은 사진을 보고 고치지 못해서 '유니폼만'은 안 돼요. 실사 표준을 골라 주세요."}
         if providers.status(engine, cfg) not in ("키 있음", "설치됨"):
             return {"error": "need_key", "engine": engine}
         if task == "kit" and not providers.BY_ID[engine]["ref"]:
