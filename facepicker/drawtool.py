@@ -420,7 +420,7 @@ class DrawTool:
 
 SERVER_PY = r"""
 # FM Face Studio 그림도구 — 앱이 켜고 끄는 그리기 일꾼. 한 줄 JSON으로 주고받는다.
-import json, os, random, sys, time, traceback
+import gc, json, os, random, sys, time, traceback
 proto = sys.stdout
 sys.stdout = sys.stderr            # 라이브러리 출력은 기록으로만
 def say(**kw):
@@ -458,6 +458,12 @@ try:
         else:
             pipe.to("cuda")
     pipe.set_progress_bar_config(disable=True)
+    def cap():
+        # 그래픽카드 메모리가 넘쳐 일반 메모리로 새면 수십 배 느려진다 → 남은 만큼만 쓰게 막고, 넘치면 바로 메모리 부족
+        free, total = torch.cuda.mem_get_info()
+        lim = (torch.cuda.memory_reserved() + free - 0.6 * 2**30) / total
+        torch.cuda.set_per_process_memory_fraction(max(0.3, min(0.95, lim)))
+    cap()
     print(f"켜짐: {mode}, {time.time() - t0:.1f}초, 그래픽카드 메모리 {torch.cuda.memory_allocated() / 2**30:.1f}GB")
     say(ready=True, secs=round(time.time() - t0, 1), gpu=torch.cuda.get_device_name(0), mode=mode)
 except Exception as e:
@@ -471,11 +477,15 @@ for line in sys.stdin:
         req = json.loads(line)
         if req.get("quit"):
             break
-        refs = []
-        for p in req.get("refs") or []:
-            im = Image.open(p).convert("RGB")
-            im.thumbnail((768, 768))     # 참고 사진은 작게 (메모리·속도)
-            refs.append(im)
+        def load_refs(side):
+            out = []
+            for p in req.get("refs") or []:
+                im = Image.open(p).convert("RGB")
+                im.thumbnail((side, side))     # 참고 사진은 작게 (메모리·속도)
+                out.append(im)
+            return out
+        refs = load_refs(768)
+        cap()
         seed = int(req.get("seed") or random.randint(1, 2**31 - 1))
         kw = dict(prompt=req["prompt"], height=int(req.get("h", 1024)), width=int(req.get("w", 1024)),
                   guidance_scale=float(req.get("guidance", 1.0)), num_inference_steps=int(req.get("steps", 4)),
@@ -489,18 +499,32 @@ for line in sys.stdin:
         kw["callback_on_step_end"] = on_step
         say(progress=0, steps=n)
         t0 = time.time()
+        def run(kw):
+            try:
+                return pipe(**kw).images[0]
+            except TypeError as e:
+                if "callback" not in str(e):
+                    raise
+                kw.pop("callback_on_step_end", None)
+                return pipe(**kw).images[0]
         try:
-            img = pipe(**kw).images[0]
-        except TypeError as e:
-            if "callback" not in str(e):
+            img = run(kw)
+        except torch.cuda.OutOfMemoryError:
+            if not refs:
                 raise
-            kw.pop("callback_on_step_end", None)
-            img = pipe(**kw).images[0]
+            print("메모리 부족 → 참고 사진을 512px로 줄여 다시")
+            gc.collect(); torch.cuda.empty_cache(); cap()
+            refs = load_refs(512)
+            kw["image"] = refs if len(refs) > 1 else refs[0]
+            say(progress=0, steps=n)
+            img = run(kw)
         img.save(req["out"])
-        print(f"그림 {time.time() - t0:.1f}초 (참고 {len(refs)}장)")
+        print(f"그림 {time.time() - t0:.1f}초 (참고 {len(refs)}장, 최대 {torch.cuda.max_memory_allocated() / 2**30:.1f}GB)")
+        del img
+        gc.collect(); torch.cuda.empty_cache(); torch.cuda.reset_peak_memory_stats()     # 쥐고 있던 메모리 돌려주기
         say(id=req.get("id"), ok=True, secs=round(time.time() - t0, 1), seed=seed)
     except torch.cuda.OutOfMemoryError as e:
-        torch.cuda.empty_cache()
+        gc.collect(); torch.cuda.empty_cache()
         say(id=req.get("id") if isinstance(req, dict) else None, ok=False, error="그래픽카드 메모리가 모자라요. 게임 등 다른 프로그램을 끄고 다시 해 보세요.")
     except Exception as e:
         say(id=req.get("id") if isinstance(req, dict) else None, ok=False, error=f"{type(e).__name__}: {e}", trace=traceback.format_exc()[-1500:])
@@ -519,12 +543,13 @@ class Runner:
         self.last = 0.0
         self.info: dict = {}
         self.progress: dict = {}
+        self.killed = False
         threading.Thread(target=self._idle_loop, daemon=True).start()
 
     def _idle_loop(self):
         while True:
             time.sleep(30)
-            if self.state == "ready" and time.time() - self.last > self.IDLE and not self.lock.locked() and not self.progress:
+            if self.state == "ready" and time.time() - self.last > self.IDLE and not self.lock.locked():
                 self.stop()
 
     def _read(self, timeout: float) -> dict:
@@ -533,6 +558,8 @@ class Runner:
         while time.time() < end:
             raw = self.proc.stdout.readline()
             if not raw:
+                if self.killed:
+                    raise RuntimeError("__stopped__")
                 raise RuntimeError("그림도구가 꺼졌어요. 그림도구 폴더의 draw.log를 확인해 주세요.")
             s = raw.decode("utf-8", "replace").strip()
             if s.startswith("@@"):
@@ -583,9 +610,21 @@ class Runner:
             pr["secs"] = int(time.time() - pr.get("since", time.time()))
         return {"state": self.state, "progress": pr, "mode": self.info.get("mode", "")}
 
-    def stop(self):
-        if self.lock.locked() and self.progress:      # 그리는 중이면 끄지 않음
+    def busy(self) -> bool:
+        return self.lock.locked()
+
+    def stop(self, force: bool = False):
+        if self.lock.locked() and not force:      # 켜는 중·그리는 중이면 끄지 않음
             return False
+        if force and self.lock.locked():
+            self.killed = True
+            p = self.proc
+            if p and p.poll() is None:
+                try:
+                    p.kill()
+                except Exception:  # noqa: BLE001
+                    pass
+            return True
         p, self.proc = self.proc, None
         self.state = "off"
         if p and p.poll() is None:
@@ -601,6 +640,7 @@ class Runner:
 
     def draw(self, prompt: str, refs: list, out: Path, steps: int = 4, seed: int = 0) -> dict:
         with self.lock:
+            self.killed = False
             if not self.proc or self.proc.poll() is not None:
                 try:
                     self._start()
@@ -620,6 +660,10 @@ class Runner:
             self.proc.stdin.flush()                                                               # type: ignore[union-attr]
             try:
                 r = self._read(900)
+            except RuntimeError:
+                if self.killed:
+                    self.proc, self.state = None, "off"
+                raise
             finally:
                 self.progress = {}
             self.last = time.time()
@@ -640,5 +684,5 @@ def runner(root: Path) -> Runner:
 
 def stop_all():
     for r in _RUNNERS.values():
-        r.progress = {}
+        r.stop(force=True)
         r.stop()

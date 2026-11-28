@@ -25,7 +25,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.9.13"
+VERSION = "1.9.14"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -1400,6 +1400,8 @@ class Api:
         from . import drawtool as _d
         r = _d._RUNNERS.get(str(self._drawtool().root))
         st["runner"] = r.view() if r else {"state": "off", "progress": {}}
+        b = self._batch()
+        st["batch_busy"] = bool(b.running and not b._stop)
         if with_gpu or not hasattr(self, "_gpu"):
             self._gpu = drawtool.gpu_info()
         st["gpu"] = self._gpu
@@ -1436,14 +1438,23 @@ class Api:
         return r if r.get("error") else self.drawtool_status()
 
     @_safe
-    def drawtool_stop(self) -> dict:
+    def drawtool_stop(self, force: bool = False) -> dict:
         from . import drawtool
         r = drawtool._RUNNERS.get(str(self._drawtool().root))
-        if r and r.state != "off":
-            if not r.stop():
-                return {"error": "그리는 중이라 끄지 않았어요. 멈추기를 먼저 눌러 주세요."}
+        if not r or r.state == "off":
+            return {"ok": True}
+        b = self._batch()
+        if b.running and not b._stop:
+            return {"error": "그리는 중이에요. '멈추기'를 먼저 눌러 주세요."}
+        if r.busy() and not force:
+            cur = next((i["person"].get("name", "") for i in b.items if i.get("status") == "running"), "")
+            return {"ask": True, "name": cur}
+        if force:
+            b.stop()
+        r.stop(force=force)
+        if not force:
             return {"ok": True, "stopped": True}
-        return {"ok": True}
+        return {"ok": True, "stopped": True, "dropped": True}
 
     @_safe
     def drawtool_cancel(self) -> dict:
@@ -1600,7 +1611,7 @@ class Api:
             r = drawtool._RUNNERS.get(str(self._drawtool().root))
             v = r.view() if r else {"state": "off", "progress": {}}
             meta["local_state"], meta["local_progress"] = v["state"], v["progress"]
-        return {"items": items, "running": b.running, "counts": b.counts(), "meta": meta}
+        return {"items": items, "running": b.running, "stopping": bool(b.running and b._stop), "counts": b.counts(), "meta": meta}
 
     @_safe
     def batch_thumbs(self, ids: list) -> dict:

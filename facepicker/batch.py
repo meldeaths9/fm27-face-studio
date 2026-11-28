@@ -170,6 +170,12 @@ class Batch:
                     self.meta["spent"] = self.meta.get("spent", 0) + 1
             except Exception as e:  # noqa: BLE001
                 msg = str(e)
+                if "__stopped__" in msg:          # 사용자가 그림도구를 끔 → 그 사람은 다시 대기로
+                    with self.lock:
+                        it.update(status="wait", err="")
+                    self._stop = True
+                    self.save()
+                    return
                 log.warning("대량 그리기 실패 %s: %s", it.get("uid"), msg)
                 with self.lock:
                     it.update(status="fail", err=_friendly(msg))
