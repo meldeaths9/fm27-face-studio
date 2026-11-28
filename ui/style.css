@@ -974,3 +974,42 @@ details.info .form { margin-top: 4px; }
 .ahead .bsub span + span::before { content: "· "; }
 .aidetail { background: none; border: 1px solid var(--line); }
 .aidetail .msel, .aidetail select { background: var(--bg2); border: 0; }
+/* 웹사이트 한 명씩 */
+.abwebset { display: flex; flex-direction: column; gap: 8px; }
+.abwebset .wrow { display: flex; align-items: center; gap: 10px; }
+.abwebset .wrow .grow { flex: 1; }
+.abwebset a { color: var(--accent2); cursor: pointer; font-size: 12px; }
+.abwebset .sel { height: 32px; flex: 1; background: var(--bg2); color: var(--text); border: 0; border-radius: 8px; padding: 0 8px; font: inherit; }
+.abwebset textarea { font-size: 12px; background: var(--bg2); border: 0; color: #c3cadc; }
+.dlg.ab #abWeb { padding: 0; display: flex; flex-direction: row; overflow: hidden; }
+.dlg.ab #abWeb[hidden] { display: none; }
+.abwlist { width: 220px; flex: none; border-right: 1px solid var(--line); padding: 16px 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.abwlist .wcnt { color: var(--muted); font-size: 12px; font-weight: 600; padding: 0 8px 8px; }
+.wrow2 { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 9px; cursor: pointer; color: var(--muted); }
+.wrow2:hover { background: var(--bg2); }
+.wrow2 .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wrow2 .st { font-size: 12px; }
+.wrow2.done { color: var(--text); } .wrow2.done .st { color: #2fd19f; }
+.wrow2.now { background: #1a1640; color: var(--text); font-weight: 600; } .wrow2.now .st { color: #a99bff; }
+.abwmain { flex: 1; min-width: 0; padding: 20px 24px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+.wstep { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 12px; background: var(--bg2); border: 1px solid transparent; }
+.wstep[hidden] { display: none; }
+.wstep.on { background: #1a1640; border-color: #5a46c9; }
+.wstep .wn { width: 30px; height: 30px; border-radius: 50%; background: #1f2740; color: var(--muted); font-weight: 700; display: grid; place-items: center; flex: none; }
+.wstep.on .wn { background: var(--accent); color: #fff; }
+.wstep.ok .wn { background: #2fd19f; color: #06231a; font-size: 0; }
+.wstep.ok .wn::after { content: "✓"; font-size: 14px; }
+.wstep .grow { flex: 1; min-width: 0; }
+.wstep b { display: block; font-weight: 600; }
+.wstep small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+.wstep.on .btn { background: var(--accent); color: #fff; font-weight: 600; }
+.wstep textarea { flex-basis: 100%; margin-left: 44px; font-size: 12px; line-height: 1.6; background: #0f1526; border: 0; color: #aab2c8; }
+.abwside { width: 320px; flex: none; padding: 20px 24px 20px 0; display: flex; flex-direction: column; gap: 12px; }
+.wrefs { display: flex; gap: 10px; }
+.wrefs > div { flex: 1; display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); }
+.wrefs img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; background: #141b2e; }
+.wdrop { aspect-ratio: 1; border-radius: 14px; border: 2px dashed #2e3a5e; display: grid; place-items: center; text-align: center; color: var(--muted); cursor: pointer; background: center / cover no-repeat; }
+.wdrop .i { width: 28px; height: 28px; display: block; margin: 0 auto 8px; }
+.wdrop.drag { border-color: var(--accent); background-color: rgba(108,80,245,.08); }
+.wdrop.has { border-style: solid; border-color: #2fd19f; }
+.wdrop.has > div { visibility: hidden; }

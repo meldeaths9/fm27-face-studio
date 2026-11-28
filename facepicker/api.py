@@ -25,7 +25,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.9.27"
+VERSION = "1.9.28"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -1705,6 +1705,8 @@ class Api:
         if b.running:
             return {"error": "이미 그리는 중이에요."}
         engine = str(opts.get("engine") or "gemini")
+        if engine == "web":                      # 웹사이트: 앱은 준비만, 그리는 건 사람이 사이트에서
+            return self._batch_web_start(people, task, opts)
         if engine not in AUTO_ENGINES:
             return {"error": "이 방식은 한꺼번에 그릴 수 없어요."}
         if engine == "local":
@@ -1737,6 +1739,122 @@ class Api:
         b.start(self._batch_job, workers=1 if engine == "local" else int(opts.get("workers") or 2), post=self._batch_post)
         return {"ok": True, "count": len(people), "skipped": skipped}
 
+    def _batch_web_start(self, people: list, task: str, opts: dict) -> dict:
+        b = self._batch()
+        site = str(opts.get("site") or "web_gemini")
+        if providers.BY_ID.get(site, {}).get("group") != "free_web":
+            site = "web_gemini"
+        people = [p for p in (people or []) if isinstance(p, dict) and p.get("uid")][:self.BATCH_MAX]
+        skipped = 0
+        if task == "kit":
+            keep = [p for p in people if self._index.get(str(p["uid"]).removeprefix("r-"))]
+            skipped, people = len(people) - len(keep), keep
+        if not people:
+            return {"error": "그릴 사람이 없어요." + (" 유니폼만 바꾸기는 지금 사진이 있는 사람만 돼요." if skipped else "")}
+        meta = {"task": task, "engine": site, "web": True, "cfg": {}, "kit_kind": opts.get("kit_kind", "home"),
+                "use_kit": bool(opts.get("use_kit", True)), "ref": bool(opts.get("ref")),
+                "expression": opts.get("expression", ""), "extra": str(opts.get("extra") or "").strip()[:500],
+                "action": str(opts.get("action") or "auto"), "banner": "none", "deco": {},
+                "kit_num": str(opts.get("kit_num") or ""), "kit_num_kind": str(opts.get("kit_num_kind") or "home"),
+                "started": time.time(), "won": 0}
+        b.reset(people, meta)
+        return {"ok": True, "count": len(people), "skipped": skipped, "web": True}
+
+    def _web_job(self, iid: str):
+        b = self._batch()
+        it = b.find(str(iid))
+        if not it:
+            raise RuntimeError("목록에 없는 사람이에요.")
+        if not it.get("web_prompt"):
+            prompt, photos = self._batch_job(it, b.meta)
+            names = ["참고사진", "유니폼"] if b.meta.get("task") != "kit" else ["선수사진", "유니폼"]
+            files = []
+            for k, ph in enumerate(photos):
+                files.append(str(providers.save_reference(ph, f"{names[min(k, 1)]}_{it['uid']}")))
+            if not files:
+                prompt = prompts.strip_ref(prompt)
+            with b.lock:
+                it["web_prompt"], it["web_files"] = prompt, files
+            b.save()
+        return it
+
+    @_safe
+    def batch_web_info(self, iid: str) -> dict:
+        it = self._web_job(iid)
+        thumbs = []
+        for f in it.get("web_files") or []:
+            try:
+                thumbs.append(_thumb_url(Path(f), 200))
+            except Exception:  # noqa: BLE001
+                pass
+        site = providers.BY_ID.get(self._batch().meta.get("engine"), {})
+        return {"prompt": it["web_prompt"], "thumbs": thumbs, "files": len(it.get("web_files") or []),
+                "site": site.get("name", ""), "url": site.get("url", "")}
+
+    @_safe
+    def batch_web_copy_photo(self, iid: str) -> dict:
+        it = self._web_job(iid)
+        files = it.get("web_files") or []
+        if not files:
+            return {"files": 0}
+        ok = False
+        try:
+            ok = clipboard.set_files_and_text(files, "")
+        except Exception as e:  # noqa: BLE001
+            log.warning("클립보드 실패: %s", e)
+        if not ok:
+            providers.reveal(Path(files[0]))
+        return {"files": len(files), "clip": ok}
+
+    @_safe
+    def batch_web_open(self) -> dict:
+        site = providers.BY_ID.get(self._batch().meta.get("engine"), {})
+        if site.get("url"):
+            webbrowser.open(site["url"])
+        return {"ok": True}
+
+    @_safe
+    def batch_web_set_prompt(self, iid: str, prompt: str) -> dict:
+        b = self._batch()
+        it = self._web_job(iid)
+        with b.lock:
+            it["web_prompt"] = str(prompt or "")[:4000]
+        b.save()
+        return {"ok": True}
+
+    @_safe
+    def batch_web_paste(self, iid: str, data_url: str = "") -> dict:
+        """사이트에서 나온 그림을 받아서 그 사람 결과로 저장."""
+        b = self._batch()
+        it = b.find(str(iid))
+        if not it:
+            return {"error": "목록에 없는 사람이에요."}
+        im = None
+        if data_url and "," in data_url:
+            im = Image.open(io.BytesIO(base64.b64decode(data_url.split(",", 1)[1])))
+        else:
+            from PIL import ImageGrab
+            data = ImageGrab.grabclipboard()
+            if isinstance(data, Image.Image):
+                im = data
+            elif isinstance(data, list) and data:
+                im = imaging.load_image(str(data[0]))
+        if im is None:
+            return {"error": "클립보드에 그림이 없어요. 사이트에서 그림을 오른쪽 클릭 → 이미지 복사 해 주세요."}
+        from .batch import _square
+        im = _square(im.convert("RGB"))
+        png = b.dir / f"{it['id']}_{int(time.time())}.png"
+        im.save(png, "PNG")
+        with b.lock:
+            b._drop(it)
+            it.update(status="done", png=str(png), err="", prompt=it.get("web_prompt", ""))
+        b.save()
+        return {"ok": True, "thumb": _thumb_url(png, 300), **self.batch_status()}
+
+    @_safe
+    def prompt_default(self) -> dict:
+        return {"ko": prompts.FACE["ko"], "template": self._cfg.prompt_template or ""}
+
     @_safe
     def batch_status(self) -> dict:
         b = self._batch()
@@ -1744,7 +1862,7 @@ class Api:
             items = [{"id": i["id"], "uid": i["uid"], "name": i["person"].get("name", ""), "club": i["person"].get("club", ""),
                       "status": i["status"], "err": i.get("err", ""), "ver": Path(i["png"]).name if i.get("png") else ""}
                      for i in b.items]
-            meta = {k: b.meta.get(k) for k in ("task", "engine", "kit_kind", "spent", "ref", "banner", "won")}
+            meta = {k: b.meta.get(k) for k in ("task", "engine", "kit_kind", "spent", "ref", "banner", "won", "web")}
         if meta.get("engine") == "local":
             from . import drawtool
             r = drawtool._RUNNERS.get(str(self._drawtool().root))
@@ -1782,7 +1900,7 @@ class Api:
     def batch_again(self, ids: list) -> dict:
         b = self._batch()
         b.again([str(i) for i in ids or []])
-        if not b.running:
+        if not b.running and not b.meta.get("web"):
             b.start(self._batch_job, workers=2)
         return self.batch_status()
 
@@ -1799,7 +1917,7 @@ class Api:
     @_safe
     def batch_resume(self) -> dict:
         b = self._batch()
-        if not b.running and b.counts().get("wait"):
+        if not b.running and not b.meta.get("web") and b.counts().get("wait"):
             b.start(self._batch_job, workers=2)
         return self.batch_status()
 

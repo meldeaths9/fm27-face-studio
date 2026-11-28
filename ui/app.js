@@ -1873,7 +1873,7 @@ async function renderABPrev() {
   el.innerHTML = st.running
     ? `<span>그리는 중이에요 · ${c.done + c.fail}/${tot}명</span>${st.meta.engine === "local" ? '<button class="btn sm" id="abPrevOff">멈추고 그림도구 끄기</button>' : '<button class="btn sm" id="abPrevStop">멈추기</button>'}<button class="btn sm primary" id="abPrevGo">진행 보기</button>`
     : `<span>지난번 그린 그림 ${c.done}장이 남아 있어요${c.done ? " · 아직 대기열에 안 넣었어요" : ""}${c.wait ? ` · 못 그린 ${c.wait}명` : ""}</span><button class="btn sm primary" id="abPrevGo">보러 가기</button>`;
-  $("#abPrevGo").onclick = async () => showABRun(await call("batch_status"));
+  $("#abPrevGo").onclick = async () => { if (st.meta.web && c.wait) { AB.wi = null; showABWeb(); } else showABRun(await call("batch_status")); };
   const off = $("#abPrevOff");
   if (off) off.onclick = async () => { await call("batch_stop"); await dtStop(); renderABPrev(); loadDT(false); };
   const sp = $("#abPrevStop");
@@ -1881,7 +1881,7 @@ async function renderABPrev() {
   if (st.running) abPrevTimer = setTimeout(renderABPrev, 2000);
 }
 async function showABSetup() {
-  stopABPoll();
+  stopABPoll(); abWebSet(false);
   $("#abSetup").hidden = false; $("#abRun").hidden = true;
   ["#abNew", "#abStop", "#abResume", "#abSelAll", "#abQueue"].forEach((k) => $(k).hidden = true);
   $("#abGo").hidden = false;
@@ -1899,11 +1899,12 @@ async function showABSetup() {
   AB.total = r.total; AB.max = r.max;
   renderABPeople();
 }
-const ENG_DESC = { local: "그래픽카드로 그려요 · 한 명 약 10초", gemini: "한 명 약 100원 · 참고 사진 잘 따라와요", openai: "쓴 만큼 요금", xai: "쓴 만큼 요금", codex: "ChatGPT 구독 사용량으로", cloudflare: "하루 무료 한도 · 참고 사진 못 보내요" };
+const ENG_DESC = { web: "사진·프롬프트를 한 명씩 사이트에 붙여넣어요", local: "그래픽카드로 그려요 · 한 명 약 10초", gemini: "한 명 약 100원 · 참고 사진 잘 따라와요", openai: "쓴 만큼 요금", xai: "쓴 만큼 요금", codex: "ChatGPT 구독 사용량으로", cloudflare: "하루 무료 한도 · 참고 사진 못 보내요" };
 function renderABEngines() {
   const sel = $("#abEngine"), cur = sel.value || "local";     // 기본은 내 PC 그림도구 (무료)
   const list = AB_ENG.map((id) => S.ai.find((x) => x.id === id)).filter(Boolean);
-  $("#abHold").append($("#abCost"), $("#abLocal"));
+  list.splice(2, 0, { id: "web", name: "웹사이트", group: "free_web", status: "" });
+  $("#abHold").append($("#abCost"), $("#abLocal"), $("#abWebSet"));
   const es = $("#abEngSet"); if (es) es.remove();
   sel.innerHTML = list.map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join("");
   sel.value = list.some((a) => a.id === cur) ? cur : "local";
@@ -1924,6 +1925,7 @@ function placeABEngine() {
   const box = $(`#abEngCards .engc[data-id="${eng}"] .engin`);
   if (!box) return;
   if (eng === "local") box.appendChild($("#abLocal"));
+  else if (eng === "web") { box.appendChild($("#abWebSet")); renderABWebSet(); }
   else {
     box.appendChild($("#abCost"));
     if (!$("#abEngSet") || $("#abEngSet").parentNode !== box) {
@@ -1938,7 +1940,7 @@ function placeABEngine() {
 async function abPrice() {
   const eng = $("#abEngine").value;
   placeABEngine();
-  AB.price = await call("batch_price", eng);
+  AB.price = eng === "web" ? { kind: "web" } : await call("batch_price", eng);
   $("#abLocal").hidden = eng !== "local";
   $("#abCost").hidden = eng === "local";
   if (eng === "local") loadDT(true);
@@ -2044,13 +2046,14 @@ function renderABCost() {
   const eng = $("#abEngine").value, a = S.ai.find((x) => x.id === eng) || {};
   let warn = "";
   if (!pr.ready) warn = ` <a id="abKey">${esc(a.name)} 연결 정보 넣기</a>`;
-  if (pr.kind === "free") el.innerHTML = `무료 사용량 안에서 그려요 (하루 한도가 있어요). 참고 사진은 못 보내서 <b>유니폼·지금 사진 참고가 빠져요</b>.${warn}`;
+  if (pr.kind === "web") el.innerHTML = "";
+  else if (pr.kind === "free") el.innerHTML = `무료 사용량 안에서 그려요 (하루 한도가 있어요). 참고 사진은 못 보내서 <b>유니폼·지금 사진 참고가 빠져요</b>.${warn}`;
   else if (pr.kind === "sub") el.innerHTML = `ChatGPT 구독 사용량으로 그려요. 많이 그리면 한도에 걸릴 수 있어요.${warn}`;
   else el.innerHTML = `1장 약 <b>${won(pr.won)}원</b> × ${n}명 = 약 <b>${won(pr.won * n)}원</b> <span class="hint">(${esc(pr.model)} · 예상값이에요. 다시 그리면 그만큼 더 나가요)</span>${warn}${BILLING_URL[eng] ? ` <a class="billink" data-url="${BILLING_URL[eng]}">잔액 보기</a>` : ""}`;
   $$("#abCost [data-url]").forEach((l) => l.onclick = () => call("open_url", l.dataset.url));
   const k = $("#abKey"); if (k) k.onclick = () => { $("#abModal").classList.remove("on"); openSettings(eng); };
   $("#abGo").disabled = !n;
-  $("#abGo").textContent = n ? `${n}명 그리기 시작` : "그리기 시작";
+  $("#abGo").textContent = eng === "web" ? (n ? `${n}명 한 명씩 시작` : "시작") : n ? `${n}명 그리기 시작` : "그리기 시작";
 }
 function renderABPeople() {
   const g = $("#abPeople");
@@ -2116,15 +2119,141 @@ $("#abGo").onclick = async () => {
   const left = prev ? prev.counts.done : 0;
   if (left && !await confirmBox("새로 그리기", `지난번 그림 ${left}장이 지워져요. 대기열에 넣을 게 있으면 먼저 '보러 가기'에서 넣어 주세요.\n\n지우고 새로 그릴까요?`, "지우고 시작", true)) return;
   if (pr.kind === "paid" && !await confirmBox("요금 확인", `${list.length}명을 그려요. 예상 요금은 약 ${won(pr.won * list.length)}원이에요.\n\n요금은 API 키에 연결한 결제에서 빠져나가요. 시작할까요?`, "시작")) return;
-  const r = await call("batch_start", list, AB.task, { engine: $("#abEngine").value, kit_kind: AB.kitKind, use_kit: $("#abKit").checked, ref: $("#abRef").checked, extra: $("#abExtra").value, action: $("#abAction").value, banner: "none", deco: {}, kit_num: AB.kitNum, kit_num_kind: AB.kitNumKind });
+  const r = await call("batch_start", list, AB.task, { site: $("#abWebSite").value, engine: $("#abEngine").value, kit_kind: AB.kitKind, use_kit: $("#abKit").checked, ref: $("#abRef").checked, extra: $("#abExtra").value, action: $("#abAction").value, banner: "none", deco: {}, kit_num: AB.kitNum, kit_num_kind: AB.kitNumKind });
   if (!r) return;
   if (r.error === "need_key") { toast("연결 정보가 없어요. 설정에서 넣어 주세요.", "err"); $("#abModal").classList.remove("on"); openSettings(r.engine); return; }
   if (r.skipped) toast(`지금 사진이 없는 ${r.skipped}명은 빼고 그려요.`, "info", 3500);
   AB.thumbs = {}; AB.ver = {}; AB.pick.clear();
+  if (r.web) { AB.wi = 0; showABWeb(); return; }
   showABRun(await call("batch_status"));
 };
+/* ---------------- 웹사이트로 한 명씩 */
+function renderABWebSet() {
+  const ws = $("#abWebSite"), cur = ws.value || S.settings.web_site || "web_gemini";
+  ws.innerHTML = S.ai.filter((a) => a.group === "free_web").map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join("");
+  ws.value = [...ws.options].some((o) => o.value === cur) ? cur : "web_gemini";
+  if (!$("#abWebTpl").dataset.loaded) {
+    call("prompt_default").then((r) => {
+      if (!r) return;
+      AB.tplDefault = r.ko;
+      $("#abWebTpl").value = r.template || r.ko;
+      $("#abWebTpl").dataset.loaded = "1";
+    });
+  }
+}
+$("#abWebSite").onchange = () => { S.settings.web_site = $("#abWebSite").value; };
+let tplTimer = 0;
+$("#abWebTpl").addEventListener("input", () => {
+  clearTimeout(tplTimer);
+  tplTimer = setTimeout(() => {
+    const v = $("#abWebTpl").value.trim();
+    const t = v === (AB.tplDefault || "").trim() ? "" : v;
+    S.settings.prompt_template = t; call("save_settings", { prompt_template: t });
+  }, 600);
+});
+$("#abWebTplReset").onclick = () => { $("#abWebTpl").value = AB.tplDefault || ""; S.settings.prompt_template = ""; call("save_settings", { prompt_template: "" }); };
+
+function abWebSet(on) {
+  ["#abWSkip", "#abWPrev", "#abWNext", "#abWDone"].forEach((k) => $(k).hidden = !on);
+  $("#abWeb").hidden = !on;
+}
+async function showABWeb() {
+  stopABPoll();
+  $("#abSetup").hidden = true; $("#abRun").hidden = true; $("#abGo").hidden = true;
+  ["#abNew", "#abStop", "#abResume", "#abSelAll", "#abQueue"].forEach((k) => $(k).hidden = true);
+  abWebSet(true);
+  const st = await call("batch_status");
+  if (!st) return;
+  AB.items = st.items;
+  if (AB.wi == null || AB.wi >= st.items.length) {
+    const k = st.items.findIndex((i) => i.status !== "done");
+    AB.wi = k < 0 ? 0 : k;
+  }
+  $("#abSum").textContent = "웹사이트 · 한 명씩";
+  $("#abNote").textContent = "그림을 붙여넣으면 다음 사람으로 넘어가요.";
+  renderABWeb();
+}
+async function renderABWeb() {
+  const items = AB.items, i = AB.wi, it = items[i];
+  const done = items.filter((x) => x.status === "done").length;
+  $("#abWList").innerHTML = `<div class="wcnt">${done} / ${items.length} 다 됨</div>` + items.map((x, k) => `<div class="wrow2 ${k === i ? "now" : ""} ${x.status}" data-k="${k}"><span class="nm">${esc(x.name)}</span><span class="st">${x.status === "done" ? "다 됨" : k === i ? "지금" : ""}</span></div>`).join("");
+  $$("#abWList .wrow2").forEach((r) => r.onclick = () => { AB.wi = +r.dataset.k; renderABWeb(); });
+  $("#abWPrev").disabled = i <= 0;
+  $("#abWNext").disabled = i >= items.length - 1;
+  $("#abWDone").textContent = done ? `결과 보기 (${done}장)` : "결과 보기";
+  $("#abWDone").disabled = !done;
+  if (!it) return;
+  ["#abW1", "#abW2", "#abW3"].forEach((k) => $(k).classList.remove("on", "ok"));
+  const info = await call("batch_web_info", it.id);
+  if (!info || AB.items[AB.wi] !== it) return;
+  AB.wInfo = info;
+  $("#abWPrompt").value = info.prompt;
+  $("#abW1").hidden = !info.files;
+  $("#abW1t").textContent = info.files > 1 ? `사진 ${info.files}장(얼굴·유니폼)이 같이 들어가요 · 사이트 입력칸에 Ctrl+V` : "사이트 입력칸에 Ctrl+V";
+  $(info.files ? "#abW1" : "#abW2").classList.add("on");
+  $("#abWRefs").innerHTML = info.thumbs.map((t, k) => `<div><span>${k === 0 && AB.task !== "kit" ? "참고 사진" : k === 0 ? "선수 사진" : "유니폼"}</span><img src="${t}"></div>`).join("");
+  const wd = $("#abWDrop");
+  wd.classList.toggle("has", it.status === "done");
+  wd.style.backgroundImage = "";
+  if (it.status === "done") {
+    const r = await call("batch_thumbs", [it.id]);
+    if (r && r.thumbs[it.id]) wd.style.backgroundImage = `url("${r.thumbs[it.id]}")`;
+  }
+}
+$("#abWCopyPhoto").onclick = async () => {
+  const it = AB.items[AB.wi]; if (!it) return;
+  const r = await call("batch_web_copy_photo", it.id);
+  if (!r) return;
+  if (!AB.webOpened) { AB.webOpened = true; call("batch_web_open"); }
+  toast(r.clip ? "사진을 복사했어요. 사이트 입력칸을 누르고 Ctrl+V 하세요." : "복사가 안 돼서 사진 폴더를 열었어요. 입력칸에 끌어다 놓아 주세요.", r.clip ? "ok" : "warn", 3500);
+  $("#abW1").classList.replace("on", "ok"); $("#abW2").classList.add("on");
+};
+$("#abWCopyPrompt").onclick = async () => {
+  const it = AB.items[AB.wi]; if (!it) return;
+  await copyText($("#abWPrompt").value);
+  if (!AB.webOpened) { AB.webOpened = true; call("batch_web_open"); }
+  toast("프롬프트를 복사했어요. 사진 뒤에 Ctrl+V 하고 보내세요.", "ok", 3000);
+  $("#abW2").classList.remove("on"); $("#abW2").classList.add("ok"); $("#abW3").classList.add("on");
+};
+$("#abWPrompt").addEventListener("change", () => { const it = AB.items[AB.wi]; if (it) call("batch_web_set_prompt", it.id, $("#abWPrompt").value); });
+async function abWebPut(dataUrl) {
+  const it = AB.items[AB.wi]; if (!it) return;
+  busy(true, "그림 받는 중…");
+  const r = await call("batch_web_paste", it.id, dataUrl || "");
+  busy(false);
+  if (!r) return;
+  if (r.error) { toast(r.error, "err", 4000); return; }
+  AB.items = r.items;
+  toast(`${it.name} 그림을 받았어요.`, "ok", 1800);
+  const nx = AB.items.findIndex((x, k) => k > AB.wi && x.status !== "done");
+  if (nx >= 0) AB.wi = nx;
+  renderABWeb();
+}
+$("#abWPasteBtn").onclick = () => abWebPut("");
+document.addEventListener("paste", (e) => {
+  if ($("#abWeb").hidden || !$("#abModal").classList.contains("on")) return;
+  if (e.target.closest("textarea, input")) return;
+  const f = [...(e.clipboardData?.items || [])].find((x) => x.type.startsWith("image/"));
+  e.preventDefault(); e.stopPropagation();
+  if (!f) { abWebPut(""); return; }
+  const rd = new FileReader(); rd.onload = () => abWebPut(rd.result); rd.readAsDataURL(f.getAsFile());
+}, true);
+$("#abWDrop").addEventListener("dragover", (e) => { e.preventDefault(); $("#abWDrop").classList.add("drag"); });
+$("#abWDrop").addEventListener("dragleave", () => $("#abWDrop").classList.remove("drag"));
+$("#abWDrop").addEventListener("drop", (e) => {
+  e.preventDefault(); e.stopPropagation(); $("#abWDrop").classList.remove("drag");
+  const f = [...(e.dataTransfer?.files || [])].find((x) => x.type.startsWith("image/"));
+  if (!f) return;
+  const rd = new FileReader(); rd.onload = () => abWebPut(rd.result); rd.readAsDataURL(f);
+});
+$("#abWDrop").onclick = () => abWebPut("");
+$("#abWSkip").onclick = () => { if (AB.wi < AB.items.length - 1) { AB.wi++; renderABWeb(); } };
+$("#abWPrev").onclick = () => { if (AB.wi > 0) { AB.wi--; renderABWeb(); } };
+$("#abWNext").onclick = () => { if (AB.wi < AB.items.length - 1) { AB.wi++; renderABWeb(); } };
+$("#abWDone").onclick = async () => { abWebSet(false); showABRun(await call("batch_status")); };
 
 function showABRun(st) {
+  abWebSet(false);
   $("#abSetup").hidden = true; $("#abRun").hidden = false; $("#abGo").hidden = true;
   ["#abNew", "#abSelAll", "#abQueue"].forEach((k) => $(k).hidden = false);
   $("#abNote").textContent = "다 그린 그림을 눌러 고르고 대기열에 넣어요.";
@@ -2140,7 +2269,8 @@ async function pollAB() {
   if (st && !st.running) stopABPoll();
 }
 async function renderABRun(st) {
-  AB.items = st.items; AB.running = st.running;
+  AB.items = st.items; AB.running = st.running; AB.web = !!st.meta.web;
+  $("#abResume").textContent = AB.web ? "이어서 붙여넣기" : "이어서 그리기";
   const need = st.items.filter((i) => i.ver && AB.ver[i.id] !== i.ver).map((i) => i.id);
   if (need.length) {
     const r = await call("batch_thumbs", need);
@@ -2216,7 +2346,7 @@ $("#abBigX").onclick = () => $("#abBig").classList.remove("on");
 $("#abBigAgain").onclick = () => { $("#abBig").classList.remove("on"); if (AB.big) abAgain([AB.big.id]); };
 $("#abBigDrop").onclick = () => { $("#abBig").classList.remove("on"); if (AB.big) abDrop([AB.big.id]); };
 $("#abStop").onclick = async () => { await call("batch_stop"); toast("지금 그리는 것까지만 하고 멈춰요.", "info", 2500); };
-$("#abResume").onclick = async () => { const st = await call("batch_resume"); if (st) { renderABRun(st); startABPoll(); } };
+$("#abResume").onclick = async () => { if (AB.web) { AB.wi = null; showABWeb(); return; } const st = await call("batch_resume"); if (st) { renderABRun(st); startABPoll(); } };
 $("#abSelAll").onclick = () => { AB.items.filter((i) => i.status === "done").forEach((i) => AB.pick.add(i.id)); abQueueBtn(); $$("#abResults .abp.done").forEach((e) => e.classList.add("on")); };
 $("#abNew").onclick = () => showABSetup();      // 결과는 그대로 두고 설정 화면으로
 $("#abQueue").onclick = async () => {

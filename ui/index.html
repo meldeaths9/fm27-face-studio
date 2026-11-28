@@ -317,7 +317,11 @@
         <div class="absec"><span class="lbl3">그리기 도구</span>
           <select id="abEngine" class="sel" hidden></select><span class="hint" id="abEngHint" hidden></span>
           <div class="engcards" id="abEngCards"></div>
-          <div hidden id="abHold"><div class="abcost" id="abCost"></div><div class="ablocal" id="abLocal" hidden></div></div></div>
+          <div hidden id="abHold"><div class="abcost" id="abCost"></div><div class="ablocal" id="abLocal" hidden></div>
+            <div class="abwebset" id="abWebSet"><div class="wrow"><span class="lbl3">사이트</span><select id="abWebSite" class="sel"></select></div>
+              <div class="wrow"><span class="lbl3 grow">기본 프롬프트 · {subject} 같은 칸에 사람마다 이름·나이·피부·머리가 들어가요</span><a id="abWebTplReset">처음대로</a></div>
+              <textarea id="abWebTpl" rows="5"></textarea>
+              <span class="hint">증명사진에만 쓰여요. 설정 → 프롬프트의 '프롬프트 틀'과 같은 거예요.</span></div></div></div>
         <label class="abtoggle" id="abRefRow"><span class="switch"><input type="checkbox" id="abRef"><i></i></span><span><b>지금 얼굴 참고하기</b><small>사진이 있으면 그 사진, 사진 없는 뉴젠은 게임 얼굴을 보고 닮은 사람으로 그려요</small></span></label>
         <div class="absec"><span class="lbl3">유니폼</span>
           <div class="abkitrow"><input type="checkbox" id="abKit" checked hidden>
@@ -338,6 +342,19 @@
       </div>
     </div>
   </div>
+  <div class="db" id="abWeb" hidden>
+    <div class="abwlist" id="abWList"></div>
+    <div class="abwmain">
+      <div class="wstep" id="abW1"><span class="wn">1</span><div class="grow"><b>사진 복사</b><small id="abW1t">사이트 입력칸에 Ctrl+V</small></div><button class="btn" id="abWCopyPhoto">사진 복사</button></div>
+      <div class="wstep" id="abW2"><span class="wn">2</span><div class="grow"><b>프롬프트 복사</b><small>사진 뒤에 한 번 더 Ctrl+V 하고 보내기</small></div><button class="btn" id="abWCopyPrompt">프롬프트 복사</button>
+        <textarea id="abWPrompt" rows="4"></textarea></div>
+      <div class="wstep" id="abW3"><span class="wn">3</span><div class="grow"><b>나온 그림을 복사해서 여기에 붙여넣기</b><small>그림에서 오른쪽 클릭 → 이미지 복사 → 이 창에서 Ctrl+V</small></div><button class="btn" id="abWPasteBtn">붙여넣기</button></div>
+    </div>
+    <div class="abwside">
+      <div class="wrefs" id="abWRefs"></div>
+      <div class="wdrop" id="abWDrop"><div><svg class="i"><use href="#i-clip"/></svg><span>여기에 붙여넣기 (Ctrl+V)<br>또는 그림 파일 끌어다 놓기</span></div></div>
+    </div>
+  </div>
   <div class="db" id="abRun" hidden>
     <div class="abprog"><div class="abbar"><i id="abFill"></i></div><span id="abProgText"></span></div>
     <div class="abwarn" id="abLocalWarn" hidden></div>
@@ -349,6 +366,10 @@
     <button class="btn" id="abStop" hidden>멈추기</button>
     <button class="btn" id="abResume" hidden>이어서 그리기</button>
     <button class="btn" id="abSelAll" hidden>다 된 것 모두 고르기</button>
+    <button class="btn ghost" id="abWSkip" hidden>이 사람 건너뛰기</button>
+    <button class="btn" id="abWPrev" hidden>‹ 이전</button>
+    <button class="btn" id="abWNext" hidden>다음 사람 ›</button>
+    <button class="btn primary" id="abWDone" hidden>결과 보기</button>
     <button class="btn primary" id="abGo">그리기 시작</button>
     <button class="btn primary" id="abQueue" hidden disabled>고른 것 대기열에 넣기</button></div>
 </div></div>
