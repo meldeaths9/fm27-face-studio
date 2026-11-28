@@ -25,7 +25,7 @@ from .people import People, plain
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.9.31"
+VERSION = "1.9.32"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -467,7 +467,7 @@ class Api:
                 return
         self._reading = {"active": True, "path": str(p), "started": _t.time(), "error": ""}
         try:
-            data = savedata.read_save(p)
+            data = self._read_save(p)
             self._people.set(data)
             self._cfg.last_save = str(p)
             self._cfg.save()
@@ -477,6 +477,16 @@ class Api:
             self._reading["error"] = f"{type(e).__name__}: {e}"
         finally:
             self._reading["active"] = False
+
+    @staticmethod
+    def _read_save(p) -> dict:
+        """세이브 읽기는 일꾼 프로세스에서 (앱 메모리가 불어나지 않게). 안 되면 여기서 직접."""
+        from . import worker
+        if worker.run(["save", str(p)], timeout=900):
+            data = savedata.load_cache(p)
+            if data is not None:
+                return data
+        return savedata.read_save(p)
 
     @_safe
     def read_save_now(self, which: str = "current") -> dict:
@@ -838,7 +848,7 @@ class Api:
         data = savedata.load_cache(p)
         cached = data is not None
         if data is None:
-            data = savedata.read_save(p)
+            data = self._read_save(p)
         self._people.set(data)
         self._cfg.last_save = str(p)
         current = savedata.last_saved_game()
@@ -857,7 +867,7 @@ class Api:
         p = Path(self._cfg.last_save)
         if not p.exists():
             return {"error": f"세이브 파일이 없어요: {p}"}
-        self._people.set(savedata.read_save(p))
+        self._people.set(self._read_save(p))
         return self._people_info()
 
     @_safe

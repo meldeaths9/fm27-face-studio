@@ -241,60 +241,80 @@ class FaceIndex:
                         return
                 except Exception:
                     pass
-            ours_name = self.ours_name or PACK_FOLDER_NAME
-            ours_dirs = {(root / n).resolve() for n in (ours_name, *OLD_PACK_FOLDER_NAMES)}
-            folders: list[str] = []
-            fidx: dict[str, int] = {}
-            ours_f: list[bool] = []
-            prefixes: list[str] = [""]
-            pidx: dict[str, int] = {"": 0}
-            rows: list[tuple] = []
-            odd: dict[str, dict] = {}
-            ours_entries: dict[str, dict] = {}
-            ext_i = {e: i for i, e in enumerate(EXTS)}
-            for cfg, uid, entry in iter_records(root, cfgs):
-                is_ours = cfg.parent.resolve() in ours_dirs
-                entry["ours"] = is_ours
-                if is_ours:
-                    ours_entries[uid] = entry
-                    continue
-                folder, name = os.path.split(entry["path"])
-                fi = fidx.get(folder)
-                if fi is None:
-                    fi = fidx[folder] = len(folders)
-                    folders.append(folder)
-                    ours_f.append(False)
-                stem, ext = os.path.splitext(name)
-                ei = ext_i.get(ext.lower()) if ext.lower() == ext or ext.lower() in ext_i else None
-                ok = ei is not None and EXTS[ei] == ext and stem.endswith(uid) and uid.lstrip("-").isdigit()
-                if ok:
-                    pre = stem[: len(stem) - len(uid)]
-                    pi = pidx.get(pre)
-                    if pi is None:
-                        pi = pidx[pre] = len(prefixes)
-                        prefixes.append(pre)
-                    odd.pop(uid, None)
-                    rows.append((int(uid), fi, pi, ei, 1 if entry["regen"] else 0))
-                else:
-                    odd[uid] = entry          # 드문 경우는 그대로 (odd가 배열보다 먼저 찾아진다)
-            m = CompactMap.build(rows, folders, ours_f, prefixes, odd)
-            # 우리 폴더는 이름이 맨 뒤라 보통 이긴다. 그래도 우리보다 뒤 폴더가 같은 사람을 지정하면 그쪽이 보인다
-            ours_key = pack_sort_key(ours_name)
-            for uid, e in ours_entries.items():
-                cur = m.get(uid)
-                top = Path(cur["path"]).relative_to(root).parts[0] if cur else ""
-                if not cur or pack_sort_key(top) <= ours_key:
-                    m.odd[uid] = e
-            result = m
-            self.map, self.root, self.configs = result, str(root), len(cfgs)
-            self.built_at = time.time()
-            try:
-                m.save(self._cache_path(), {"version": VERSION, "root": str(root), "stamp": stamp})
-            except OSError:
-                pass
-            log.info("얼굴 색인: config %d개, 사진 %d개, %.1f초", len(cfgs), len(result), time.time() - t0)
-        finally:
+            from . import worker
+            if worker.run(["index", str(root), self.ours_name or PACK_FOLDER_NAME], timeout=900):
+                try:
+                    m, meta = CompactMap.load(self._cache_path())
+                    if meta.get("version") == VERSION and meta.get("root") == str(root) and meta.get("stamp") == stamp:
+                        self.map, self.root, self.configs = m, str(root), len(cfgs)
+                        self.built_at = time.time()
+                        log.info("얼굴 색인(일꾼): config %d개, 사진 %d장, %.1f초", len(cfgs), len(m), time.time() - t0)
+                        return
+                except Exception:  # noqa: BLE001
+                    pass
+            self._build_here(root, cfgs, stamp)
+        except Exception:  # noqa: BLE001
+            log.exception("얼굴 색인 실패")
+
+    def _build_here(self, root: Path, cfgs: list | None = None, stamp: list | None = None) -> None:
+        """이 프로세스에서 직접 색인을 만든다 (일꾼 프로세스에서 쓰임)."""
+        t0 = time.time()
+        if cfgs is None:
+            cfgs = self._configs(root)
+            stamp = self._stamp(cfgs)
+        ours_name = self.ours_name or PACK_FOLDER_NAME
+        ours_dirs = {(root / n).resolve() for n in (ours_name, *OLD_PACK_FOLDER_NAMES)}
+        folders: list[str] = []
+        fidx: dict[str, int] = {}
+        ours_f: list[bool] = []
+        prefixes: list[str] = [""]
+        pidx: dict[str, int] = {"": 0}
+        rows: list[tuple] = []
+        odd: dict[str, dict] = {}
+        ours_entries: dict[str, dict] = {}
+        ext_i = {e: i for i, e in enumerate(EXTS)}
+        for cfg, uid, entry in iter_records(root, cfgs):
+            is_ours = cfg.parent.resolve() in ours_dirs
+            entry["ours"] = is_ours
+            if is_ours:
+                ours_entries[uid] = entry
+                continue
+            folder, name = os.path.split(entry["path"])
+            fi = fidx.get(folder)
+            if fi is None:
+                fi = fidx[folder] = len(folders)
+                folders.append(folder)
+                ours_f.append(False)
+            stem, ext = os.path.splitext(name)
+            ei = ext_i.get(ext.lower()) if ext.lower() == ext or ext.lower() in ext_i else None
+            ok = ei is not None and EXTS[ei] == ext and stem.endswith(uid) and uid.lstrip("-").isdigit()
+            if ok:
+                pre = stem[: len(stem) - len(uid)]
+                pi = pidx.get(pre)
+                if pi is None:
+                    pi = pidx[pre] = len(prefixes)
+                    prefixes.append(pre)
+                odd.pop(uid, None)
+                rows.append((int(uid), fi, pi, ei, 1 if entry["regen"] else 0))
+            else:
+                odd[uid] = entry          # 드문 경우는 그대로 (odd가 배열보다 먼저 찾아진다)
+        m = CompactMap.build(rows, folders, ours_f, prefixes, odd)
+        # 우리 폴더는 이름이 맨 뒤라 보통 이긴다. 그래도 우리보다 뒤 폴더가 같은 사람을 지정하면 그쪽이 보인다
+        ours_key = pack_sort_key(ours_name)
+        for uid, e in ours_entries.items():
+            cur = m.get(uid)
+            top = Path(cur["path"]).relative_to(root).parts[0] if cur else ""
+            if not cur or pack_sort_key(top) <= ours_key:
+                m.odd[uid] = e
+        result = m
+        self.map, self.root, self.configs = result, str(root), len(cfgs)
+        self.built_at = time.time()
+        try:
+            m.save(self._cache_path(), {"version": VERSION, "root": str(root), "stamp": stamp})
+        except OSError:
             pass
+        log.info("얼굴 색인: config %d개, 사진 %d개, %.1f초", len(cfgs), len(result), time.time() - t0)
+
 
     def get(self, uid: str) -> dict | None:
         return self.map.get(str(uid))

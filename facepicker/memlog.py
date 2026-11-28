@@ -23,8 +23,11 @@ def rss_mb() -> float:
                         ("PrivateUsage", ctypes.c_size_t)]
         pmc = PMC()
         pmc.cb = ctypes.sizeof(PMC)
-        h = ctypes.windll.kernel32.GetCurrentProcess()
-        if ctypes.windll.psapi.GetProcessMemoryInfo(h, ctypes.byref(pmc), pmc.cb):
+        k32, psapi = ctypes.WinDLL("kernel32"), ctypes.WinDLL("psapi")
+        k32.GetCurrentProcess.restype = wintypes.HANDLE
+        psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(PMC), wintypes.DWORD]
+        psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+        if psapi.GetProcessMemoryInfo(k32.GetCurrentProcess(), ctypes.byref(pmc), pmc.cb):
             return pmc.PrivateUsage / 1048576
         return 0.0
     try:
@@ -37,9 +40,32 @@ def rss_mb() -> float:
     return 0.0
 
 
+def ws_mb() -> float:
+    """작업 집합(작업 관리자 숫자에 가까움)."""
+    if sys.platform != "win32":
+        return rss_mb()
+    try:
+        from ctypes import wintypes
+
+        class PMC(ctypes.Structure):
+            _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD),
+                        ("PeakWorkingSetSize", ctypes.c_size_t), ("WorkingSetSize", ctypes.c_size_t)] + \
+                       [(n, ctypes.c_size_t) for n in ("a", "b", "c", "d", "e", "f", "g")]
+        pmc = PMC()
+        pmc.cb = ctypes.sizeof(PMC)
+        k32, psapi = ctypes.WinDLL("kernel32"), ctypes.WinDLL("psapi")
+        k32.GetCurrentProcess.restype = wintypes.HANDLE
+        psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(PMC), wintypes.DWORD]
+        if psapi.GetProcessMemoryInfo(k32.GetCurrentProcess(), ctypes.byref(pmc), pmc.cb):
+            return pmc.WorkingSetSize / 1048576
+    except Exception:  # noqa: BLE001
+        pass
+    return 0.0
+
+
 def mark(tag: str) -> float:
     v = rss_mb()
-    log.info("메모리 %s: %.0fMB", tag, v)
+    log.info("메모리 %s: 전용 %.0fMB · 작업 집합 %.0fMB", tag, v, ws_mb())
     return v
 
 
@@ -49,7 +75,13 @@ def trim() -> None:
     gc.collect()
     if sys.platform == "win32":
         try:
-            ctypes.windll.psapi.EmptyWorkingSet(ctypes.windll.kernel32.GetCurrentProcess())
+            from ctypes import wintypes
+            k32, psapi = ctypes.WinDLL("kernel32"), ctypes.WinDLL("psapi")
+            k32.GetCurrentProcess.restype = wintypes.HANDLE
+            psapi.EmptyWorkingSet.argtypes = [wintypes.HANDLE]
+            psapi.EmptyWorkingSet(k32.GetCurrentProcess())
+            # 파이썬 C 메모리 더미에 남은 빈 공간도 돌려준다
+            ctypes.CDLL("msvcrt")._heapmin()
         except Exception:  # noqa: BLE001
             pass
 

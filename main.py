@@ -24,6 +24,7 @@ def setup_logging() -> None:
         handlers.append(logging.StreamHandler(sys.stderr))
     logging.basicConfig(level=logging.DEBUG, handlers=handlers,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.getLogger("PIL").setLevel(logging.INFO)
     try:
         import faulthandler
         faulthandler.enable(open(log_dir() / "crash.log", "w", encoding="utf-8"))
@@ -128,6 +129,10 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    if "--worker" in sys.argv:              # 무거운 일만 하고 끝나는 일꾼 (세이브 읽기·사진 색인)
+        i = sys.argv.index("--worker")
+        from facepicker import worker
+        sys.exit(worker.main(sys.argv[i + 1:]))
     if "--install-plugin" in sys.argv:      # 관리자 권한으로 다시 실행됐을 때
         i = sys.argv.index("--install-plugin")
         from facepicker import gamesetup
