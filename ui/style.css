@@ -1045,3 +1045,17 @@ details.info .form { margin-top: 4px; }
 .engc { background: #131a2e; border-color: #262f4a; }
 .abseg4 button { white-space: nowrap; padding: 0 10px; }
 .abkitrow { flex-wrap: wrap; }
+.btool2 .sp { flex: 1; }
+.etag.sub { color: #7aa7ff; }
+.lbl3, .lbl2 { color: #e2e6f2; }
+.olbl { color: #fff; }
+.uidlbl { font-size: 13px; font-weight: 700; color: #e2e6f2; }
+.pcard2 .fst.pack { color: #aab2c8; } .pcard2 .fst.pack i { background: #7aa7ff; }
+.ptools { display: flex; flex-wrap: wrap; gap: 6px; }
+.ptools .btn { height: 36px; padding: 0 12px; font-size: 13px; background: #131a2e; border: 1px solid #262f4a; color: #e2e6f2; }
+.ptools .btn:hover:not(:disabled) { background: #1f2740; }
+.ptools .btn:disabled { opacity: .45; }
+.ptools .btn[hidden] { display: none; }
+.estage .stage { flex: 1; }
+.esec h3 { color: #fff; }
+.dcolors .dcol span { color: #e2e6f2; }

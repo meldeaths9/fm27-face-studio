@@ -35,7 +35,6 @@ const S = {
   ai: [],
   styles: {},
   defaultPrompt: "",
-  promptDirty: false,
   deco: { caption: false, text: "", style: "gold", rounded: false, radius: 14, border: false, text_color: "", border_color: "" },
   decoTextDirty: false,
 };
@@ -172,14 +171,14 @@ async function doSearch(reset = true) {
 }
 function cardHtml(p, i) {
   const st = p.queued ? ["q", "대기 중"] : p.face_state === "ours" ? ["ours", "내 사진"] : p.face_state === "none" ? ["none", "사진 없음"]
-    : p.face_state === "game" ? ["game", "게임 얼굴"] : ["pack", p.pack || "다른 팩"];
+    : p.face_state === "game" ? ["game", "게임 얼굴"] : ["pack", "다른 페이스팩"];
   const sq = p.squad && p.squad !== "1군" ? ` · ${esc(p.squad)}` : "";
   const extra = (p.me ? " · 내 감독" : "") + (p.newgen ? " · 뉴젠" : "");
   return `<div class="pcard2${SEL.has(String(p.uid)) ? " sel" : ""}${p.queued ? " queued" : ""}${p.pinned ? " pinned" : ""}" data-i="${i}">
     <div class="ph2${p.face_state === "game" ? " gameface" : ""}">${p.face ? `<img src="${p.face}" loading="lazy">` : ""}<span class="selck" title="고르기 (Ctrl+클릭·Shift+클릭·끌어서 여러 명)"></span><button class="pinb${p.pinned ? " on" : ""}" title="${p.pinned ? "고정 풀기" : "고정: 다른 팀을 검색해도 맨 위에 보여요"}">📌</button><div class="dropcue">사진을 놓으면<br>바로 대기열에</div></div>
     <div class="nm">${esc(p.name)}</div>
     <div class="sub"><span class="cl">${esc(p.club || "무소속")}${p.alt ? ` (${esc(p.alt)})` : ""}</span><span class="rest">${sq}${p.age ? " · " + esc(p.age) + "세" : ""}${p.job && !p.me ? " · " + esc(p.job) : ""}${extra}</span></div>
-    <div class="fst ${st[0]}"><i></i>${esc(st[1])}</div></div>`;
+    <div class="fst ${st[0]}"${st[0] === "pack" && p.pack ? ` title="페이스팩 폴더: ${esc(p.pack)}"` : ""}><i></i>${esc(st[1])}</div></div>`;
 }
 /* ---------------- 여러 명 고르기 */
 const SEL = new Map();          // uid → 사람
@@ -429,8 +428,7 @@ function openManual() {
   resetEditor();
   showCurrent(null);
   showView("edit");
-  S.promptDirty = false; autoPrompt();
-  $("#infoBox").open = true;
+  $("#infoBox").hidden = false; $("#infoBox").open = true;
   $("#fUid").focus();
 }
 $("#btnManual").onclick = openManual;
@@ -493,7 +491,6 @@ function setKind(k) {
   S.kind = k;
   $$("#kindSeg button").forEach((x) => x.classList.toggle("on", x.dataset.kind === k));
   $("#sqRow").hidden = k !== "player";
-  $("#mgrOutfit").hidden = k !== "manager";
 }
 function person() {
   return {
@@ -514,21 +511,19 @@ function fillPerson(p) {
 async function pickPerson(p, idx) {
   resetEditor();          // 앞 사람 사진이 오른쪽 미리보기에 남지 않게 먼저 비운다
   S.cur = p;
-  loadGameKits(p);
   S.selUid = p.uid;
   S.curIdx = typeof idx === "number" ? idx : -1;
   fillPerson(p);
-  $("#infoBox").open = false;
+  $("#infoBox").hidden = true;
   showView("edit");
   updatePN();
-  S.promptDirty = false;
   const cur = await call("current_face", p.uid);
   showCurrent(cur || { face: "" });
   if (p.queued) {
     busy(true, "대기열 사진 불러오는 중…");
     const r = await call("load_queued", p.uid);
     busy(false);
-    if (r && !r.error) { await setPhoto(r); toast("대기열에 넣었던 사진이에요. 고친 뒤 다시 대기열에 넣으면 바뀌어요.", "ok", 2500); autoPrompt(); return; }
+    if (r && !r.error) { await setPhoto(r); toast("대기열에 넣었던 사진이에요. 고친 뒤 다시 대기열에 넣으면 바뀌어요.", "ok", 2500); return; }
   }
   if (cur && cur.face) {
     busy(true, "지금 사진 불러오는 중…");
@@ -538,11 +533,10 @@ async function pickPerson(p, idx) {
   } else {
     resetEditor();
   }
-  autoPrompt();
 }
-$("#btnClear").onclick = () => { S.selUid = null; fillPerson({ kind: S.kind, newgen: S.kind === "support" }); showCurrent(null); S.promptDirty = false; autoPrompt(); };
-["#fClub", "#fAge", "#fNat"].forEach((s) => $(s).addEventListener("input", () => { updateCard(); autoPromptSoon(); }));
-$("#fName").addEventListener("input", () => { syncDecoText(); updateCard(); autoPromptSoon(); });
+$("#btnClear").onclick = () => { S.selUid = null; fillPerson({ kind: S.kind, newgen: S.kind === "support" }); showCurrent(null); };
+["#fClub", "#fAge", "#fNat"].forEach((s) => $(s).addEventListener("input", () => { updateCard(); }));
+$("#fName").addEventListener("input", () => { syncDecoText(); updateCard(); });
 $("#fNewgen").onchange = updateCard;
 $("#fUid").addEventListener("input", async () => {
   const raw = $("#fUid").value;
@@ -587,7 +581,6 @@ function setPhoto(payload, keepBox = false) {
       $("#pvBox").classList.toggle("checker", !!S.photo.nobg);
       S.photo.box = clampBox(S.photo.box);
       syncZoom(); drawStage(); res();
-      if (!S.promptDirty) autoPrompt();
     };
     img.src = payload.url;
   });
@@ -795,93 +788,6 @@ $("#dBorder").onchange = () => { S.deco.border = $("#dBorder").checked; decoChan
 $("#dRadius").addEventListener("input", () => { S.deco.radius = +$("#dRadius").value; drawStage(); clearTimeout(decoSaveTimer); decoSaveTimer = setTimeout(() => call("save_settings", { deco: S.deco }), 600); });
 $("#dText").addEventListener("input", () => { S.decoTextDirty = true; S.deco.text = $("#dText").value; requestPreview(); });
 
-/* ------------------------------------------------------------------ AI */
-function curAI() { return S.ai.find((a) => a.id === S.settings.ai_provider) || S.ai[0]; }
-function renderAISel() {
-  const sel = $("#aiSel");
-  sel.innerHTML = Object.entries(GROUPS).map(([g, label]) => {
-    const items = S.ai.filter((a) => a.group === g);
-    return `<optgroup label="${esc(label)}">` + items.map((a) => `<option value="${a.id}">${esc(a.name)}${a.group === "free_web" ? "" : " · " + esc(a.status)}</option>`).join("") + "</optgroup>";
-  }).join("");
-  sel.value = curAI().id;
-  updateAIButton();
-}
-function updateAIButton() {
-  const a = curAI();
-  const web = a.group === "free_web";
-  $("#btnAIText").textContent = web ? "사이트 열기" : "AI 생성";
-  $("#aiNote").textContent = web ? "① 사진 붙여넣기 → ② 프롬프트 붙여넣기 → 완성 사진을 복사해서 여기서 Ctrl+V"
-    : (!a.ref ? "이 방식은 참고 사진을 못 보내요" : a.status === "키 없음" || a.status === "설치 안 됨" ? "설정(⚙)에서 연결해 주세요" : "");
-}
-$("#aiSel").onchange = () => {
-  S.settings.ai_provider = $("#aiSel").value;
-  call("save_settings", { ai_provider: S.settings.ai_provider });
-  updateAIButton();
-  if (!S.promptDirty) autoPrompt();
-};
-let pTimer;
-function autoPromptSoon() { clearTimeout(pTimer); pTimer = setTimeout(autoPrompt, 300); }
-async function autoPrompt(force = false) {
-  if (S.promptDirty && !force) return;
-  const t = await call("build_prompt", person(), $("#sendPhoto").checked, S.aiMode || "face", S.settings.expression || "random");
-  if (typeof t === "string") { $("#prompt").value = t; if (force) S.promptDirty = false; }
-}
-$("#prompt").addEventListener("input", () => S.promptDirty = true);
-$("#btnPrompt").onclick = () => autoPrompt(true);
-$("#sendPhoto").onchange = () => {
-  S.settings.send_photo = $("#sendPhoto").checked;
-  call("save_settings", { send_photo: S.settings.send_photo });
-  if (!S.promptDirty) autoPrompt();
-};
-S.aiMode = "face";
-$$("#aiMode .chip").forEach((c) => c.onclick = () => {
-  S.aiMode = c.dataset.m;
-  $$("#aiMode .chip").forEach((x) => x.classList.toggle("on", x === c));
-  $("#sendPhotoWrap").style.display = S.aiMode === "uniform" ? "none" : "";
-  $("#refMode").style.display = S.aiMode === "uniform" ? "none" : "";
-  $("#exprRow").hidden = S.aiMode === "uniform";
-  $("#kitHint").innerHTML = S.aiMode === "uniform"
-    ? "편집기 사진(선수)은 그대로 두고 옷만 바꿔요. 유니폼 사진이 없으면 <b>소속 팀의 홈 유니폼</b>으로 요청해요."
-    : "유니폼 사진을 넣으면 그 유니폼을 입혀요. 없으면 <b>소속 팀의 홈 유니폼</b>으로 요청해요.";
-  S.promptDirty = false; autoPrompt(true);
-  if (S.aiMode === "uniform" && !S.photo) toast("유니폼을 바꿀 선수 사진을 먼저 넣어 주세요.", "info", 3500);
-});
-/* 게임 유니폼 (플러그인이 클럽 화면에서 모아 둔 실제 유니폼 그림) */
-S.kitSrc = ""; S.gkits = {}; S.gkitKind = "";
-async function loadGameKits(p) {
-  S.gkits = {}; S.gkitKind = "";
-  if (S.kitSrc === "off") S.kitSrc = "";
-  const club = p && p.cuid;
-  if (club) { const r = await call("game_kits", String(club)); S.gkits = (r && r.kits) || {}; }
-  if (S.kitSrc !== "manual") {
-    const kind = p && p.kind === "player" ? ["home", "away", "third"].find((k) => S.gkits[k]) : "";
-    if (kind) await useGameKit(kind, true);
-    else if (S.kitSrc === "game") { await call("clear_kit"); S.kitSrc = ""; $("#kitImg").innerHTML = "<span>유니폼<br>사진</span>"; $("#btnKitX").hidden = true; }
-  }
-  renderGameKits();
-}
-async function useGameKit(kind, quiet) {
-  const club = S.cur && S.cur.cuid;
-  const r = await call("use_game_kit", String(club || ""), kind);
-  if (!r || r.error) return;
-  S.kitSrc = "game"; S.gkitKind = kind;
-  setKitThumb(r);
-  if (!quiet) toast(`게임 ${({ home: "홈", away: "원정", third: "서드" })[kind]} 유니폼을 넣었어요.`, "ok", 1800);
-  renderGameKits();
-}
-function renderGameKits() {
-  const el = $("#gameKits"), ks = Object.keys(S.gkits || {});
-  const isPlayer = S.cur && S.cur.kind === "player";
-  if (!ks.length) {
-    el.hidden = !(isPlayer && S.cur && S.cur.cuid);
-    el.innerHTML = `<span class="hint">게임에서 이 구단의 <b>구단 프로필</b> 화면을 한 번 열면 실제 유니폼을 가져와요 · 플러그인</span>`;
-    return;
-  }
-  el.hidden = false;
-  el.innerHTML = `<span class="hint">게임 유니폼</span>` + ["home", "away", "third"].filter((k) => S.gkits[k]).map((k) =>
-    `<button class="chip ${S.kitSrc === "game" && S.gkitKind === k ? "on" : ""}" data-k="${k}"><img src="${S.gkits[k]}">${({ home: "홈", away: "원정", third: "서드" })[k]}</button>`).join("");
-  $$("#gameKits .chip").forEach((b) => b.onclick = () => useGameKit(b.dataset.k));
-}
 /* 게임 유니폼 고르기 창: 모인 유니폼 전부를 구단 이름으로 검색, 아무 유니폼이나 입히기, 구단 짝 기억 */
 const KIND_KO = { home: "홈", away: "원정", third: "서드" };
 let KIT_PICK_CB = null;          // 'AI로 한꺼번에'에서 유니폼 하나를 고를 때
@@ -889,7 +795,7 @@ async function renderKitGrid() {
   const r = await call("kit_list", $("#kitQ").value.trim());
   const g = $("#kitGrid");
   if (!r || !r.items) { g.innerHTML = ""; return; }
-  const cur = !KIT_PICK_CB && S.cur && S.cur.cuid ? String(S.cur.cuid) : "", curName = S.cur && S.cur.club;
+  const cur = "", curName = "";
   if (!r.items.length) {
     g.innerHTML = `<div class="hint" style="padding:30px;text-align:center">${$("#kitQ").value.trim() ? "찾는 구단의 유니폼이 없어요." : "아직 모인 유니폼이 없어요. 게임에서 구단 프로필을 열어 주세요 (플러그인 필요)."}</div>`;
     return;
@@ -906,76 +812,15 @@ async function renderKitGrid() {
   $$(".kcard", g).forEach((el) => {
     const x = r.items[+el.dataset.i];
     $$(".kimg", el).forEach((b) => b.onclick = async () => {
-      if (KIT_PICK_CB) { KIT_PICK_CB(x, b.dataset.k); KIT_PICK_CB = null; $("#kitModal").classList.remove("on"); return; }
-      const res = await call("use_kit_num", x.num, b.dataset.k);
-      if (!res || res.error) return;
-      S.kitSrc = "manual"; setKitThumb(res); renderGameKits();
-      $("#kitModal").classList.remove("on");
-      toast(`${x.name || "유니폼 " + x.num + "번"} ${KIND_KO[b.dataset.k]} 유니폼을 입혀요.`, "ok", 2000);
+      if (KIT_PICK_CB) KIT_PICK_CB(x, b.dataset.k);
+      KIT_PICK_CB = null; $("#kitModal").classList.remove("on");
     });
     $(".khide", el).onclick = async () => { await call("hide_kit", x.num, true); toast("유니폼을 숨겼어요. 창 아래에서 다시 보이게 할 수 있어요.", "info", 2200); renderKitGrid(); };
-    const m = $(".kmem", el);
-    if (m) m.onclick = async () => {
-      if (!await confirmBox("유니폼 기억", `이 유니폼(${x.name || "유니폼 " + x.num + "번"})을 '${curName}' 구단 것으로 기억할까요?\n다음부터 ${curName} 선수에게 자동으로 들어가요.`, "기억하기")) return;
-      const res = await call("remember_kit", x.num, cur);
-      if (res && res.ok) { toast(`'${curName}' 유니폼으로 기억했어요.`, "ok", 2000); await loadGameKits(S.cur); renderKitGrid(); }
-    };
   });
 }
 let kitQT;
-$("#btnKitPick").onclick = () => { KIT_PICK_CB = null; $("#kitQ").value = (S.cur && S.cur.club) || ""; $("#kitModal").classList.add("on"); renderKitGrid(); setTimeout(() => $("#kitQ").select(), 50); };
 $("#kitQ").addEventListener("input", () => { clearTimeout(kitQT); kitQT = setTimeout(renderKitGrid, 200); });
 $("#kitX").onclick = () => { KIT_PICK_CB = null; $("#kitModal").classList.remove("on"); };
-function setKitThumb(r) {
-  if (!r || !r.thumb) return;
-  $("#kitImg").innerHTML = `<img src="${r.thumb}">`;
-  $("#btnKitX").hidden = false;
-  if (!S.promptDirty) autoPrompt(true);
-}
-$("#btnKit").onclick = () => $("#kitFile").click();
-$("#kitFile").onchange = () => {
-  const f = $("#kitFile").files[0];
-  if (!f) return;
-  const rd = new FileReader();
-  rd.onload = async () => { S.kitSrc = "manual"; setKitThumb(await call("set_kit", rd.result)); renderGameKits(); };
-  rd.readAsDataURL(f);
-  $("#kitFile").value = "";
-};
-$("#btnKitX").onclick = async () => {
-  await call("clear_kit");
-  S.kitSrc = "off";             // 직접 뺐으면 이 사람에게는 게임 유니폼도 자동으로 안 넣는다
-  renderGameKits();
-  $("#kitImg").innerHTML = "<span>유니폼<br>사진</span>";
-  $("#btnKitX").hidden = true;
-  if (!S.promptDirty) autoPrompt(true);
-};
-$("#btnStep2").onclick = async () => {
-  await copyText(S.step2Prompt || $("#prompt").value);
-  toast("프롬프트를 복사했어요. 사이트 입력칸에 Ctrl+V 하세요.\n완성된 사진을 복사해서 여기서 Ctrl+V 하면 편집기로 들어와요.", "ok", 6000);
-  $("#step2").hidden = true;
-};
-$("#btnStep2X").onclick = () => $("#step2").hidden = true;
-function renderExpr() {
-  const cur = S.settings.expression || "random";
-  $("#exprChips").innerHTML = Object.entries(S.expressions || {}).map(([k, v]) => `<button class="chip ${k === cur ? "on" : ""}" data-e="${k}">${esc(v)}</button>`).join("");
-  $$("#exprChips .chip").forEach((c) => c.onclick = () => {
-    S.settings.expression = c.dataset.e;
-    call("save_settings", { expression: c.dataset.e });
-    renderExpr();
-    S.promptDirty = false; autoPrompt(true);
-  });
-  const rm = S.settings.ref_mode || "game";
-  $$("#refMode .chip").forEach((c) => {
-    c.classList.toggle("on", c.dataset.r === rm);
-    c.title = c.dataset.r === "game" ? "참고 사진이 게임의 3D 얼굴일 때: 따라 그리지 말고 실제 사진으로 새로 만들어요" : "참고 사진이 실제 사람 사진일 때: 얼굴을 그대로 유지해요";
-    c.onclick = () => { S.settings.ref_mode = c.dataset.r; call("save_settings", { ref_mode: c.dataset.r }); renderExpr(); S.promptDirty = false; autoPrompt(true); };
-  });
-  const mo = S.settings.manager_outfit || "suit";
-  $$("#mgrOutfit .chip").forEach((c) => {
-    c.classList.toggle("on", c.dataset.o === mo);
-    c.onclick = () => { S.settings.manager_outfit = c.dataset.o; call("save_settings", { manager_outfit: c.dataset.o }); renderExpr(); S.promptDirty = false; autoPrompt(true); };
-  });
-}
 let hintTimer;
 $("#fClubHint").addEventListener("input", () => {
   clearTimeout(hintTimer);
@@ -985,44 +830,9 @@ $("#fClubHint").addEventListener("input", () => {
     S.settings.club_hints = S.settings.club_hints || {};
     if (hint) S.settings.club_hints[club] = hint; else delete S.settings.club_hints[club];
     await call("set_club_hint", club, hint);
-    if (!S.promptDirty) autoPrompt();
   }, 400);
 });
 $("#fClub").addEventListener("input", () => { $("#fClubHint").value = ((S.settings.club_hints || {})[$("#fClub").value.trim()]) || ""; });
-$("#btnAI").onclick = async () => {
-  let prompt = $("#prompt").value.trim();
-  if (!prompt) { await autoPrompt(true); prompt = $("#prompt").value.trim(); }
-  const a = curAI();
-  const mode = S.aiMode || "face";
-  if (mode === "uniform" && !S.photo) { toast("유니폼을 바꿀 선수 사진을 먼저 넣어 주세요.", "err"); return; }
-  const send = $("#sendPhoto").checked && !!S.photo;
-  if (a.group === "free_web") {
-    const r = await call("ai_web", a.id, prompt, send, mode);
-    if (!r) return;
-    if (r.step2) {
-      S.step2Prompt = prompt;
-      $("#step2").hidden = false;
-      toast(`${a.name}을 열었어요.\n① 사이트 입력칸에 Ctrl+V → 사진 ${r.files}장이 들어가요.\n② 여기서 '프롬프트 복사'를 누르고 한 번 더 Ctrl+V 하세요.`, "ok", 9000);
-      return;
-    }
-    if (!r.clip) await copyText(prompt);
-    const how = r.clip && r.files > 1 ? "선수 사진·유니폼 사진·프롬프트를 함께 복사했어요.\n사이트 입력칸을 누르고 Ctrl+V 한 번이면 같이 들어가요."
-      : r.clip && r.with_photo ? "참고 사진과 프롬프트를 함께 복사했어요.\n사이트 입력칸을 누르고 Ctrl+V 한 번이면 같이 들어가요."
-      : r.with_photo ? "프롬프트를 복사했어요. 참고 사진 파일이 있는 폴더도 열었으니 입력칸에 끌어다 놓아 주세요."
-      : "프롬프트를 복사했어요. 사이트 입력칸에 Ctrl+V 하세요.";
-    toast(`${a.name}을 열었어요.\n${how}\n완성된 사진을 복사해서 여기서 Ctrl+V 하면 편집기로 들어와요.`, "ok", 9000);
-    return;
-  }
-  busy(true, "AI가 사진을 만드는 중…", a.name + " · 보통 10초~1분");
-  $("#btnAI").disabled = true;
-  const r = await call("ai_generate", a.id, prompt, send, mode);
-  busy(false); $("#btnAI").disabled = false;
-  if (!r) return;
-  if (r.error === "need_key") { toast(`${a.name} 연결 정보가 없어요. 설정에서 넣어 주세요.`, "err"); openSettings(a.id); return; }
-  await setPhoto(r);
-  toast("AI 사진 완성! 위치를 맞추고 대기열에 추가하세요.", "ok");
-};
-
 /* ------------------------------------------------------------------ 3. 대기열 */
 let _qSig = null, _qTimer = 0;
 function cardsFollowQueue() {
@@ -1177,7 +987,6 @@ async function editApplied(uid) {
   showView("edit");
   showCurrent(await call("current_face", r.person.uid));
   if (r.photo) await setPhoto(r.photo);
-  S.promptDirty = false; autoPrompt();
 }
 $("#btnConflict").onclick = async () => {
   const b0 = $("#btnConflict"), t0 = b0.innerHTML;
@@ -1319,7 +1128,6 @@ $("#btnSaveSettings").onclick = async () => {
   $("#mSettings").classList.remove("on");
   toast("설정을 저장했어요.", "ok", 2000);
   if ($("#abModal").classList.contains("on") && !$("#abSetup").hidden) { delete $("#abWebTpl").dataset.loaded; renderABEngines(); }
-  if (!S.promptDirty) autoPrompt();
 };
 $("#btnFolder").onclick = () => call("open_pack_dir");
 document.addEventListener("keydown", (e) => {
@@ -1461,9 +1269,8 @@ function applyState(st) {
   S.people = st.people; S.queue = st.queue; S.bgReady = st.bg_ready; S.expressions = st.expressions;
   S.deco = { ...S.deco, ...(st.settings.deco || {}), text: S.deco.text };
   $("#ver").textContent = "v" + st.version;
-  $("#sendPhoto").checked = !!st.settings.send_photo;
   if (!st.face_ai) $("#btnAuto").title = "얼굴 인식 모델이 없어 기본 위치로 맞춰요";
-  renderQueue(); renderDeco(); renderAISel(); renderExpr();
+  renderQueue(); renderDeco();
 }
 (async () => {
   API = await ready();
@@ -1473,7 +1280,6 @@ function applyState(st) {
   if (!st) return;
   applyState(st);
   updateCard();
-  autoPrompt();
   refreshAppliedCount();
   doSearch(true);
   pollStatus();
@@ -1559,13 +1365,7 @@ document.addEventListener("keydown", (e) => {
     else if ((S.curIdx ?? -1) > 0) stepPerson(-1); else goBack();
     return;
   }
-  if (ctrl && e.shiftKey && (e.key === "C" || e.key === "c")) {
-    if (!inEdit()) return;
-    e.preventDefault();
-    copyText($("#prompt").value).then(() => toast("프롬프트를 복사했어요.", "ok", 1800));
-    return;
-  }
-  if (ctrl && (e.key === "g" || e.key === "G")) { if (inEdit()) { e.preventDefault(); $("#btnAI").click(); } return; }
+  if (ctrl && (e.key === "g" || e.key === "G")) { if (inEdit()) { e.preventDefault(); $("#btnEditAI").click(); } return; }
   if (ctrl && e.key === "Enter") { if (inEdit() && !$("#btnAdd").disabled) { e.preventDefault(); $("#btnAdd").click(); } return; }
   if (ctrl && (e.key === "f" || e.key === "F")) {
     e.preventDefault();
@@ -1853,8 +1653,8 @@ $("#bulkGo").onclick = async () => {
 
 /* ================================================================ AI로 한꺼번에 그리기 */
 const AB = { banner: "none", deco: { caption: false, style: "gold", rounded: false, border: false }, kitNum: "", kitNumKind: "home", kitNumImg: "", kitNumName: "", people: [], sel: new Set(), task: "face", kitKind: "home", thumbs: {}, ver: {}, items: [], pick: new Set(), timer: 0, running: false, price: null, big: null };
-// 품질 좋은 순서 → 같은 품질이면 무료 먼저
-const AB_ENG = ["gemini", "openai", "xai", "codex", "web", "local"];
+// 무료 → 유료 → 구독
+const AB_ENG = ["local", "web", "gemini", "openai", "xai", "codex"];
 const ENG_Q = { gemini: ["최고", "q4"], openai: ["최고", "q4"], xai: ["최고", "q4"], codex: ["최고", "q4"], web: ["낮음", "q2"], local: ["아주 낮음", "q1"] };
 const AB_TASK_HINT = { face: "게임 외모 설명(피부·머리)으로 새 얼굴을 그려요.", kit: "지금 사진의 얼굴은 두고 옷만 바꿔요. 지금 사진이 있는 사람만 돼요.", gunzo: "경기장에서 뛰는 모습을 그려요. 얼굴 참고를 켜면 지금 얼굴로 그려요." };
 
@@ -1916,7 +1716,7 @@ function renderABEngines() {
   $("#abEngCards").innerHTML = list.map((a) => {
     const paid = a.group === "api", tag = a.group === "sub" ? "구독" : paid ? "유료" : "무료";
     const q = ENG_Q[a.id] || ["", ""];
-    return `<div class="engc" data-id="${a.id}"><button class="enghd"><span class="rd"></span><span class="grow"><b>${esc(a.id === "local" ? "내 PC 그리기 도구" : a.id === "gemini" ? "제미나이 API" : a.name)}</b><small>${esc(ENG_DESC[a.id] || a.status)}</small></span><span class="etags"><span class="etag ${paid ? "paid" : ""}">${tag}</span><span class="eq ${q[1]}">품질 ${esc(q[0])}</span></span></button>
+    return `<div class="engc" data-id="${a.id}"><button class="enghd"><span class="rd"></span><span class="grow"><b>${esc(a.id === "local" ? "내 PC 그리기 도구 (무제한)" : a.id === "web" ? "웹사이트 (하루 한도)" : a.id === "gemini" ? "제미나이 API" : a.name)}</b><small>${esc(ENG_DESC[a.id] || a.status)}</small></span><span class="etags"><span class="etag ${paid ? "paid" : a.group === "sub" ? "sub" : ""}">${tag}</span><span class="eq ${q[1]}">품질 ${esc(q[0])}</span></span></button>
       <div class="engdet"><div class="engin"></div></div></div>`;
   }).join("");
   $$("#abEngCards .engc").forEach((c) => c.querySelector(".enghd").onclick = () => {
@@ -2386,7 +2186,11 @@ $("#abQueue").onclick = async () => {
     }]];
     if (inp) {
       items.push(["붙여넣기", async () => {
-        try { const t = await navigator.clipboard.readText(); inp.focus(); inp.setRangeText(t, inp.selectionStart, inp.selectionEnd, "end"); inp.dispatchEvent(new Event("input", { bubbles: true })); } catch (_) { /* 무시 */ }
+        let t = "";
+        try { const r = await window.pywebview.api.paste_text(); t = (r && r.text) || ""; } catch (_) { /* 아래 방식으로 */ }
+        if (!t) { try { t = await navigator.clipboard.readText(); } catch (_) { /* 무시 */ } }
+        if (!t) { toast("붙여넣을 글자가 없어요.", "warn", 1500); return; }
+        inp.focus(); inp.setRangeText(t, inp.selectionStart, inp.selectionEnd, "end"); inp.dispatchEvent(new Event("input", { bubbles: true }));
       }]);
       items.push(["모두 선택", () => { inp.focus(); inp.select(); }]);
     } else {

@@ -67,3 +67,30 @@ def set_files_and_text(paths: list[str | Path], text: str = "") -> bool:
     finally:
         u32.CloseClipboard()
     return True
+
+
+def get_text() -> str:
+    """클립보드의 글자 (없으면 빈 글자)."""
+    if sys.platform != "win32":
+        return ""
+    k32, u32 = _api()
+    from ctypes import wintypes
+    u32.GetClipboardData.restype = wintypes.HANDLE
+    u32.GetClipboardData.argtypes = [wintypes.UINT]
+    for _ in range(10):
+        if u32.OpenClipboard(None):
+            break
+        time.sleep(0.05)
+    else:
+        return ""
+    try:
+        h = u32.GetClipboardData(CF_UNICODETEXT)
+        if not h:
+            return ""
+        p = k32.GlobalLock(h)
+        try:
+            return ctypes.wstring_at(p) if p else ""
+        finally:
+            k32.GlobalUnlock(h)
+    finally:
+        u32.CloseClipboard()

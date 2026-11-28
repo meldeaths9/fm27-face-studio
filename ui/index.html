@@ -69,7 +69,7 @@
   <!-- ===== 첫 화면: 대상 고르기 ===== -->
   <section class="view on panel" id="viewBrowse">
     <div class="bhead">
-      <div class="bttl"><h1>대상 고르기</h1><div class="bsub"><span id="bStat"></span><a id="btnManual" title="세이브 없이 UID로 바로 편집">UID로 직접 편집</a><label class="field uidf"><input id="qUid" placeholder="UID 넣고 Enter" autocomplete="off"></label></div></div>
+      <div class="bttl"><h1>대상 고르기</h1><div class="bsub"><span id="bStat"></span><span class="uidlbl">UID로 직접 편집</span><a id="btnManual" hidden></a><label class="field uidf"><input id="qUid" placeholder="UID 넣고 Enter" autocomplete="off"></label></div></div>
       <div class="sp"></div>
       <button class="bigbtn bai" id="btnAB"><svg class="i"><use href="#i-wand"/></svg><span><b>AI로 그리기</b><small id="abCnt">지금 목록</small></span></button>
       <button class="bigbtn bblk" id="btnBulk"><svg class="i"><use href="#i-image"/></svg><span><b>대량 변경</b><small>사진 폴더로 한 번에</small></span></button>
@@ -103,15 +103,6 @@
     </div>
 
     <div class="ecol estage">
-      <div class="toolbar">
-        <button class="btn sm" id="btnOpen"><svg class="i"><use href="#i-upload"/></svg>불러오기</button>
-        <button class="btn sm" id="btnPaste"><svg class="i"><use href="#i-clip"/></svg>붙여넣기</button>
-        <button class="btn sm" id="btnAuto" disabled><svg class="i"><use href="#i-scan"/></svg>얼굴 맞춤</button>
-        <button class="btn sm" id="btnNobg" disabled><svg class="i"><use href="#i-eraser"/></svg>배경 제거</button>
-        <div class="sp"></div>
-        <button class="btn sm" id="btnUseCur" hidden>지금 사진 불러오기</button>
-        <button class="btn sm ghost" id="btnRevert" disabled title="AI 생성 전 원본으로"><svg class="i"><use href="#i-undo"/></svg>원본으로</button>
-      </div>
       <input type="file" id="file" accept="image/*" hidden>
       <input type="file" id="kitFile" accept="image/*" hidden>
       <div class="stage grow" id="stage" tabindex="0">
@@ -146,17 +137,29 @@
               <label class="field sm"><input id="dText" placeholder="넣을 이름"></label>
               <div class="chips" id="dStyle"></div>
               <div class="drow"><label class="switch"><input type="checkbox" id="dRound"><i></i>둥근 모서리</label>
-              <label class="switch"><input type="checkbox" id="dBorder"><i></i>테두리</label></div>
+              <input type="checkbox" id="dBorder" hidden></div>
               <input type="range" id="dRadius" min="2" max="50" value="14">
               <div class="dcolors">
-                <label class="dcol" id="dTextColW" title="이름 글씨 색"><span>글씨 색</span><input type="color" id="dTextCol"><button class="mini" data-reset="text_color" title="스타일 기본색으로">기본</button></label>
-                <label class="dcol" id="dBorderColW" title="테두리 색"><span>테두리 색</span><input type="color" id="dBorderCol"><button class="mini" data-reset="border_color" title="스타일 기본색으로">기본</button></label>
+                <label class="dcol" id="dTextColW" title="이름 글씨 색"><span>직접 고르기</span><input type="color" id="dTextCol"><button class="mini" data-reset="text_color" title="스타일 기본색으로">기본</button></label>
+                <span id="dBorderColW" hidden><input type="color" id="dBorderCol"></span>
               </div>
             </div>
           </div>
         </div>
 
-        <details class="esec info" id="infoBox">
+        <div class="esec">
+          <h3>사진</h3>
+          <div class="ptools">
+<button class="btn sm" id="btnOpen"><svg class="i"><use href="#i-upload"/></svg>불러오기</button>
+        <button class="btn sm" id="btnPaste"><svg class="i"><use href="#i-clip"/></svg>붙여넣기</button>
+        <button class="btn sm" id="btnAuto" disabled><svg class="i"><use href="#i-scan"/></svg>얼굴 맞춤</button>
+        <button class="btn sm" id="btnNobg" disabled><svg class="i"><use href="#i-eraser"/></svg>배경 제거</button>
+        
+        <button class="btn sm" id="btnUseCur" hidden>지금 사진 불러오기</button>
+        <button class="btn sm ghost" id="btnRevert" disabled title="AI 생성 전 원본으로"><svg class="i"><use href="#i-undo"/></svg>원본으로</button>
+          </div>
+        </div>
+        <details class="esec info" id="infoBox" hidden>
           <summary><h3>인물 정보</h3><span class="hint" id="curFrom"></span></summary>
           <div class="nm" id="whoName" hidden>이름 없음</div>
           <div class="hint" id="curLook" hidden></div>
@@ -175,31 +178,6 @@
           </div>
         </details>
 
-        <div class="ai" hidden>
-          <div class="hd"><svg class="i spark"><use href="#i-spark"/></svg>AI로 만들기
-            <div class="chips" id="aiMode" style="margin-left:6px"><button class="chip on" data-m="face">새 얼굴</button><button class="chip" data-m="uniform">유니폼만 바꾸기</button></div>
-            <div class="sp"></div>
-            <select id="aiSel"></select>
-          </div>
-          <div class="exprrow" id="exprRow"><span class="lbl2">표정</span><div class="chips" id="exprChips"></div>
-            <div class="chips" id="mgrOutfit" hidden style="margin-left:10px"><button class="chip" data-o="suit">정장</button><button class="chip" data-o="training">트레이닝복</button></div></div>
-          <div class="kitrow" id="kitRow">
-            <div class="kitimg" id="kitImg"><span>유니폼<br>사진</span></div>
-            <div class="hint grow" id="kitHint">유니폼 사진을 넣으면 그 유니폼을 입혀요. 없으면 <b>소속 팀의 홈 유니폼</b>으로 요청해요.</div>
-            <div class="gkits" id="gameKits" hidden></div>
-            <button class="btn sm" id="btnKitPick">유니폼 고르기</button>
-            <button class="btn sm" id="btnKit">유니폼 사진</button><button class="btn sm ghost" id="btnKitX" hidden>빼기</button>
-          </div>
-          <div class="step2" id="step2" hidden><span><b>① 사진</b>을 사이트에 붙여넣었으면</span><button class="btn sm primary" id="btnStep2">② 프롬프트 복사</button><span class="hint">누른 다음 사이트에서 한 번 더 Ctrl+V</span><button class="x" id="btnStep2X" title="닫기"><svg class="i"><use href="#i-x"/></svg></button></div>
-          <textarea id="prompt" rows="3" placeholder="프롬프트 — 인물을 고르면 자동으로 채워져요"></textarea>
-          <div class="row">
-            <label class="switch" id="sendPhotoWrap"><input type="checkbox" id="sendPhoto" checked><i></i>현재 사진 참고</label>
-            <div class="chips" id="refMode" title="참고 사진이 게임 3D 얼굴이면 '게임 얼굴'"><button class="chip" data-r="game">게임 얼굴</button><button class="chip" data-r="photo">실제 사진</button></div>
-            <span class="hint grow" id="aiNote"></span>
-            <button class="btn sm" id="btnPrompt"><svg class="i"><use href="#i-wand"/></svg>자동 작성</button>
-            <button class="btn sm primary" id="btnAI"><svg class="i"><use href="#i-spark"/></svg><span id="btnAIText">AI 생성</span></button>
-          </div>
-        </div>
       </div>
       <button class="btn big primary" id="btnAdd"><svg class="i"><use href="#i-plus"/></svg>대기열에 추가</button>
     </div>
@@ -393,7 +371,7 @@
       <label class="switch"><input type="checkbox" id="mdCap" checked><i></i>이름띠</label>
       <div class="seg abseg3" id="mdStyle"><button data-v="gold">금색</button><button data-v="white">흰색</button><button data-v="navy">남색</button></div>
       <label class="switch"><input type="checkbox" id="mdRound"><i></i>모서리 둥글게</label>
-      <label class="switch"><input type="checkbox" id="mdBorder"><i></i>테두리</label></div></div>
+      <input type="checkbox" id="mdBorder" hidden></div></div>
     <div class="abgrid big" id="mdGrid"></div>
   </div>
   <div class="df"><span class="hint grow" id="mdNote"></span><button class="btn" id="mdClose">닫기</button><button class="btn primary" id="mdGo">대기열에 넣기</button></div>
@@ -404,8 +382,7 @@
     <tr><td><kbd>Esc</kbd> · <kbd>마우스 뒤로가기</kbd></td><td>선수 목록으로</td></tr>
     <tr><td><kbd>Alt</kbd>+<kbd>←</kbd> / <kbd>Alt</kbd>+<kbd>→</kbd></td><td>이전 / 다음 선수</td></tr>
     <tr><td><kbd>Ctrl</kbd>+<kbd>F</kbd></td><td>이름 검색칸</td></tr>
-    <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd></td><td>프롬프트 복사</td></tr>
-    <tr><td><kbd>Ctrl</kbd>+<kbd>G</kbd></td><td>AI 만들기 / 사이트 열기</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>G</kbd></td><td>이 사람 AI로 그리기</td></tr>
     <tr><td><kbd>Ctrl</kbd>+<kbd>Enter</kbd></td><td>대기열에 넣기</td></tr>
     <tr><td><kbd>Ctrl</kbd>+<kbd>V</kbd></td><td>복사한 사진 붙여넣기</td></tr>
     <tr><td><kbd>?</kbd></td><td>이 창 열기</td></tr>

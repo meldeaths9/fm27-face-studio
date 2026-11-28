@@ -25,7 +25,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.9.29"
+VERSION = "1.9.30"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -568,6 +568,14 @@ class Api:
             return {"ok": False}
 
     @_safe
+    def paste_text(self) -> dict:
+        try:
+            return {"text": clipboard.get_text()}
+        except Exception as e:  # noqa: BLE001
+            log.warning("글자 붙여넣기 실패: %s", e)
+            return {"text": ""}
+
+    @_safe
     def find_uid(self, uid: str) -> dict:
         """UID로 세이브 속 사람 찾기 (첫 화면 UID 칸)."""
         clean, _ = _clean_uid(uid)
@@ -1000,37 +1008,6 @@ class Api:
         return {"count": n, "skipped": skipped, "queue": self._queue_view()}
 
     # ---------------------------------------------------------------- AI
-    @_safe
-    def set_kit(self, data_url: str) -> dict:
-        self._kit = _from_data_url(data_url)
-        t = self._kit.copy()
-        t.thumbnail((160, 160))
-        return {"thumb": _data_url(t)}
-
-    @_safe
-    def set_kit_path(self, path: str) -> dict:
-        self._kit = imaging.load_image(path)
-        t = self._kit.copy()
-        t.thumbnail((160, 160))
-        return {"thumb": _data_url(t)}
-
-    @_safe
-    def clear_kit(self) -> bool:
-        self._kit = None
-        return True
-
-    @_safe
-    def game_kits(self, club: str) -> dict:
-        """이 클럽의 게임 유니폼 (플러그인이 클럽 화면에서 모아 둔 것)."""
-        kits = gamesetup.kit_images(club, self._cfg.kit_aliases)
-        out = {}
-        for k, pth in kits.items():
-            try:
-                out[k] = _thumb_url(pth, 96)
-            except Exception:  # noqa: BLE001
-                pass
-        return {"kits": out}
-
     def _club_names(self) -> dict:
         key = id(self._people.items)
         if getattr(self, "_cn_key", None) != key:
@@ -1088,45 +1065,6 @@ class Api:
         self._cfg.save()
         return {"ok": True}
 
-    @_safe
-    def remember_kit(self, num: str, club: str) -> dict:
-        """'이 구단 유니폼으로 기억': 유니폼 번호를 이 구단 것으로."""
-        num, club = str(num), str(club)
-        if not (num.isdigit() and club.isdigit()):
-            return {"error": "구단 번호가 없어요."}
-        al = dict(self._cfg.kit_aliases or {})
-        if gamesetup.KIT_ALIASES.get(num, num) == club:
-            al.pop(num, None)
-        else:
-            al[num] = club
-        self._cfg.kit_aliases = al
-        self._cfg.save()
-        return {"ok": True}
-
-    @_safe
-    def use_kit_num(self, num: str, kind: str) -> dict:
-        pth = gamesetup.kit_files(num).get(kind)
-        return self._set_game_kit(pth)
-
-    @_safe
-    def use_game_kit(self, club: str, kind: str) -> dict:
-        pth = gamesetup.kit_images(club, self._cfg.kit_aliases).get(kind)
-        return self._set_game_kit(pth)
-
-    def _set_game_kit(self, pth) -> dict:
-        if not pth:
-            return {"error": "이 클럽의 게임 유니폼이 아직 없어요."}
-        im = imaging.load_image(str(pth))
-        bg = Image.new("RGB", im.size, (235, 235, 235))      # 투명 배경 → 밝은 회색 (AI가 보기 쉽게)
-        bg.paste(im, mask=im.getchannel("A") if im.mode == "RGBA" else None)
-        self._kit = bg
-        t = bg.copy()
-        t.thumbnail((160, 160))
-        return {"thumb": _data_url(t)}
-
-    def _lang(self) -> str:
-        return "en" if self._cfg.prompt_lang == "en" or self._cfg.ai_provider in ("cloudflare", "local") else "ko"
-
     def _hint(self, person: dict) -> str:
         return self._cfg.club_hints.get(str(person.get("club", "")).strip(), "")
 
@@ -1152,94 +1090,6 @@ class Api:
             pass
         return code
 
-    @_safe
-    def build_prompt(self, person: dict, send_photo: bool, mode: str = "face", expression: str = "") -> str:
-        if mode == "uniform":
-            return prompts.uniform_prompt(person, lang=self._lang(), has_kit=self._kit is not None, club_hint=self._hint(person))
-        clean, _ = _clean_uid(str(person.get("uid", "")))
-        if clean and not person.get("look"):
-            person = {**person, "look": self._look(clean, person)}
-        text, _ = prompts.face_prompt(
-            person, lang=self._lang(), template=self._cfg.prompt_template,
-            has_ref=bool(send_photo) and self._work is not None, has_kit=self._kit is not None,
-            expression=expression or self._cfg.expression, club_hint=self._hint(person),
-            manager_outfit=self._cfg.manager_outfit, ref_mode=self._cfg.ref_mode)
-        return text
-
-    def _face_photos(self, send_photo: bool) -> list:
-        photos = []
-        if send_photo and self._work is not None:
-            photos.append(self._work)
-        if self._kit is not None:
-            photos.append(self._kit)
-        return photos
-
-    @_safe
-    def ai_web(self, pid: str, prompt: str, send_photo: bool, mode: str = "face") -> dict:
-        """무료 웹 연동: 참고 사진+프롬프트를 클립보드에 함께 넣고 사이트 열기 (입력칸에 Ctrl+V 한 번)."""
-        p = providers.BY_ID.get(pid)
-        if not p or p["group"] != "free_web":
-            return {"error": "웹 연동 방식이 아니에요."}
-        ref = None
-        files = []
-        if mode == "uniform":
-            if self._work is None:
-                return {"error": "유니폼을 바꿀 선수 사진을 먼저 넣어 주세요."}
-            ref = providers.save_reference(self._work, "선수사진")
-            files = [ref]
-            if self._kit is not None:
-                files.append(providers.save_reference(self._kit, "유니폼"))
-        else:
-            if send_photo and self._work is not None:
-                ref = providers.save_reference(self._work)
-                files.append(ref)
-            else:
-                prompt = prompts.strip_ref(prompt)
-            if self._kit is not None:
-                files.append(providers.save_reference(self._kit, "유니폼"))
-                ref = ref or files[-1]
-        # 사이트는 붙여넣기 한 번에 파일과 글 중 하나만 받는다 → 사진 먼저, 프롬프트는 2단계
-        clip = False
-        try:
-            clip = clipboard.set_files_and_text(files, "" if files else prompt)
-        except Exception as e:  # noqa: BLE001
-            log.warning("클립보드 실패: %s", e)
-        if ref and not clip:
-            providers.reveal(ref)
-        webbrowser.open(p["url"])
-        return {"ok": True, "clip": clip, "with_photo": bool(files), "files": len(files),
-                "step2": bool(files), "prompt": prompt}
-
-    @_safe
-    def ai_generate(self, pid: str, prompt: str, send_photo: bool, mode: str = "face") -> dict:
-        cfg = self._cfg.ai_cfg.get(pid, {})
-        if mode == "uniform":
-            if self._work is None:
-                return {"error": "유니폼을 바꿀 선수 사진을 먼저 넣어 주세요."}
-            if not providers.BY_ID.get(pid, {}).get("ref"):
-                return {"error": "이 방식은 사진을 보낼 수 없어서 유니폼 바꾸기를 못 해요. 제미나이·챗GPT 등 다른 방식을 골라 주세요."}
-            photos = [self._work] + ([self._kit] if self._kit is not None else [])
-            try:
-                im = providers.generate(pid, cfg, prompt, photos)
-            except providers.ProviderError as e:
-                if str(e) == "need_key":
-                    return {"error": "need_key"}
-                raise
-            return self._set_photo(im, original=False)
-        photos = self._face_photos(send_photo)
-        if not providers.BY_ID.get(pid, {}).get("ref"):
-            photos = []
-        if not (send_photo and self._work is not None and photos):
-            prompt = prompts.strip_ref(prompt)
-        try:
-            im = providers.generate(pid, cfg, prompt, photos or None)
-        except providers.ProviderError as e:
-            if str(e) == "need_key":
-                return {"error": "need_key"}
-            raise
-        return self._set_photo(im, original=False)
-
-    # ---------------------------------------------------------------- 대기열
     def _qfile(self) -> Path:
         return self._qdir / "queue.json"
 

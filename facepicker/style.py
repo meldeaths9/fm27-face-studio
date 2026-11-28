@@ -52,6 +52,7 @@ class Deco:
             if k in d and d[k] is not None:
                 setattr(out, k, type(getattr(out, k))(d[k]))
         out.radius = max(0, min(50, out.radius))
+        out.border = False            # 테두리 기능은 뺐다 (예전 설정이 남아 있어도 안 그림)
         if out.style not in STYLES:
             out.style = "gold"
         for k in ("text_color", "border_color", "band_color"):
