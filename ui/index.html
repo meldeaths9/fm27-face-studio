@@ -135,14 +135,10 @@
               <div class="dh">꾸미기</div>
               <label class="switch"><input type="checkbox" id="dCaption"><i></i>이름 넣기</label>
               <label class="field sm"><input id="dText" placeholder="넣을 이름"></label>
-              <div class="chips" id="dStyle"></div>
-              <div class="drow"><label class="switch"><input type="checkbox" id="dRound"><i></i>둥근 모서리</label>
-              <input type="checkbox" id="dBorder" hidden></div>
+              <div class="dstylerow"><div class="chips" id="dStyle"></div>
+                <label class="dcol" id="dTextColW" title="이름 글씨 색을 직접 고르기"><input type="color" id="dTextCol"><span>직접</span><button class="mini" data-reset="text_color" title="원래 색으로">원래대로</button></label></div>
+              <div class="drow"><label class="switch"><input type="checkbox" id="dRound"><i></i>둥근 모서리</label></div>
               <input type="range" id="dRadius" min="2" max="50" value="14">
-              <div class="dcolors">
-                <label class="dcol" id="dTextColW" title="이름 글씨 색"><span>직접 고르기</span><input type="color" id="dTextCol"><button class="mini" data-reset="text_color" title="스타일 기본색으로">기본</button></label>
-                <span id="dBorderColW" hidden><input type="color" id="dBorderCol"></span>
-              </div>
             </div>
           </div>
         </div>
@@ -371,7 +367,7 @@
       <label class="switch"><input type="checkbox" id="mdCap" checked><i></i>이름띠</label>
       <div class="seg abseg3" id="mdStyle"><button data-v="gold">금색</button><button data-v="white">흰색</button><button data-v="navy">남색</button></div>
       <label class="switch"><input type="checkbox" id="mdRound"><i></i>모서리 둥글게</label>
-      <input type="checkbox" id="mdBorder" hidden></div></div>
+      </div></div>
     <div class="abgrid big" id="mdGrid"></div>
   </div>
   <div class="df"><span class="hint grow" id="mdNote"></span><button class="btn" id="mdClose">닫기</button><button class="btn primary" id="mdGo">대기열에 넣기</button></div>

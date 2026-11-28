@@ -132,6 +132,28 @@ def download_bg_model(progress=None) -> Path:
     return dst
 
 
+_bg_timer = None
+
+
+def _release_bg_later(sec: float = 90) -> None:
+    """배경 제거 모델(메모리 수백 MB)은 한동안 안 쓰면 내려놓는다."""
+    global _bg_timer
+    import threading
+    if _bg_timer:
+        _bg_timer.cancel()
+
+    def drop():
+        global _bg_sess
+        with _lock:
+            _bg_sess = None
+        from . import memlog
+        memlog.trim()
+        memlog.mark("배경 제거 모델 내려놓음")
+    _bg_timer = threading.Timer(sec, drop)
+    _bg_timer.daemon = True
+    _bg_timer.start()
+
+
 def remove_background(im: Image.Image) -> Image.Image:
     """사람 영역만 남기고 배경을 투명하게 (U²-Net human seg)."""
     global _bg_sess
@@ -146,6 +168,7 @@ def remove_background(im: Image.Image) -> Image.Image:
     x = (x - np.array([0.485, 0.456, 0.406], np.float32)) / np.array([0.229, 0.224, 0.225], np.float32)
     x = x.transpose(2, 0, 1)[None].astype(np.float32)
     out = _bg_sess.run(None, {_bg_sess.get_inputs()[0].name: x})[0][0, 0]
+    _release_bg_later()
     lo, hi = float(out.min()), float(out.max())
     out = (out - lo) / (hi - lo + 1e-9)
     mask = Image.fromarray((out * 255).astype(np.uint8), "L").resize(src.size, Image.LANCZOS)

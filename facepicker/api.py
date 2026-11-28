@@ -21,11 +21,11 @@ from PIL import Image, ImageOps
 
 from . import updater, ai_models, appearance, clipboard, faceindex, gamesetup, imaging, prompts, providers, savedata
 from .pack import FaceEntry, FacePack, find_conflicts, fm_running, looks_like_newgen
-from .people import People
+from .people import People, plain
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.9.30"
+VERSION = "1.9.31"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -35,6 +35,9 @@ def _data_url(im: Image.Image, fmt: str = "PNG", quality: int = 90) -> str:
     if fmt == "JPEG":
         im.convert("RGB").save(buf, "JPEG", quality=quality)
         mime = "image/jpeg"
+    elif fmt == "WEBP":           # 작은 미리보기: PNG보다 5~10배 작고 투명도 유지
+        im.save(buf, "WEBP", quality=quality, method=4)
+        mime = "image/webp"
     else:
         im.save(buf, "PNG")
         mime = "image/png"
@@ -50,7 +53,7 @@ def _from_data_url(data: str) -> Image.Image:
 
 def _thumb_url(path: Path, size: int = 96) -> str:
     try:
-        return _data_url(imaging.thumbnail(Image.open(path), size))
+        return _data_url(imaging.thumbnail(Image.open(path), size), "WEBP", 86)
     except Exception:
         return ""
 
@@ -96,7 +99,7 @@ def _safe(fn):
     """예외를 {'error': ...}로 바꿔 화면에 전달."""
     def wrap(self, *a, **k):
         try:
-            return fn(self, *a, **k)
+            return plain(fn(self, *a, **k))
         except providers.ProviderError as e:
             return {"error": str(e)}
         except Exception as e:  # noqa: BLE001
@@ -505,10 +508,10 @@ class Api:
         try:
             im = Image.open(path)
             im.draft("RGB", (size * 2, size * 2))
-            url = _data_url(imaging.thumbnail(im.convert("RGBA"), size))
+            url = _data_url(imaging.thumbnail(im.convert("RGBA"), size), "WEBP", 86)
         except Exception:
             url = ""
-        if len(self._thumbs) > 800:
+        if len(self._thumbs) > 400:
             self._thumbs.clear()
         self._thumbs[key] = url
         return url
@@ -579,10 +582,8 @@ class Api:
     def find_uid(self, uid: str) -> dict:
         """UID로 세이브 속 사람 찾기 (첫 화면 UID 칸)."""
         clean, _ = _clean_uid(uid)
-        for p in self._people.items:
-            if str(p.get("uid", "")) == clean:
-                return {"person": dict(p)}
-        return {"person": None, "uid": clean}
+        p = self._people.by_uid(clean)
+        return {"person": dict(p) if p else None, "uid": clean}
 
     @_safe
     def current_face(self, uid: str) -> dict:
@@ -1077,11 +1078,8 @@ class Api:
         d = appearance.decode(code)
         h = (person or {}).get("h")
         if not h:
-            items = self._people.items
-            if getattr(self, "_h_src", None) is not items:
-                self._h_src = items
-                self._h_map = {str(p.get("uid", "")).removeprefix("r-"): p.get("h") for p in items}
-            h = self._h_map.get(str(uid).removeprefix("r-"))
+            pp = self._people.by_uid(uid)
+            h = pp.get("h") if pp else None
         try:
             if d and h and abs(int(d["height"]) - int(h)) > 3:
                 log.info("외모 자료 키가 안 맞아 버림: %s (외모 %s, 세이브 %s)", uid, d["height"], h)
@@ -1101,7 +1099,7 @@ class Api:
         return [it for it in items if Path(it.get("png", "")).exists()]
 
     def _save_queue(self) -> None:
-        self._qfile().write_text(json.dumps(self._queue, ensure_ascii=False, indent=1), encoding="utf-8")
+        self._qfile().write_text(json.dumps(self._queue, ensure_ascii=False, indent=1, default=plain), encoding="utf-8")
 
     def _queue_view(self) -> list[dict]:
         out = []
@@ -1320,8 +1318,7 @@ class Api:
     def _pinned_people(self, kind: str = "") -> list:
         if not self._cfg.pinned:
             return []
-        want = set(self._cfg.pinned)
-        out = [p for p in self._people.items if str(p.get("uid", "")).removeprefix("r-") in want]
+        out = [p for p in (self._people.by_uid(u) for u in self._cfg.pinned) if p]
         if kind:
             out = [p for p in out if p.get("kind", "player") == kind]
         return out
@@ -1343,7 +1340,7 @@ class Api:
         if extra:                                # 첫 화면에서 고른 사람 (다른 팀이어도)
             want = {str(u).removeprefix("r-") for u in extra}
             have = {p["uid"] for p in pins}
-            pins = [p for p in self._people.items if str(p.get("uid", "")).removeprefix("r-") in want and p["uid"] not in have] + pins
+            pins = [p for p in (self._people.by_uid(u) for u in want) if p and p["uid"] not in have] + pins
         seen = {p["uid"] for p in items}
         items = [p for p in pins if p["uid"] not in seen] + items     # 고정한 선수는 맨 위에
         pin_ids = real_pins

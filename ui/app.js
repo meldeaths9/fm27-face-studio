@@ -255,7 +255,7 @@ function openMultiDeco() {
 }
 function renderMDOpts() {
   const d = MD.deco;
-  $("#mdCap").checked = d.caption; $("#mdRound").checked = d.rounded; $("#mdBorder").checked = d.border;
+  $("#mdCap").checked = d.caption; $("#mdRound").checked = d.rounded; d.border = false;
   $$("#mdStyle button").forEach((b) => b.classList.toggle("on", b.dataset.v === d.style));
   $("#mdStyle").style.opacity = d.caption ? 1 : .4;
 }
@@ -274,7 +274,6 @@ function mdPreview() {
 }
 $("#mdCap").onchange = (e) => { MD.deco.caption = e.target.checked; renderMDOpts(); mdPreview(); };
 $("#mdRound").onchange = (e) => { MD.deco.rounded = e.target.checked; renderMDOpts(); mdPreview(); };
-$("#mdBorder").onchange = (e) => { MD.deco.border = e.target.checked; renderMDOpts(); mdPreview(); };
 $$("#mdStyle button").forEach((b) => b.onclick = () => { MD.deco.style = b.dataset.v; MD.deco.caption = true; renderMDOpts(); mdPreview(); });
 $("#mdClose").onclick = () => $("#mdModal").classList.remove("on");
 $("#mdGo").onclick = async () => {
@@ -758,20 +757,20 @@ $("#btnNobg").onclick = async () => {
 /* ------------------------------------------------------------------ 꾸미기 */
 function renderDeco() {
   const d = S.deco;
-  $("#dCaption").checked = d.caption; $("#dRound").checked = d.rounded; $("#dBorder").checked = d.border;
+  d.border = false;
+  $("#dCaption").checked = d.caption; $("#dRound").checked = d.rounded;
   $("#dRadius").value = d.radius; $("#dRadius").disabled = !d.rounded;
   $(".deco").classList.toggle("off-cap", !d.caption);
   $(".deco").classList.toggle("on-round", !!d.rounded);
   $("#dStyle").innerHTML = Object.entries(S.styles).map(([k, v]) => `<button class="chip ${d.style === k ? "on" : ""}" data-k="${k}">${esc(v)}</button>`).join("");
   $$("#dStyle .chip").forEach((b) => b.onclick = () => { S.deco.style = b.dataset.k; decoChanged(); });
   const def = STYLE_COL[d.style] || STYLE_COL.gold;
-  $("#dTextCol").value = d.text_color || def[0]; $("#dBorderCol").value = d.border_color || def[1];
-  $("#dTextColW").hidden = !d.caption; $("#dBorderColW").hidden = !d.border;
-  $("#dTextColW").classList.toggle("custom", !!d.text_color); $("#dBorderColW").classList.toggle("custom", !!d.border_color);
+  $("#dTextCol").value = d.text_color || def[0];
+  $("#dTextColW").hidden = !d.caption;
+  $("#dTextColW").classList.toggle("custom", !!d.text_color);
 }
 const STYLE_COL = { gold: ["#dec38b", "#e0d1af"], white: ["#ffffff", "#ffffff"], navy: ["#ecf0fa", "#7b8cff"] };
 $("#dTextCol").oninput = (e) => { S.deco.text_color = e.target.value; decoChanged(); };
-$("#dBorderCol").oninput = (e) => { S.deco.border_color = e.target.value; decoChanged(); };
 $$(".dcol [data-reset]").forEach((b) => b.onclick = (e) => { e.preventDefault(); S.deco[b.dataset.reset] = ""; decoChanged(); });
 function syncDecoText() {
   if (!S.decoTextDirty) { $("#dText").value = $("#fName").value.trim(); S.deco.text = $("#dText").value; requestPreview(); }
@@ -784,7 +783,6 @@ function decoChanged() {
 }
 $("#dCaption").onchange = () => { S.deco.caption = $("#dCaption").checked; decoChanged(); };
 $("#dRound").onchange = () => { S.deco.rounded = $("#dRound").checked; decoChanged(); };
-$("#dBorder").onchange = () => { S.deco.border = $("#dBorder").checked; decoChanged(); };
 $("#dRadius").addEventListener("input", () => { S.deco.radius = +$("#dRadius").value; drawStage(); clearTimeout(decoSaveTimer); decoSaveTimer = setTimeout(() => call("save_settings", { deco: S.deco }), 600); });
 $("#dText").addEventListener("input", () => { S.decoTextDirty = true; S.deco.text = $("#dText").value; requestPreview(); });
 
@@ -1777,7 +1775,7 @@ function renderDT() {
   const el = $("#abLocal"), d = DT; if (!d) return;
   const g = d.gpu || {}, t = d.task || {};
   const gpuTxt = g.ok ? `<span class="gpu ok">✓ ${esc(g.name)} · ${g.vram}GB</span>${g.tight ? ' <span class="hint">메모리가 빠듯해서 조금 느릴 수 있어요</span>' : ""}` : `<span class="gpu no">✕ ${esc(g.reason || "그래픽카드를 확인하지 못했어요")}</span>`;
-  let h = `<div class="lrow"><b>그래픽카드</b>${gpuTxt}</div>`;
+  let h = `<div class="lrow">${gpuTxt}</div>`;
   if (t.active) {
     const pct = t.total ? Math.min(99, Math.round(t.done / t.total * 100)) : 0;
     h += `<div class="lrow"><b>설치 중</b><span>${esc(t.step || "")}</span></div>
@@ -1785,9 +1783,8 @@ function renderDT() {
       ${t.last ? `<div class="hint" style="font-family:Consolas,monospace;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.last)}</div>` : ""}
       <div class="lrow"><span class="hint grow">이 창을 닫아도 설치는 계속돼요. 큰 파일은 한동안 멈춘 것처럼 보일 수 있어요.</span><button class="btn sm" id="dtLog">설치 기록</button><button class="btn sm" id="dtCancel">설치 취소</button></div>`;
   } else if (d.installed) {
-    h += `<div class="lrow"><b>설치됨</b><code>${esc(d.root)}</code><span class="hint">쓰는 용량 약 ${gb(d.used || 0)}GB</span></div>`;
-    h += Object.entries(d.models).map(([k, m]) => `<div class="mrow">${m.installed ? '<span class="done">✓ 받음</span>' : `<button class="btn sm" data-add="${k}">추가로 받기</button>`}<span>${esc(m.name)}</span><span class="sz">약 ${gb(m.size)}GB</span></div>`).join("");
-    h += `<div class="lrow"><span class="hint grow">요금 없이 내 그래픽카드로 그려요. 첫 장은 그림도구를 켜느라 1~2분 더 걸려요.</span><button class="btn sm" id="dtLog">설치 기록</button>${d.runner && d.runner.state !== "off" ? `<button class="btn sm" id="dtOff" title="그래픽카드·메모리를 바로 돌려줘요">${d.batch_busy ? "멈추고 그림도구 끄기" : "그림도구 끄기"}</button>` : ""}<button class="btn sm" id="dtDel">그림도구 지우기</button></div>
+    h += `<div class="mlist">` + Object.entries(d.models).map(([k, m]) => `<div class="mrow2">${m.installed ? '<span class="done">✓</span>' : '<span class="nd">·</span>'}<span class="grow">${esc(m.name.replace(/\s*\(.*\)/, ""))}</span><span class="sz">${gb(m.size)}GB</span>${m.installed ? "" : `<button class="btn sm" data-add="${k}">받기</button>`}</div>`).join("") + `</div>`;
+    h += `<div class="lbtns"><span class="hint grow" title="${esc(d.root)}">설치됨 · ${gb(d.used || 0)}GB</span>${d.runner && d.runner.state !== "off" ? `<button class="btn sm warnb" id="dtOff" title="그래픽카드·메모리를 바로 돌려줘요">${d.batch_busy ? "멈추고 끄기" : "그림도구 끄기"}</button>` : ""}<button class="btn sm ghost" id="dtLog">기록</button><button class="btn sm ghost" id="dtDel">지우기</button></div>
     ${d.runner && d.runner.state !== "off" ? `<div class="abwarn"><span>⚠ ${DT_WARN}</span></div>` : ""}`;
   } else {
     const adv = $("#dtAdv") ? $("#dtAdv").checked : false;

@@ -16,7 +16,7 @@ from .pack import looks_like_newgen
 from .settings import app_data_dir, default_fm_user_dir
 
 log = logging.getLogger("savedata")
-CACHE_VERSION = 6
+CACHE_VERSION = 7
 
 JOB_KO = {
     "COACH": "코치", "CHAIRPERSON": "회장", "DIRECTOR": "이사", "MANAGING_DIRECTOR": "대표이사",
@@ -194,10 +194,12 @@ def read_save(path: str | Path) -> dict:
         for p in people:
             p["mine"] = p["club"] in names
     _mark_same_name_clubs(people, my_club_uids)
+    from .people import _FIELDS
+    cols = {k: [pp.get(k) for pp in people] for k in _FIELDS}      # 칸별 목록: 읽을 때 메모리가 덜 쪼개진다
     data = {
         "version": CACHE_VERSION, **_stamp(p),
         "game": f"{getattr(getattr(info, 'version', None), 'major', '')}",
-        "my_clubs": my_clubs, "people": people, "read_seconds": round(time.time() - t0, 1), "read_at": time.time(),
+        "my_clubs": my_clubs, "cols": cols, "read_seconds": round(time.time() - t0, 1), "read_at": time.time(),
     }
     tmp = cache_path().with_suffix(".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")

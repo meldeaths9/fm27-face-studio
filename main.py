@@ -97,8 +97,11 @@ def main() -> None:
     from facepicker.api import Api, VERSION
     log.info("pywebview %s 불러옴", getattr(webview, "__version__", "?"))
 
+    from facepicker import memlog
+    memlog.mark("시작")
     api = Api()
-    log.info("Api 준비됨")
+    memlog.mark("Api 준비됨")
+    memlog.start_watch(300)
     webview.settings["DRAG_REGION_DIRECT_TARGET_ONLY"] = True   # 헤더의 빈 곳만 잡히게 (버튼은 그대로 눌림)
     window = webview.create_window(
         f"FM Face Studio v{VERSION}",

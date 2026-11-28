@@ -79,7 +79,8 @@ class Batch:
     def save(self) -> None:
         with self.lock:
             tmp = self._file().with_suffix(f".{uuid.uuid4().hex[:6]}.tmp")
-            tmp.write_text(json.dumps({"items": self.items, "meta": self.meta}, ensure_ascii=False), encoding="utf-8")
+            tmp.write_text(json.dumps({"items": self.items, "meta": self.meta}, ensure_ascii=False,
+                                         default=lambda o: o.to_dict() if hasattr(o, "to_dict") else str(o)), encoding="utf-8")
             tmp.replace(self._file())
 
     # ------------------------------------------------------------ 목록
@@ -87,7 +88,7 @@ class Batch:
         with self.lock:
             for it in self.items:
                 self._drop(it)
-            self.items = [{"id": uuid.uuid4().hex, "uid": str(p.get("uid", "")).removeprefix("r-"), "person": p,
+            self.items = [{"id": uuid.uuid4().hex, "uid": str(p.get("uid", "")).removeprefix("r-"), "person": p.to_dict() if hasattr(p, "to_dict") else p,
                            "status": "wait", "png": "", "err": "", "tries": 0} for p in people]
             self.meta = dict(meta)
             self.meta["spent"] = 0

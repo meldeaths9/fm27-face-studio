@@ -1059,3 +1059,23 @@ details.info .form { margin-top: 4px; }
 .estage .stage { flex: 1; }
 .esec h3 { color: #fff; }
 .dcolors .dcol span { color: #e2e6f2; }
+.dstylerow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dstylerow .dcol { gap: 6px; }
+.dstylerow .dcol span { flex: none; color: #e2e6f2; font-size: 12.5px; }
+.dstylerow .dcol input[type=color] { width: 26px; height: 22px; }
+.engin .ablocal .gpu { font-size: 12.5px; font-weight: 600; }
+.mlist { display: flex; flex-direction: column; gap: 4px; }
+.mrow2 { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #e2e6f2; }
+.mrow2 .grow { flex: 1; min-width: 0; }
+.mrow2 .done { color: #2fd19f; font-weight: 700; width: 12px; }
+.mrow2 .nd { color: var(--muted); width: 12px; text-align: center; }
+.mrow2 .sz { color: var(--muted); font-size: 12px; }
+.mrow2 .btn.sm { height: 26px; padding: 0 10px; font-size: 12px; }
+.lbtns { display: flex; align-items: center; gap: 4px; }
+.lbtns .grow { flex: 1; font-size: 12px; }
+.lbtns .btn.sm { height: 28px; padding: 0 10px; font-size: 12px; }
+.lbtns .warnb { background: #2b2614; color: #f3d9a4; }
+/* 선수 목록 버튼 */
+.editbar .backbtn { height: 44px; padding: 0 18px 0 14px; border-radius: 11px; background: var(--accent); color: #fff; font-weight: 700; font-size: 14px; gap: 6px; }
+.editbar .backbtn:hover { background: #7a60ff; color: #fff; }
+.editbar .backbtn .i { width: 18px; height: 18px; }
