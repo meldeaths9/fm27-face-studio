@@ -51,6 +51,22 @@ def auto_box(im: Image.Image) -> tuple[float, float, float]:
     return clamp_box(im, fx + fw / 2, fy + fh / 2 + fh * 0.12, side)
 
 
+def waist_box(im: Image.Image) -> tuple[float, float, float] | None:
+    """건조: 얼굴을 기준으로 머리부터 허리쯤까지 (다리·발은 잘라 냄). 얼굴을 못 찾으면 None."""
+    try:
+        face = ai_models.detect_face(im)
+    except Exception:
+        face = None
+    if not face:
+        return None
+    fx, fy, fw, fh = face
+    side = max(fw, fh) * 4.4
+    if side >= min(im.size) * 0.97:          # 이미 상반신이면 그대로
+        return None
+    top = fy - fh * 0.55                     # 머리 위 여백 조금
+    return clamp_box(im, fx + fw / 2, top + side / 2, side)
+
+
 def crop_square(im: Image.Image, box: tuple[float, float, float]) -> Image.Image:
     cx, cy, side = clamp_box(im, *box)
     left, top = int(round(cx - side / 2)), int(round(cy - side / 2))

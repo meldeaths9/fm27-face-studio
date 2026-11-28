@@ -251,6 +251,9 @@ ACTIONS = {
     "save": ("몸을 날려 공을 막아 내는 골키퍼", "a goalkeeper diving full stretch to make a save, wearing goalkeeper gloves"),
     "catch": ("높은 공을 두 손으로 잡아 내는 골키퍼", "a goalkeeper catching a high ball with both hands, wearing goalkeeper gloves"),
     "touchline": ("터치라인에서 손짓하며 지시하는 모습", "standing on the touchline, gesturing and giving instructions"),
+    "fist": ("주먹을 불끈 쥐고 포효하는 모습", "clenching his fist and roaring with passion"),
+    "clap": ("관중을 향해 박수 치는 모습", "applauding the fans with both hands"),
+    "point": ("손가락으로 동료를 가리키며 외치는 모습", "pointing at a teammate and shouting"),
     "gk_hold": ("공을 가슴에 안고 차분하게 서 있는 골키퍼", "a goalkeeper standing calmly, holding the ball against his chest with both gloved hands"),
     "gk_throw": ("공을 동료에게 던져 주려는 골키퍼", "a goalkeeper about to throw the ball out to a teammate, ball held at shoulder height, wearing goalkeeper gloves"),
     "gk_shout": ("한 손을 들어 수비에게 지시하며 외치는 골키퍼", "a goalkeeper raising one gloved hand and shouting instructions to his defenders"),
@@ -276,12 +279,17 @@ GUNZO = {
 }
 
 
-def pick_action(person: dict, action: str) -> str:
+LOCAL_ACTIONS = ["celebrate", "run", "fist", "clap", "point"]    # 그림도구: 다리를 안 쓰는 상체 동작만
+
+
+def pick_action(person: dict, action: str, local: bool = False) -> str:
     if action in ACTIONS:
         return action
     if person.get("kind", "player") != "player":
         return "touchline"
     grp = POS_GROUP.get(str(person.get("pos", "")).lower(), "")
+    if local and grp != "gk":
+        return random.choice(LOCAL_ACTIONS)
     return random.choice(AUTO_ACTIONS[grp])
 
 
@@ -398,7 +406,7 @@ def local_prompt(person: dict, *, task: str, has_ref: bool, ref_mode: str, has_k
              "Only change the clothes. " + _local_kit(person, 2 if has_kit else 0, club) + "Realistic photo. No text.")
         return s, ""
     if task == "gunzo":
-        act = pick_action(person, action)
+        act = pick_action(person, action, local=True)
         s = _local_person(person, has_ref, ref_mode)
         s += f"In a night football match, {ACTIONS[act][1]}. "
         if act == "catch":

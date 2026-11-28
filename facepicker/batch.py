@@ -117,12 +117,13 @@ class Batch:
             self.save()
 
     # ------------------------------------------------------------ 돌리기
-    def start(self, make_job, workers: int = 2) -> None:
+    def start(self, make_job, workers: int = 2, post=None) -> None:
         """make_job(item, meta) -> (prompt, photos) / 사람마다 한 번씩."""
         with self.lock:
             if self.running:
                 return
             self.running, self._stop = True, False
+            self.post = post
         self._thread = threading.Thread(target=self._run, args=(make_job, max(1, min(int(workers), 4))), daemon=True)
         self._thread.start()
 
@@ -161,6 +162,8 @@ class Batch:
             try:
                 prompt, photos = make_job(it, self.meta)
                 im = _square(self._gen(pid, cfg, prompt, photos))
+                if getattr(self, "post", None):
+                    im = self.post(im, it, self.meta)
                 png = self.dir / f"{it['id']}_{int(time.time())}.png"
                 im.save(png, "PNG")
                 with self.lock:

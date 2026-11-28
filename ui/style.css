@@ -579,6 +579,16 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 7px; border-radius: 6
 #kitUnhide { color: var(--accent2); cursor: pointer; text-decoration: underline; }
 
 /* ===== AI로 한꺼번에 ===== */
+#kitModal { z-index: 120; }
+.abkitpick { display: inline-flex; align-items: center; gap: 8px; padding: 3px 10px 3px 4px; border-radius: 10px; background: var(--bg2); border: 1px solid var(--accent); font-size: 12.5px; }
+.abkitpick[hidden] { display: none; }
+.abkitpick img { width: 30px; height: 30px; object-fit: contain; }
+.abkitpick a { color: var(--muted); cursor: pointer; }
+.abp .pin { position: absolute; bottom: 52px; right: 10px; font-size: 13px; z-index: 1; }
+.pinb { position: absolute; right: 8px; top: 8px; z-index: 3; width: 28px; height: 28px; border-radius: 8px; border: 0; background: rgba(0,0,0,.45); color: #fff; font-size: 13px; cursor: pointer; opacity: 0; transition: .15s; filter: grayscale(1); }
+.pcard2:hover .pinb { opacity: .85; }
+.pinb.on { opacity: 1; filter: none; background: rgba(123,97,255,.85); }
+.bsec { grid-column: 1 / -1; font-size: 12.5px; font-weight: 800; color: var(--muted); padding: 4px 2px 0; }
 .abprev { display: flex; align-items: center; gap: 12px; font-size: 13px; padding: 10px 14px; border-radius: 12px; background: rgba(123,97,255,.12); border: 1px solid rgba(123,97,255,.4); }
 .abprev[hidden] { display: none; }
 .abprev span { flex: 1; }

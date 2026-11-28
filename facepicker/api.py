@@ -25,7 +25,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.9.20"
+VERSION = "1.9.21"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -335,7 +335,7 @@ class Api:
         return {
             "version": VERSION, "pack_moved": getattr(self, "_pack_moved", ""),
             "settings": {
-                "graphics_dir": c.graphics_dir, "output_size": c.output_size, "check_updates": c.check_updates, "beta_updates": bool(getattr(c, "beta_updates", False)), "pack_folder": c.pack_name, "bulk_crop": c.bulk_crop, "bulk_deco": c.bulk_deco,
+                "graphics_dir": c.graphics_dir, "output_size": c.output_size, "check_updates": c.check_updates, "beta_updates": bool(getattr(c, "beta_updates", False)), "pack_folder": c.pack_name, "bulk_crop": c.bulk_crop, "bulk_deco": c.bulk_deco, "ab_deco": dict(c.ab_deco or {}),
                 "prompt_template": c.prompt_template, "send_photo": c.send_photo,
                 "ai_provider": c.ai_provider, "deco": c.deco, "prompt_lang": c.prompt_lang,
                 "expression": c.expression, "manager_outfit": c.manager_outfit, "ref_mode": c.ref_mode, "club_hints": c.club_hints,
@@ -527,7 +527,10 @@ class Api:
             items = [p for p in items if (face_of(p) or {}).get("ours")]
         page = []
         queued = {it["uid"]: it for it in self._queue}
-        for p in items[int(offset):int(offset) + int(limit)]:
+        pins = self._pinned_people(kind)
+        pin_ids = {p["uid"] for p in pins}
+        rows = [p for p in items[int(offset):int(offset) + int(limit)]]
+        for p in pins + rows:
             f = face_of(p)
             d = dict(p)
             d["face"] = self._face_thumb(f["path"]) if f else ""
@@ -541,8 +544,11 @@ class Api:
             if q:
                 d["queued"] = True
                 d["face"] = _thumb_url(Path(q["png"]), 160)
+            d["pinned"] = p["uid"] in pin_ids
             page.append(d)
-        return {"total": len(items), "items": page, "offset": 0, "max": BROWSE_MAX,
+        pinned_cards = page[:len(pins)]
+        page = page[len(pins):]
+        return {"total": len(items), "items": page, "pinned": pinned_cards, "offset": 0, "max": BROWSE_MAX,
                 "index": {"building": idx.building, "count": len(idx.map), "configs": idx.configs},
                 "empty_query": not (name.strip() or team.strip())}
 
@@ -756,6 +762,8 @@ class Api:
             self._cfg.bulk_crop = value
         elif key == "bulk_deco" and value in ("follow", "none"):
             self._cfg.bulk_deco = value
+        elif key == "ab_deco" and isinstance(value, dict):
+            self._cfg.ab_deco = {k: value.get(k) for k in ("caption", "style", "rounded", "border") if k in value}
         elif key == "check_updates":
             self._cfg.check_updates = bool(value)
         elif key == "beta_updates":
@@ -1378,6 +1386,27 @@ class Api:
         return self._batch_obj
 
     @_safe
+    def toggle_pin(self, uid: str, name: str = "") -> dict:
+        u = str(uid).removeprefix("r-")
+        if u in self._cfg.pinned:
+            self._cfg.pinned.pop(u)
+            on = False
+        else:
+            self._cfg.pinned[u] = str(name or "")
+            on = True
+        self._cfg.save()
+        return {"pinned": on, "count": len(self._cfg.pinned)}
+
+    def _pinned_people(self, kind: str = "") -> list:
+        if not self._cfg.pinned:
+            return []
+        want = set(self._cfg.pinned)
+        out = [p for p in self._people.items if str(p.get("uid", "")).removeprefix("r-") in want]
+        if kind:
+            out = [p for p in out if p.get("kind", "player") == kind]
+        return out
+
+    @_safe
     def batch_people(self, name: str, team: str, kind: str, filt: str = "all", squad: str = "", club: str = "") -> dict:
         """지금 목록 조건 그대로 사람들을 (최대 500명) 돌려준다."""
         idx = self._index
@@ -1388,6 +1417,10 @@ class Api:
             items = [p for p in items if idx.get(p["uid"])]
         elif filt == "ours":
             items = [p for p in items if (idx.get(p["uid"]) or {}).get("ours")]
+        pins = self._pinned_people(kind)
+        seen = {p["uid"] for p in items}
+        items = [p for p in pins if p["uid"] not in seen] + items     # 고정한 선수는 맨 위에
+        pin_ids = {p["uid"] for p in pins}
         total = len(items)
         out = []
         for p in items[:self.BATCH_MAX]:
@@ -1395,6 +1428,7 @@ class Api:
             d = {k: p.get(k, "") for k in ("uid", "name", "club", "cuid", "age", "nationality", "kind", "newgen", "me", "alt", "squad", "pos")}
             d["face"] = self._face_thumb(f["path"], 72) if f else ""
             d["has_face"] = bool(f)
+            d["pinned"] = p["uid"] in pin_ids
             if not f and p.get("newgen"):
                 gf = gamesetup.newgen_face(str(p["uid"]))
                 d["game_face"] = bool(gf)
@@ -1503,12 +1537,17 @@ class Api:
         return {**pr, "won": round(pr["usd"] * WON_PER_USD), "model": cfg.get("model") or providers.DEFAULT_MODELS.get(engine, ""),
                 "ready": providers.status(engine, cfg) in ("키 있음", "설치됨")}
 
-    def _batch_kit(self, person: dict, kind: str):
-        cuid = str(person.get("cuid", "") or "")
-        if not cuid:
-            return None
-        kits = gamesetup.kit_images(cuid, self._cfg.kit_aliases)
-        pth = kits.get(kind) or kits.get("home")
+    def _batch_kit(self, person: dict, kind: str, meta: dict | None = None):
+        meta = meta or {}
+        if meta.get("kit_num"):                  # 다른 유니폼 하나를 모두에게
+            kits = gamesetup.kit_files(str(meta["kit_num"]))
+            pth = kits.get(meta.get("kit_num_kind") or "home") or next(iter(kits.values()), None)
+        else:
+            cuid = str(person.get("cuid", "") or "")
+            if not cuid:
+                return None
+            kits = gamesetup.kit_images(cuid, self._cfg.kit_aliases)
+            pth = kits.get(kind) or kits.get("home")
         if not pth:
             return None
         im = imaging.load_image(str(pth))
@@ -1552,7 +1591,7 @@ class Api:
         person = dict(it["person"])
         task = meta.get("task", "face")
         lang = "en" if self._cfg.prompt_lang == "en" or meta.get("engine") in ("cloudflare", "local") else "ko"
-        kit = self._batch_kit(person, meta.get("kit_kind", "home")) if meta.get("use_kit", True) else None
+        kit = self._batch_kit(person, meta.get("kit_kind", "home"), meta) if meta.get("use_kit", True) else None
         hint = self._hint(person)
         if task == "kit":
             face = self._batch_face(person)
@@ -1623,11 +1662,13 @@ class Api:
                 "use_kit": bool(opts.get("use_kit", True)), "ref": bool(opts.get("ref")),
                 "expression": opts.get("expression", ""), "extra": str(opts.get("extra") or "").strip()[:500],
                 "action": str(opts.get("action") or "auto"), "banner": str(opts.get("banner") or "none"),
+                "deco": dict(opts.get("deco") or {}), "kit_num": str(opts.get("kit_num") or ""),
+                "kit_num_kind": str(opts.get("kit_num_kind") or "home"),
                 "started": time.time()}
         pr = self.batch_price(engine)
         meta["won"] = pr.get("won", 0) if isinstance(pr, dict) and pr.get("kind") == "paid" else 0
         b.reset(people, meta)
-        b.start(self._batch_job, workers=1 if engine == "local" else int(opts.get("workers") or 2))
+        b.start(self._batch_job, workers=1 if engine == "local" else int(opts.get("workers") or 2), post=self._batch_post)
         return {"ok": True, "count": len(people), "skipped": skipped}
 
     @_safe
@@ -1696,6 +1737,15 @@ class Api:
             b.start(self._batch_job, workers=2)
         return self.batch_status()
 
+    @staticmethod
+    def _batch_post(im, it: dict, meta: dict):
+        """그림도구 건조: 전신으로 그려도 얼굴 기준으로 머리~허리만 남긴다 (다리·손 실수가 잘려 나감)."""
+        if meta.get("task") == "gunzo" and meta.get("engine") == "local":
+            box = imaging.waist_box(im)
+            if box:
+                im = imaging.crop_square(im, box).resize((1024, 1024), Image.LANCZOS)
+        return im
+
     def _gunzo_args(self, src, person: dict, meta: dict):
         """건조: 사진은 자르지 않고 통째로, 이름띠는 고른 대로."""
         w, h = src.size
@@ -1703,6 +1753,13 @@ class Api:
         box = (w / 2, h / 2, side)
         if h > w:
             box = (w / 2, side / 2, side)
+        dd = meta.get("deco") or {}
+        if dd.get("caption") or dd.get("rounded") or dd.get("border"):     # 그리기 창에서 고른 꾸미기
+            base = dict(self._cfg.deco or {})
+            deco = {**base, "caption": bool(dd.get("caption")), "style": dd.get("style") or base.get("style", "gold"),
+                    "rounded": bool(dd.get("rounded")), "border": bool(dd.get("border"))}
+            deco["text"] = str(person.get("name", "")).strip()
+            return box, deco
         if meta.get("banner") == "follow":
             deco = dict(self._cfg.deco or {})
             deco["text"] = str(person.get("name", "")).strip()
