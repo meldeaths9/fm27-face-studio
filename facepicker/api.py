@@ -25,7 +25,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.9.21"
+VERSION = "1.9.22"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -929,6 +929,52 @@ class Api:
         im = imaging.render(src, tuple(float(v) for v in box), int(size))
         return _data_url(decorate(im, Deco.from_dict(deco)))
 
+    # ---------------------------------------------------------------- 여러 명 꾸미기
+    def _cur_photo(self, uid: str):
+        f = self._index.get(str(uid).removeprefix("r-"))
+        if not f:
+            return None
+        try:
+            return imaging.load_image(f["path"])
+        except Exception:  # noqa: BLE001
+            return None
+
+    @staticmethod
+    def _full_box(im):
+        w, h = im.size
+        side = float(min(w, h))
+        return (w / 2, side / 2 if h > w else h / 2, side)
+
+    @_safe
+    def multi_deco_preview(self, people: list, deco: dict, size: int = 200) -> dict:
+        """고른 사람들의 지금 사진에 꾸미기를 입혀 본 미리보기 (이름띠가 이미 있어도 그대로 덧입힘)."""
+        out, none = {}, []
+        for p in (people or [])[:300]:
+            uid = str(p.get("uid", "")).removeprefix("r-")
+            im = self._cur_photo(uid)
+            if im is None:
+                none.append(uid)
+                continue
+            d = dict(deco or {})
+            d["text"] = str(p.get("name", "")).strip()
+            out[uid] = _data_url(decorate(imaging.render(im, self._full_box(im), int(size)), Deco.from_dict(d)))
+        return {"thumbs": out, "none": none}
+
+    @_safe
+    def multi_deco_apply(self, people: list, deco: dict) -> dict:
+        n, skipped = 0, 0
+        for p in people or []:
+            uid, prefixed = _clean_uid(p.get("uid"))
+            im = self._cur_photo(uid) if uid else None
+            if im is None:
+                skipped += 1
+                continue
+            d = dict(deco or {})
+            d["text"] = str(p.get("name", "")).strip()
+            self._queue_put(p, uid, prefixed, im, self._full_box(im), d)
+            n += 1
+        return {"count": n, "skipped": skipped, "queue": self._queue_view()}
+
     # ---------------------------------------------------------------- AI
     @_safe
     def set_kit(self, data_url: str) -> dict:
@@ -1407,7 +1453,8 @@ class Api:
         return out
 
     @_safe
-    def batch_people(self, name: str, team: str, kind: str, filt: str = "all", squad: str = "", club: str = "") -> dict:
+    def batch_people(self, name: str, team: str, kind: str, filt: str = "all", squad: str = "", club: str = "",
+                     extra: list | None = None) -> dict:
         """지금 목록 조건 그대로 사람들을 (최대 500명) 돌려준다."""
         idx = self._index
         items = self._people.search(name, team, kind, limit=100000, mine_if_empty=True, squad=squad, club=club)
@@ -1418,9 +1465,14 @@ class Api:
         elif filt == "ours":
             items = [p for p in items if (idx.get(p["uid"]) or {}).get("ours")]
         pins = self._pinned_people(kind)
+        real_pins = {p["uid"] for p in pins}
+        if extra:                                # 첫 화면에서 고른 사람 (다른 팀이어도)
+            want = {str(u).removeprefix("r-") for u in extra}
+            have = {p["uid"] for p in pins}
+            pins = [p for p in self._people.items if str(p.get("uid", "")).removeprefix("r-") in want and p["uid"] not in have] + pins
         seen = {p["uid"] for p in items}
         items = [p for p in pins if p["uid"] not in seen] + items     # 고정한 선수는 맨 위에
-        pin_ids = {p["uid"] for p in pins}
+        pin_ids = real_pins
         total = len(items)
         out = []
         for p in items[:self.BATCH_MAX]:

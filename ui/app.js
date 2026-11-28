@@ -173,11 +173,111 @@ function cardHtml(p, i) {
   const tag = p.queued ? '<span class="tag queued">대기 중</span>' : p.face_state === "game" ? '<span class="tag game" title="사진이 없어서 게임 얼굴을 보여 줘요">게임 얼굴</span>' : p.face_state === "ours" ? '<span class="tag ours">내가 넣은 사진</span>' : p.face_state === "none" ? '<span class="tag none">사진 없음</span>' : `<span class="tag">${esc(p.pack)}</span>`;
   const tag2 = p.me ? '<span class="tag2">내 감독</span>' : p.newgen ? '<span class="tag2" style="background:rgba(31,209,165,.85);color:#03261c">뉴젠</span>' : "";
   const sq = p.squad && p.squad !== "1군" ? ` · ${esc(p.squad)}` : "";
-  return `<div class="pcard2" data-i="${i}">${tag}${tag2}<button class="pinb${p.pinned ? " on" : ""}" title="${p.pinned ? "고정 풀기" : "고정: 다른 팀을 검색해도 맨 위에 보여요"}">📌</button>
-    <div class="ph2${p.face_state === "game" ? " gameface" : ""}">${p.face ? `<img src="${p.face}" loading="lazy">` : "사진 없음"}<div class="dropcue">사진을 놓으면<br>바로 대기열에</div></div>
+  return `<div class="pcard2${SEL.has(String(p.uid)) ? " sel" : ""}" data-i="${i}">${tag}${tag2}
+    <div class="ph2${p.face_state === "game" ? " gameface" : ""}">${p.face ? `<img src="${p.face}" loading="lazy">` : "사진 없음"}<span class="selck" title="고르기 (Ctrl+클릭·Shift+클릭·끌어서 여러 명)"></span><button class="pinb${p.pinned ? " on" : ""}" title="${p.pinned ? "고정 풀기" : "고정: 다른 팀을 검색해도 맨 위에 보여요"}">📌</button><div class="dropcue">사진을 놓으면<br>바로 대기열에</div></div>
     <div class="nm">${esc(p.name)}</div>
     <div class="sub">${esc(p.club || "무소속")}${p.alt ? ` <span class="alt">(${esc(p.alt)})</span>` : ""}${sq}${p.age ? " · " + esc(p.age) + "세" : ""}${p.job && !p.me ? " · " + esc(p.job) : ""}</div></div>`;
 }
+/* ---------------- 여러 명 고르기 */
+const SEL = new Map();          // uid → 사람
+let selLast = -1, lassoMoved = false;
+function selToggle(i, on) {
+  const p = S.bItems[i]; if (!p) return;
+  const k = String(p.uid), want = on === undefined ? !SEL.has(k) : on;
+  want ? SEL.set(k, p) : SEL.delete(k);
+  const c = $(`.pcard2[data-i="${i}"]`); if (c) c.classList.toggle("sel", want);
+  selLast = i; renderSelBar();
+}
+function selRange(i) {
+  if (selLast < 0) { selToggle(i, true); return; }
+  const [a, b] = selLast < i ? [selLast, i] : [i, selLast];
+  for (let k = a; k <= b; k++) selToggle(k, true);
+  selLast = i;
+}
+function renderSelBar() {
+  const n = SEL.size;
+  $("#selBar").hidden = !n;
+  $("#selCnt").textContent = `${n}명 선택됨`;
+}
+$("#selClear").onclick = () => { SEL.clear(); $$("#bgrid .pcard2.sel").forEach((c) => c.classList.remove("sel")); renderSelBar(); };
+$("#selAI").onclick = () => { AB.preselect = [...SEL.keys()]; openAB(); };
+$("#selDeco").onclick = () => openMultiDeco();
+/* 빈 곳에서 끌어서 네모로 고르기 */
+(() => {
+  const wrap = $("#bwrap"), box = $("#lasso");
+  let x0, y0, on = false, add = false;
+  wrap.addEventListener("mousedown", (e) => {
+    if (e.button !== 0 || e.target.closest(".pcard2, button, a, input")) return;
+    const r = wrap.getBoundingClientRect();
+    x0 = e.clientX - r.left + wrap.scrollLeft; y0 = e.clientY - r.top + wrap.scrollTop;
+    on = true; add = e.ctrlKey || e.metaKey; lassoMoved = false;
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (!on) return;
+    const r = wrap.getBoundingClientRect();
+    const x1 = e.clientX - r.left + wrap.scrollLeft, y1 = e.clientY - r.top + wrap.scrollTop;
+    if (!lassoMoved && Math.abs(x1 - x0) + Math.abs(y1 - y0) < 8) return;
+    lassoMoved = true; box.hidden = false;
+    const L = Math.min(x0, x1), T = Math.min(y0, y1), W = Math.abs(x1 - x0), H = Math.abs(y1 - y0);
+    Object.assign(box.style, { left: L + "px", top: T + "px", width: W + "px", height: H + "px" });
+    const lr = { l: r.left + L - wrap.scrollLeft, t: r.top + T - wrap.scrollTop };
+    lr.r = lr.l + W; lr.b = lr.t + H;
+    $$("#bgrid .pcard2").forEach((c) => {
+      const b = c.getBoundingClientRect();
+      const hit = b.left < lr.r && b.right > lr.l && b.top < lr.b && b.bottom > lr.t;
+      const i = +c.dataset.i, k = String(S.bItems[i].uid);
+      if (hit && !SEL.has(k)) selToggle(i, true);
+      else if (!hit && !add && SEL.has(k) && c.dataset.lasso === "1") selToggle(i, false);
+      if (hit) c.dataset.lasso = "1";
+    });
+  });
+  window.addEventListener("mouseup", () => {
+    if (!on) return;
+    on = false; box.hidden = true;
+    $$("#bgrid .pcard2").forEach((c) => delete c.dataset.lasso);
+    setTimeout(() => { lassoMoved = false; }, 0);
+  });
+})();
+/* ---------------- 여러 명 꾸미기 */
+const MD = { deco: { caption: true, style: "gold", rounded: false, border: false }, people: [], t: 0 };
+function openMultiDeco() {
+  MD.people = [...SEL.values()];
+  $("#mdModal").classList.add("on");
+  renderMDOpts(); mdPreview();
+}
+function renderMDOpts() {
+  const d = MD.deco;
+  $("#mdCap").checked = d.caption; $("#mdRound").checked = d.rounded; $("#mdBorder").checked = d.border;
+  $$("#mdStyle button").forEach((b) => b.classList.toggle("on", b.dataset.v === d.style));
+  $("#mdStyle").style.opacity = d.caption ? 1 : .4;
+}
+function mdPreview() {
+  clearTimeout(MD.t);
+  MD.t = setTimeout(async () => {
+    $("#mdSum").textContent = `${MD.people.length}명`;
+    const r = await call("multi_deco_preview", MD.people, MD.deco, 200);
+    if (!r) return;
+    $("#mdGrid").innerHTML = MD.people.map((p) => {
+      const t = r.thumbs[String(p.uid).replace(/^r-/, "")];
+      return `<div class="abp"><div class="im">${t ? `<img src="${t}">` : "사진 없음"}</div><div class="nm">${esc(p.name)}</div><div class="sb">${esc(p.club || "")}</div></div>`;
+    }).join("");
+    $("#mdNote").textContent = r.none.length ? `지금 사진이 없는 ${r.none.length}명은 빼고 넣어요.` : "";
+  }, 120);
+}
+$("#mdCap").onchange = (e) => { MD.deco.caption = e.target.checked; renderMDOpts(); mdPreview(); };
+$("#mdRound").onchange = (e) => { MD.deco.rounded = e.target.checked; renderMDOpts(); mdPreview(); };
+$("#mdBorder").onchange = (e) => { MD.deco.border = e.target.checked; renderMDOpts(); mdPreview(); };
+$$("#mdStyle button").forEach((b) => b.onclick = () => { MD.deco.style = b.dataset.v; MD.deco.caption = true; renderMDOpts(); mdPreview(); });
+$("#mdClose").onclick = () => $("#mdModal").classList.remove("on");
+$("#mdGo").onclick = async () => {
+  const r = await call("multi_deco_apply", MD.people, MD.deco);
+  if (!r) return;
+  S.queue = r.queue; renderQueue();
+  $("#mdModal").classList.remove("on");
+  toast(`${r.count}명을 대기열에 넣었어요.${r.skipped ? ` (사진 없는 ${r.skipped}명은 뺐어요)` : ""}`, "ok", 3000);
+  doSearch(false);
+};
+
 function renderBrowse(reset = true) {
   const g = $("#bgrid"), more = $("#bmore"), sv = (ST && ST.save) || {};
   const loaded = S.people.loaded || (sv.loaded);
@@ -212,7 +312,11 @@ function renderBrowse(reset = true) {
     if (r) { toast(r.pinned ? `${p.name} 고정했어요. 다른 팀을 검색해도 맨 위에 보여요.` : `${p.name} 고정을 풀었어요.`, "ok", 2200); doSearch(false); }
   });
   $$(".pcard2", g).forEach((c) => bindCardDrop(c));
-  $$(".pcard2", g).forEach((c) => c.onclick = () => {
+  $$(".pcard2", g).forEach((c) => c.onclick = (e) => {
+    const i = +c.dataset.i;
+    if (e.target.closest(".selck") || e.ctrlKey || e.metaKey) { selToggle(i); return; }
+    if (e.shiftKey) { selRange(i); return; }
+    if (lassoMoved) return;
     c.classList.add("picked");
     setTimeout(() => { c.classList.remove("picked"); pickPerson(S.bItems[+c.dataset.i], +c.dataset.i); }, 130);
   });
@@ -760,9 +864,11 @@ async function renderKitGrid() {
     g.innerHTML = `<div class="hint" style="padding:30px;text-align:center">${$("#kitQ").value.trim() ? "찾는 구단의 유니폼이 없어요." : "아직 모인 유니폼이 없어요. 게임에서 구단 프로필을 열어 주세요 (플러그인 필요)."}</div>`;
     return;
   }
-  g.innerHTML = r.items.map((x, i) => `<div class="kcard ${cur && x.club === cur ? "mine" : ""}" data-i="${i}">
+  const pk = KIT_PICK_CB && AB.kitNum ? String(AB.kitNum) : "";
+  g.innerHTML = r.items.map((x, i) => `<div class="kcard ${cur && x.club === cur ? "mine" : ""}${pk && String(x.num) === pk ? " picked" : ""}" data-i="${i}">
       <div class="kh"><b>${esc(x.name || `유니폼 ${x.num}번`)}</b>${x.alt ? ` <span class="tg2">${esc(x.alt)}</span>` : ""}${!x.known ? ' <span class="tg2">세이브에 없는 구단 (여성팀 등)</span>' : ""}<button class="khide" title="이 유니폼 숨기기">숨기기</button>${x.user ? ' <span class="tg">직접 지정</span>' : ""}${cur && x.club === cur ? ' <span class="tg">이 선수 구단</span>' : ""}</div>
-      <div class="kk">${["home", "away", "third"].filter((k) => x.kits[k]).map((k) => `<button class="kimg" data-k="${k}" title="${KIND_KO[k]} 유니폼 입히기"><img src="${x.kits[k]}"><span>${KIND_KO[k]}</span></button>`).join("")}</div>
+      ${pk && String(x.num) === pk ? '<div class="tg" style="display:inline-block;margin:2px 0 4px">지금 입히는 것</div>' : ""}
+      <div class="kk">${["home", "away", "third"].filter((k) => x.kits[k]).map((k) => `<button class="kimg${pk && String(x.num) === pk && AB.kitNumKind === k ? " picked" : ""}" data-k="${k}" title="${KIND_KO[k]} 유니폼 입히기"><img src="${x.kits[k]}"><span>${KIND_KO[k]}</span></button>`).join("")}</div>
       ${cur && x.club !== cur ? `<button class="btn sm ghost kmem">이 유니폼을 '${esc(curName || "이 선수 구단")}' 것으로 기억</button>` : ""}
     </div>`).join("") + (r.total > r.items.length ? `<div class="hint">… 외 ${r.total - r.items.length}개 · 검색해서 찾아 주세요</div>` : "");
   $("#kitNote").innerHTML = r.hidden ? `숨긴 유니폼 ${r.hidden}개 · <a id="kitUnhide">다시 보이기</a>` : "게임에서 구단 프로필을 열면 그 구단 유니폼이 여기에 모여요 (플러그인).";
@@ -1686,7 +1792,7 @@ const won = (n) => Math.round(n).toLocaleString("ko-KR");
 
 async function openAB() {
   $("#abModal").classList.add("on");
-  if (S.settings && S.settings.ab_deco) AB.deco = Object.assign({ caption: false, style: "gold", rounded: false, border: false }, S.settings.ab_deco);
+
   showABSetup();                 // 항상 설정 화면부터. 지난 결과는 맨 위 띠로
 }
 let abPrevTimer = 0;
@@ -1721,10 +1827,10 @@ async function showABSetup() {
   $("#abPeople").innerHTML = `<div class="empty" style="grid-column:1/-1;padding:30px"><div><div class="spin"></div>목록을 모으는 중…</div></div>`;
   const n = $("#qName").value.trim(), t = $("#qTeam").value.trim();
   const club = S.teamClub && S.teamClub.name === t ? S.teamClub.cuid : "";
-  const r = await call("batch_people", n, t, S.kind, S.filter, S.kind === "player" ? S.squad : "", club);
+  const r = await call("batch_people", n, t, S.kind, S.filter, S.kind === "player" ? S.squad : "", club, AB.preselect || []);
   if (!r) return;
   AB.people = r.items;
-  AB.sel = new Set();          // 처음엔 아무도 안 고른 채로 (실수로 많이 그리지 않게)
+  AB.sel = new Set(AB.preselect || []);     // 첫 화면에서 고른 사람만 (없으면 아무도 안 고른 채로)
   AB.total = r.total; AB.max = r.max;
   renderABPeople();
 }
@@ -1826,10 +1932,8 @@ function renderABOpts() {
   $("#abTaskHint").textContent = AB_TASK_HINT[AB.task] || "";
   $("#abRefRow").style.display = AB.task !== "kit" ? "" : "none";
   $$(".gzrow").forEach((r) => r.style.display = AB.task === "gunzo" ? "" : "none");
-  const dd = AB.deco;
-  $("#abDecoCap").checked = !!dd.caption; $("#abDecoRound").checked = !!dd.rounded; $("#abDecoBorder").checked = !!dd.border;
-  $$("#abDecoStyle button").forEach((b) => b.classList.toggle("on", b.dataset.v === (dd.style || "gold")));
-  $("#abDecoStyle").style.opacity = dd.caption ? 1 : .4;
+  $("#abKitNow").textContent = !$("#abKit").checked ? "지금: 유니폼 안 입힘 (구단 이름으로만)"
+    : AB.kitNum ? `지금: ${AB.kitNumName} ${KIND_KO[AB.kitNumKind] || ""} (모두 같은 유니폼)` : `지금: 각자 구단 ${KIND_KO[AB.kitKind] || "홈"} 유니폼`;
   const kp = $("#abKitPicked");
   kp.hidden = !AB.kitNum;
   if (AB.kitNum) kp.innerHTML = `${AB.kitNumImg ? `<img src="${AB.kitNumImg}">` : ""}<span>${esc(AB.kitNumName)} ${KIND_KO[AB.kitNumKind] || ""}</span><a id="abKitReset" title="구단 유니폼으로 되돌리기">✕</a>`;
@@ -1882,11 +1986,7 @@ function renderABSum() {
 }
 $$("#abTask button").forEach((b) => b.onclick = () => { if (b.disabled) return; AB.task = b.dataset.v; renderABOpts(); renderABPeople(); });
 $$("#abKitKind button").forEach((b) => b.onclick = () => { AB.kitKind = b.dataset.v; renderABOpts(); });
-function saveABDeco() { call("set_option", "ab_deco", AB.deco); if (S.settings) S.settings.ab_deco = { ...AB.deco }; renderABOpts(); }
-$("#abDecoCap").onchange = (e) => { AB.deco.caption = e.target.checked; saveABDeco(); };
-$("#abDecoRound").onchange = (e) => { AB.deco.rounded = e.target.checked; saveABDeco(); };
-$("#abDecoBorder").onchange = (e) => { AB.deco.border = e.target.checked; saveABDeco(); };
-$$("#abDecoStyle button").forEach((b) => b.onclick = () => { AB.deco.style = b.dataset.v; AB.deco.caption = true; saveABDeco(); });
+
 $("#abKitOther").onclick = () => {
   KIT_PICK_CB = (x, kind) => {
     AB.kitNum = x.num; AB.kitNumKind = kind; AB.kitNumImg = x.kits[kind]; AB.kitNumName = x.name || `유니폼 ${x.num}번`;
@@ -1899,7 +1999,7 @@ $("#abEngine").onchange = abPrice;
 $("#abAll").onclick = () => { AB.sel = new Set(AB.people.map((p) => p.uid)); renderABPeople(); };
 $("#abNone").onclick = () => { AB.sel.clear(); renderABPeople(); };
 $("#abNoFace").onclick = () => { AB.sel = new Set(AB.people.filter((p) => !p.has_face).map((p) => p.uid)); renderABPeople(); };
-$("#btnAB").onclick = openAB;
+$("#btnAB").onclick = () => { AB.preselect = null; openAB(); };
 $("#btnRefresh").onclick = () => { doSearch(false); toast("목록을 다시 읽었어요.", "ok", 1500); };
 $("#abRefresh").onclick = async () => {
   const keep = new Set(AB.sel), old = new Set(AB.people.map((p) => p.uid));
@@ -1908,7 +2008,7 @@ $("#abRefresh").onclick = async () => {
   renderABPeople();
 };
 $("#abClose").onclick = () => {
-  $("#abModal").classList.remove("on"); stopABPoll();
+  $("#abModal").classList.remove("on"); stopABPoll(); AB.preselect = null;
   if (!AB.running) call("drawtool_stop");          // 다 그렸으면 그림도구를 바로 꺼서 메모리 돌려주기
 };
 $("#abGo").onclick = async () => {
@@ -1919,7 +2019,7 @@ $("#abGo").onclick = async () => {
   const left = prev ? prev.counts.done : 0;
   if (left && !await confirmBox("새로 그리기", `지난번 그림 ${left}장이 지워져요. 대기열에 넣을 게 있으면 먼저 '보러 가기'에서 넣어 주세요.\n\n지우고 새로 그릴까요?`, "지우고 시작", true)) return;
   if (pr.kind === "paid" && !await confirmBox("요금 확인", `${list.length}명을 그려요. 예상 요금은 약 ${won(pr.won * list.length)}원이에요.\n\n요금은 API 키에 연결한 결제에서 빠져나가요. 시작할까요?`, "시작")) return;
-  const r = await call("batch_start", list, AB.task, { engine: $("#abEngine").value, kit_kind: AB.kitKind, use_kit: $("#abKit").checked, ref: $("#abRef").checked, extra: $("#abExtra").value, action: $("#abAction").value, banner: "none", deco: AB.deco, kit_num: AB.kitNum, kit_num_kind: AB.kitNumKind });
+  const r = await call("batch_start", list, AB.task, { engine: $("#abEngine").value, kit_kind: AB.kitKind, use_kit: $("#abKit").checked, ref: $("#abRef").checked, extra: $("#abExtra").value, action: $("#abAction").value, banner: "none", deco: {}, kit_num: AB.kitNum, kit_num_kind: AB.kitNumKind });
   if (!r) return;
   if (r.error === "need_key") { toast("연결 정보가 없어요. 설정에서 넣어 주세요.", "err"); $("#abModal").classList.remove("on"); openSettings(r.engine); return; }
   if (r.skipped) toast(`지금 사진이 없는 ${r.skipped}명은 빼고 그려요.`, "info", 3500);

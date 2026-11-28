@@ -86,7 +86,9 @@
       </div>
       <div class="btool2"><div class="sqin" id="sqRow"><span class="lbl2">소속 팀</span><div class="chips" id="sqChips"><button class="chip on" data-s="">전체</button><button class="chip" data-s="1군">1군</button><button class="chip" data-s="2군">2군</button><button class="chip" data-s="U-21">U-21</button><button class="chip" data-s="U-18">U-18</button></div><span class="hint" style="margin-left:8px">2군·유스 구분은 나이로 추정해요</span></div>
         <div class="sp"></div><button class="btn refbtn" id="btnRefresh" title="게임에서 새로 모인 얼굴·유니폼을 다시 읽어요">↻ 새로고침</button></div>
-      <div class="gridwrap grow" id="bwrap"><div class="bgrid" id="bgrid"></div><div id="bmore"></div></div>
+      <div class="selbar" id="selBar" hidden><b id="selCnt"></b><div class="sp"></div>
+        <button class="btn sm primary" id="selDeco">꾸미기 편집</button><button class="btn sm" id="selAI">AI로 그리기</button><button class="btn sm" id="selClear">선택 해제</button></div>
+      <div class="gridwrap grow" id="bwrap"><div class="bgrid" id="bgrid"></div><div id="bmore"></div><div class="lasso" id="lasso" hidden></div></div>
     </div>
   </section>
 
@@ -301,17 +303,13 @@
       <div class="abrow"><label class="switch"><input type="checkbox" id="abKit" checked><i></i>게임 유니폼 입히기</label>
         <div class="seg abseg3" id="abKitKind"><button data-v="home">홈</button><button data-v="away">원정</button><button data-v="third">서드</button></div>
         <button class="btn sm" id="abKitOther">다른 유니폼 고르기</button>
-        <span class="abkitpick" id="abKitPicked" hidden></span></div>
+        <span class="abkitpick" id="abKitPicked" hidden></span><span class="abkitnow" id="abKitNow"></span></div>
       <div class="abrow gzrow"><span class="lbl2">동작</span><select id="abAction" class="sel">
         <option value="auto">자동 · 포지션에 맞게 섞어서</option><option value="dribble">드리블</option><option value="shoot">슈팅</option>
         <option value="celebrate">골 세리머니</option><option value="fist">주먹 쥐고 포효</option><option value="clap">박수</option><option value="point">동료 가리키기</option><option value="pass">패스</option><option value="run">질주</option>
         <option value="tackle">태클</option><option value="header">헤딩</option><option value="gk_hold">골키퍼 공 안고 서기</option><option value="gk_throw">골키퍼 공 던지기</option><option value="gk_shout">골키퍼 지시하기</option><option value="save">골키퍼 몸 날려 선방</option><option value="catch">골키퍼 높은 공 캐칭</option></select>
         <span class="hint">스태프·감독은 터치라인에서 지시하는 모습이에요</span></div>
-      <div class="abrow"><span class="lbl2">꾸미기</span>
-        <label class="switch"><input type="checkbox" id="abDecoCap"><i></i>이름띠</label>
-        <div class="seg abseg3" id="abDecoStyle"><button data-v="gold">금색</button><button data-v="white">흰색</button><button data-v="navy">남색</button></div>
-        <label class="switch"><input type="checkbox" id="abDecoRound"><i></i>모서리 둥글게</label>
-        <label class="switch"><input type="checkbox" id="abDecoBorder"><i></i>테두리</label></div>
+
       <div class="abrow"><span class="lbl2">그리기 도구</span><select id="abEngine" class="sel"></select><span class="hint" id="abEngHint"></span></div>
       <div class="abrow"><span class="lbl2">덧붙일 말</span><label class="field" style="flex:1;min-width:260px"><input id="abExtra" placeholder="모두에게 똑같이 붙여 보낼 말 (선택) · 예: 배경은 어두운 회색, 수염 없이" maxlength="500"></label></div>
       <div class="abcost" id="abCost"></div>
@@ -340,6 +338,18 @@
   <div class="db abbig"><div><div class="hint" id="abBeforeLbl">지금 사진</div><div id="abBefore"></div></div><div><div class="hint">AI가 그린 것</div><div id="abAfter"></div></div></div>
   <div class="db"><details class="abprompt"><summary>이 사람한테 보낸 프롬프트</summary><pre id="abPrompt"></pre></details></div>
   <div class="df"><button class="btn" id="abBigAgain">↻ 다시 그리기</button><button class="btn" id="abBigDrop">빼기</button><div class="sp"></div><button class="btn primary" id="abBigX">닫기</button></div>
+</div></div>
+<div class="modal" id="mdModal"><div class="dlg bulk ab">
+  <div class="dh"><svg class="i"><use href="#i-edit"/></svg><h3>여러 명 꾸미기</h3><div class="sp"></div><span class="hint" id="mdSum"></span></div>
+  <div class="db">
+    <div class="abopts"><div class="abrow">
+      <label class="switch"><input type="checkbox" id="mdCap" checked><i></i>이름띠</label>
+      <div class="seg abseg3" id="mdStyle"><button data-v="gold">금색</button><button data-v="white">흰색</button><button data-v="navy">남색</button></div>
+      <label class="switch"><input type="checkbox" id="mdRound"><i></i>모서리 둥글게</label>
+      <label class="switch"><input type="checkbox" id="mdBorder"><i></i>테두리</label></div></div>
+    <div class="abgrid big" id="mdGrid"></div>
+  </div>
+  <div class="df"><span class="hint grow" id="mdNote"></span><button class="btn" id="mdClose">닫기</button><button class="btn primary" id="mdGo">대기열에 넣기</button></div>
 </div></div>
 <div class="modal" id="keysModal"><div class="dlg" style="width:520px">
   <div class="dh"><span style="font-size:16px">⌨</span><h3>단축키</h3></div>
