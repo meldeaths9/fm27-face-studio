@@ -592,7 +592,7 @@ kbd { display: inline-block; min-width: 22px; padding: 2px 7px; border-radius: 6
 .pcard2.sel { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); background: rgba(123,97,255,.12); }
 .pcard2.sel .selck { background: var(--accent); border-color: var(--accent); }
 .pcard2.sel .selck::after { content: "✓"; color: #fff; font-weight: 900; font-size: 15px; position: absolute; inset: 0; display: grid; place-items: center; }
-.selbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; margin-bottom: 8px; border-radius: 12px; background: rgba(123,97,255,.15); border: 1px solid var(--accent); font-size: 13.5px; }
+.selbar { display: flex; align-self: flex-end; width: fit-content; margin-left: auto; align-items: center; gap: 8px; padding: 8px 12px; margin-bottom: 8px; border-radius: 12px; background: rgba(123,97,255,.15); border: 1px solid var(--accent); font-size: 13.5px; }
 .selbar[hidden] { display: none; }
 #bwrap { position: relative; }
 .lasso { position: absolute; z-index: 20; border: 1.5px dashed var(--accent); background: rgba(123,97,255,.12); pointer-events: none; }
