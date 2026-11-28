@@ -117,6 +117,8 @@ def main() -> None:
     webview.start(private_mode=False, debug="--debug" in sys.argv)
     try:
         api.flush_deletes()       # 되돌리기 기다리던 삭제는 끄기 전에 마저 지운다
+        from facepicker import drawtool
+        drawtool.stop_all()       # 그림도구 일꾼(그래픽카드 메모리) 끄기
     except Exception as e:  # noqa: BLE001
         log.warning("남은 삭제 처리 실패: %s", e)
     log.info("정상 종료")

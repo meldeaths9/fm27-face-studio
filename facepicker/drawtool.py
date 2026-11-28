@@ -214,14 +214,14 @@ class DrawTool:
                     return
                 base = self.task.get("base", 0)
             n = max(0, dir_size(self.root) - base)
-            now = time.time()
             with self.lock:
-                prev = self.task.get("_prev")
-                if prev and now > prev[1]:
-                    sp = max(0.0, (n - prev[0]) / (now - prev[1]))
-                    self.task["speed"] = sp if not self.task.get("speed") else self.task["speed"] * 0.6 + sp * 0.4
-                self.task["_prev"] = (n, now)
-                self.task["done"] = min(n, self.task.get("total", n))
+                ms = self.task.get("model")                  # 모델 받는 중: 받은 파일 수로 (빈 파일을 미리 만들어서 크기로는 못 잼)
+                if ms and self.task.get("files"):
+                    a, b = self.task["files"]
+                    n = ms[0] + ms[1] * (a / max(1, b))
+                elif ms:
+                    n = ms[0]
+                self.task["done"] = max(self.task.get("done", 0), min(n, self.task.get("total", n)))
             time.sleep(2)
 
     def _step(self, text: str) -> None:
@@ -250,6 +250,16 @@ class DrawTool:
             line = raw.decode("utf-8", "replace")
             out.append(line)
             self._log(line)
+            for part in line.replace("\r", "\n").split("\n"):
+                part = part.strip()
+                if not part:
+                    continue
+                import re as _re
+                m = _re.search(r"Fetching (\d+) files:.*?(\d+)/(\d+)", part)
+                with self.lock:
+                    if m:
+                        self.task["files"] = [int(m.group(2)), int(m.group(3))]
+                    self.task["last"] = part[-140:]
             if time.time() - t0 > timeout:
                 self.cancel()
         code = self._proc.wait()
@@ -358,12 +368,19 @@ class DrawTool:
                     continue
                 m = MODELS[k]
                 self._step(f"{m['name']} 받는 중 (약 {m['size'] / 1e9:.0f}GB)")
+                with self.lock:
+                    self.task["model"] = [self.task.get("done", 0), m["size"]]
+                    self.task.pop("files", None)
                 code = ("import sys\nfrom huggingface_hub import snapshot_download\n"
                         "snapshot_download(sys.argv[1], local_dir=sys.argv[2], allow_patterns=sys.argv[3].split(','), max_workers=8)\n")
                 self._run([self.py, "-c", code, m["repo"], self.model_dir(k), ",".join(m["allow"])])
                 st = self.state()
                 st["models"] = sorted(set(st.get("models", [])) | {k})
                 self._save_state(st)
+                with self.lock:
+                    self.task.pop("model", None)
+                    self.task.pop("files", None)
+            shutil.rmtree(self.root / "cache" / "hf" / "xet", ignore_errors=True)    # 빠른 받기 조각 캐시
             st = self.state()
             st["used"] = dir_size(self.root)
             self._save_state(st)
@@ -381,6 +398,9 @@ class DrawTool:
         with self.lock:
             if self.task.get("active"):
                 return {"error": "설치 중에는 지울 수 없어요. 먼저 취소해 주세요."}
+        r = _RUNNERS.get(str(self.root))
+        if r:
+            r.stop()
         if not self.root.exists():
             return {"freed": 0}
         if self.root.name != FOLDER_NAME:          # 엉뚱한 폴더를 지우지 않게
@@ -396,3 +416,155 @@ class DrawTool:
         shutil.rmtree(self.root, onerror=onerr)
         left = dir_size(self.root) if self.root.exists() else 0
         return {"freed": size - left, "left": left}
+
+
+SERVER_PY = r"""
+# FM Face Studio 그림도구 — 앱이 켜고 끄는 그리기 일꾼. 한 줄 JSON으로 주고받는다.
+import json, os, random, sys, time, traceback
+proto = sys.stdout
+sys.stdout = sys.stderr            # 라이브러리 출력은 기록으로만
+def say(**kw):
+    proto.write("@@" + json.dumps(kw, ensure_ascii=False) + "\n"); proto.flush()
+try:
+    import torch
+    from PIL import Image
+    from diffusers import Flux2KleinPipeline
+    model_dir = sys.argv[1]
+    t0 = time.time()
+    pipe = Flux2KleinPipeline.from_pretrained(model_dir, torch_dtype=torch.bfloat16)
+    pipe.enable_model_cpu_offload()
+    pipe.set_progress_bar_config(disable=True)
+    say(ready=True, secs=round(time.time() - t0, 1), gpu=torch.cuda.get_device_name(0))
+except Exception as e:
+    say(ready=False, error=f"{type(e).__name__}: {e}", trace=traceback.format_exc()[-1500:])
+    sys.exit(1)
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        req = json.loads(line)
+        if req.get("quit"):
+            break
+        refs = []
+        for p in req.get("refs") or []:
+            im = Image.open(p).convert("RGB")
+            im.thumbnail((1024, 1024))
+            refs.append(im)
+        seed = int(req.get("seed") or random.randint(1, 2**31 - 1))
+        kw = dict(prompt=req["prompt"], height=int(req.get("h", 1024)), width=int(req.get("w", 1024)),
+                  guidance_scale=float(req.get("guidance", 1.0)), num_inference_steps=int(req.get("steps", 4)),
+                  generator=torch.Generator(device="cpu").manual_seed(seed))
+        if refs:
+            kw["image"] = refs if len(refs) > 1 else refs[0]
+        t0 = time.time()
+        img = pipe(**kw).images[0]
+        img.save(req["out"])
+        say(id=req.get("id"), ok=True, secs=round(time.time() - t0, 1), seed=seed)
+    except torch.cuda.OutOfMemoryError as e:
+        torch.cuda.empty_cache()
+        say(id=req.get("id") if isinstance(req, dict) else None, ok=False, error="그래픽카드 메모리가 모자라요. 게임 등 다른 프로그램을 끄고 다시 해 보세요.")
+    except Exception as e:
+        say(id=req.get("id") if isinstance(req, dict) else None, ok=False, error=f"{type(e).__name__}: {e}", trace=traceback.format_exc()[-1500:])
+"""
+
+
+class Runner:
+    """그리기 일꾼(모델을 올려 둔 파이썬)을 켜 두고 하나씩 그리게 한다. 오래 놀면 끈다."""
+    IDLE = 600
+
+    def __init__(self, dt: "DrawTool"):
+        self.dt = dt
+        self.proc: subprocess.Popen | None = None
+        self.lock = threading.Lock()
+        self.state = "off"           # off · loading · ready
+        self.last = 0.0
+        self.info: dict = {}
+        threading.Thread(target=self._idle_loop, daemon=True).start()
+
+    def _idle_loop(self):
+        while True:
+            time.sleep(30)
+            if self.state == "ready" and time.time() - self.last > self.IDLE and not self.lock.locked():
+                self.stop()
+
+    def _read(self, timeout: float) -> dict:
+        assert self.proc and self.proc.stdout
+        end = time.time() + timeout
+        while time.time() < end:
+            raw = self.proc.stdout.readline()
+            if not raw:
+                raise RuntimeError("그림도구가 꺼졌어요. 그림도구 폴더의 draw.log를 확인해 주세요.")
+            s = raw.decode("utf-8", "replace").strip()
+            if s.startswith("@@"):
+                return json.loads(s[2:])
+        raise RuntimeError("그림도구가 응답하지 않아요.")
+
+    def _start(self, key: str = "std"):
+        dt = self.dt
+        mdir = dt.model_dir(key)
+        if not (mdir / "model_index.json").exists():
+            raise RuntimeError("그림도구 모델이 없어요. 'AI로 한꺼번에 그리기'에서 설치해 주세요.")
+        script = dt.root / "server.py"
+        script.write_text(SERVER_PY, encoding="utf-8")
+        logf = open(dt.root / "draw.log", "ab")
+        self.state = "loading"
+        self.proc = subprocess.Popen([str(dt.py), "-u", str(script), str(mdir)], stdin=subprocess.PIPE,
+                                     stdout=subprocess.PIPE, stderr=logf, env=dt._env(), cwd=str(dt.root),
+                                     creationflags=NO_WINDOW)
+        r = self._read(900)
+        if not r.get("ready"):
+            self.stop()
+            raise RuntimeError("그림도구를 켜지 못했어요: " + str(r.get("error", ""))[:300])
+        self.info = r
+        self.state = "ready"
+        log.info("그림도구 켜짐 (%.1f초)", r.get("secs", 0))
+
+    def stop(self):
+        p, self.proc = self.proc, None
+        self.state = "off"
+        if p and p.poll() is None:
+            try:
+                p.stdin.write(b'{"quit":true}\n'); p.stdin.flush()      # type: ignore[union-attr]
+                p.wait(10)
+            except Exception:  # noqa: BLE001
+                try:
+                    p.kill()
+                except Exception:  # noqa: BLE001
+                    pass
+
+    def draw(self, prompt: str, refs: list, out: Path, steps: int = 4, seed: int = 0) -> dict:
+        with self.lock:
+            if not self.proc or self.proc.poll() is not None:
+                self._start()
+            tmp = self.dt.root / "tmp"
+            tmp.mkdir(exist_ok=True)
+            paths = []
+            for i, im in enumerate(refs or []):
+                p = tmp / f"ref{i}.png"
+                im.convert("RGB").save(p)
+                paths.append(str(p))
+            req = {"id": int(time.time() * 1000), "prompt": prompt, "refs": paths, "out": str(out),
+                   "steps": steps, "seed": seed}
+            self.proc.stdin.write((json.dumps(req, ensure_ascii=False) + "\n").encode("utf-8"))   # type: ignore[union-attr]
+            self.proc.stdin.flush()                                                               # type: ignore[union-attr]
+            r = self._read(600)
+            self.last = time.time()
+            if not r.get("ok"):
+                raise RuntimeError(r.get("error") or "그리기 실패")
+            return r
+
+
+_RUNNERS: dict[str, Runner] = {}
+
+
+def runner(root: Path) -> Runner:
+    k = str(root)
+    if k not in _RUNNERS:
+        _RUNNERS[k] = Runner(DrawTool(root))
+    return _RUNNERS[k]
+
+
+def stop_all():
+    for r in _RUNNERS.values():
+        r.stop()

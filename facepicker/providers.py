@@ -234,7 +234,29 @@ def drawtool_root(cfg: dict | None = None):
 
 
 def gen_local(cfg: dict, prompt: str, photo) -> Image.Image:
-    raise ProviderError("내 PC로 그리기는 다음 테스트 버전에 들어가요. 지금은 설치만 해 둘 수 있어요.")
+    from . import drawtool
+    import tempfile
+    root = drawtool_root(cfg)
+    dt = drawtool.DrawTool(root)
+    if not dt.installed():
+        raise ProviderError("그림도구가 설치되지 않았어요. 'AI로 한꺼번에 그리기'에서 설치해 주세요.")
+    refs = photo if isinstance(photo, (list, tuple)) else ([photo] if photo is not None else [])
+    out = (root / "tmp")
+    out.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(suffix=".png", dir=str(out))
+    os.close(fd)
+    try:
+        drawtool.runner(root).draw(prompt, [r for r in refs if r is not None], Path(name))
+        im = Image.open(name)
+        im.load()
+        return im.convert("RGBA")
+    except RuntimeError as e:
+        raise ProviderError(str(e)) from None
+    finally:
+        try:
+            os.unlink(name)
+        except OSError:
+            pass
 
 
 GENERATORS = {"local": gen_local, "openai": gen_openai, "xai": gen_xai, "cloudflare": gen_cloudflare,

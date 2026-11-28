@@ -25,7 +25,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.9.10"
+VERSION = "1.9.11"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -1047,7 +1047,7 @@ class Api:
         return {"thumb": _data_url(t)}
 
     def _lang(self) -> str:
-        return "en" if self._cfg.prompt_lang == "en" or self._cfg.ai_provider == "cloudflare" else "ko"
+        return "en" if self._cfg.prompt_lang == "en" or self._cfg.ai_provider in ("cloudflare", "local") else "ko"
 
     def _hint(self, person: dict) -> str:
         return self._cfg.club_hints.get(str(person.get("club", "")).strip(), "")
@@ -1505,7 +1505,7 @@ class Api:
         """사람 하나 → (프롬프트, 참고 사진들)."""
         person = dict(it["person"])
         task = meta.get("task", "face")
-        lang = "en" if self._cfg.prompt_lang == "en" or meta.get("engine") == "cloudflare" else "ko"
+        lang = "en" if self._cfg.prompt_lang == "en" or meta.get("engine") in ("cloudflare", "local") else "ko"
         kit = self._batch_kit(person, meta.get("kit_kind", "home")) if meta.get("use_kit", True) else None
         hint = self._hint(person)
         if task == "kit":
@@ -1549,7 +1549,7 @@ class Api:
         if engine == "local":
             if not self._drawtool().installed():
                 return {"error": "먼저 아래 칸에서 그림도구를 설치해 주세요."}
-            return {"error": "내 PC로 그리기는 다음 테스트 버전에 들어가요. 지금은 설치만 해 둘 수 있어요."}
+            cfg = dict(cfg, dir=str(self._drawtool().root))
         cfg = self._cfg.ai_cfg.get(engine, {})
         if providers.status(engine, cfg) not in ("키 있음", "설치됨"):
             return {"error": "need_key", "engine": engine}
@@ -1570,7 +1570,7 @@ class Api:
         pr = self.batch_price(engine)
         meta["won"] = pr.get("won", 0) if isinstance(pr, dict) and pr.get("kind") == "paid" else 0
         b.reset(people, meta)
-        b.start(self._batch_job, workers=int(opts.get("workers") or 2))
+        b.start(self._batch_job, workers=1 if engine == "local" else int(opts.get("workers") or 2))
         return {"ok": True, "count": len(people), "skipped": skipped}
 
     @_safe
@@ -1581,6 +1581,10 @@ class Api:
                       "status": i["status"], "err": i.get("err", ""), "ver": Path(i["png"]).name if i.get("png") else ""}
                      for i in b.items]
             meta = {k: b.meta.get(k) for k in ("task", "engine", "kit_kind", "spent", "ref", "banner", "won")}
+        if meta.get("engine") == "local":
+            from . import drawtool
+            r = drawtool._RUNNERS.get(str(self._drawtool().root))
+            meta["local_state"] = r.state if r else "off"
         return {"items": items, "running": b.running, "counts": b.counts(), "meta": meta}
 
     @_safe

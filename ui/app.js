@@ -1732,12 +1732,13 @@ function renderDT() {
   if (t.active) {
     const pct = t.total ? Math.min(99, Math.round(t.done / t.total * 100)) : 0;
     h += `<div class="lrow"><b>설치 중</b><span>${esc(t.step || "")}</span></div>
-      <div class="abprog"><div class="abbar"><i style="width:${pct}%"></i></div><span>${gb(t.done)} / 약 ${gb(t.total)}GB${t.speed ? ` · ${(t.speed / 1e6).toFixed(1)}MB/s` : ""}</span></div>
-      <div class="lrow"><span class="hint grow">이 창을 닫아도 설치는 계속돼요. 다시 열면 이어서 보여요.</span><button class="btn sm" id="dtCancel">설치 취소</button></div>`;
+      <div class="abprog"><div class="abbar"><i style="width:${pct}%"></i></div><span>${t.files ? `파일 ${t.files[0]}/${t.files[1]} · ` : ""}${gb(t.done)} / 약 ${gb(t.total)}GB</span></div>
+      ${t.last ? `<div class="hint" style="font-family:Consolas,monospace;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.last)}</div>` : ""}
+      <div class="lrow"><span class="hint grow">이 창을 닫아도 설치는 계속돼요. 큰 파일은 한동안 멈춘 것처럼 보일 수 있어요.</span><button class="btn sm" id="dtLog">설치 기록</button><button class="btn sm" id="dtCancel">설치 취소</button></div>`;
   } else if (d.installed) {
     h += `<div class="lrow"><b>설치됨</b><code>${esc(d.root)}</code><span class="hint">쓰는 용량 약 ${gb(d.used || 0)}GB</span></div>`;
     h += Object.entries(d.models).map(([k, m]) => `<div class="mrow">${m.installed ? '<span class="done">✓ 받음</span>' : `<button class="btn sm" data-add="${k}">추가로 받기</button>`}<span>${esc(m.name)}</span><span class="sz">약 ${gb(m.size)}GB</span></div>`).join("");
-    h += `<div class="lrow"><span class="hint grow">요금 없이 내 그래픽카드로 그려요. (그리기는 다음 테스트 버전에 들어가요)</span><button class="btn sm" id="dtLog">설치 기록</button><button class="btn sm" id="dtDel">그림도구 지우기</button></div>`;
+    h += `<div class="lrow"><span class="hint grow">요금 없이 내 그래픽카드로 그려요. 첫 장은 그림도구를 켜느라 1~2분 더 걸려요.</span><button class="btn sm" id="dtLog">설치 기록</button><button class="btn sm" id="dtDel">그림도구 지우기</button></div>`;
   } else {
     const adv = $("#dtAdv") ? $("#dtAdv").checked : false;
     const need = d.pkg_est + d.models.std.size + (adv ? d.models.adv.size : 0);
@@ -1884,8 +1885,9 @@ async function renderABRun(st) {
   const c = st.counts, tot = st.items.length, fin = c.done + c.fail;
   $("#abFill").style.width = tot ? `${fin / tot * 100}%` : "0";
   const task = { face: "새 얼굴", kit: "유니폼만 바꾸기", gunzo: "건조" }[st.meta.task] || "";
+  const warm = st.meta.local_state === "loading" ? " · 그림도구 켜는 중 (처음 1~2분)" : "";
   const spent = st.meta.won && st.meta.spent ? ` · 이번에 ${st.meta.spent}장, 약 ${won(st.meta.won * st.meta.spent)}원` : "";
-  $("#abProgText").textContent = `${task}${spent} · ${c.done}명 완료${c.fail ? ` · 실패 ${c.fail}` : ""}${c.wait + c.running ? ` · 남은 ${c.wait + c.running}명` : ""}${st.running ? "" : c.wait ? " · 멈춤" : " · 끝"}`;
+  $("#abProgText").textContent = `${task}${spent}${warm} · ${c.done}명 완료${c.fail ? ` · 실패 ${c.fail}` : ""}${c.wait + c.running ? ` · 남은 ${c.wait + c.running}명` : ""}${st.running ? "" : c.wait ? " · 멈춤" : " · 끝"}`;
   $("#abSum").textContent = tot ? `${tot}명` : "";
   $("#abStop").hidden = !st.running;
   $("#abResume").hidden = st.running || !c.wait;
