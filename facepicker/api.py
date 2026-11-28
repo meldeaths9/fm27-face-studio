@@ -25,7 +25,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.9.14"
+VERSION = "1.9.15"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -1552,13 +1552,16 @@ class Api:
         photos = ([ref] if ref is not None else []) + ([kit] if kit is not None else [])
         if task == "gunzo":
             prompt, _ = prompts.gunzo_prompt(person, lang=lang, has_ref=ref is not None, ref_mode=ref_mode,
-                                             has_kit=kit is not None, action=meta.get("action", "auto"), club_hint=hint)
+                                             has_kit=kit is not None, action=meta.get("action", "auto"), club_hint=hint,
+                                             local=meta.get("engine") == "local")
             return _extra(prompt, meta), photos
         prompt, _ = prompts.face_prompt(
             person, lang=lang, template=self._cfg.prompt_template, has_ref=ref is not None, has_kit=kit is not None,
             expression=meta.get("expression") or self._cfg.expression, club_hint=hint,
             manager_outfit=self._cfg.manager_outfit, ref_mode=ref_mode)
         photos = ([ref] if ref is not None else []) + ([kit] if kit is not None else [])
+        if meta.get("engine") == "local":
+            prompt = f"{prompt}\n{prompts.youth_text(person, lang)}".strip()
         return _extra(prompt, meta), photos
 
     @_safe

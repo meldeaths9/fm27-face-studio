@@ -282,8 +282,29 @@ def pick_action(person: dict, action: str) -> str:
     return random.choice(AUTO_ACTIONS[grp])
 
 
+GK_FACE = ("공, 장갑, 뻗은 팔이 얼굴 앞을 가리지 않게 하고, 얼굴은 공 옆이나 아래에서 또렷하게 보이게 해 주세요. ",
+           "The ball, gloves and outstretched arms must not cover the face; keep the face clearly visible beside or below the ball. ")
+FACE_CLEAR = ("얼굴에 손, 팔, 공의 그림자가 드리우지 않게 얼굴이 밝게 보이게 해 주세요. 팔 둘, 손가락 다섯, 몸 구조가 자연스럽게. ",
+              "No shadows from hands, arms or the ball on the face; the face is well lit. Anatomically correct: two arms, five fingers per hand. ")
+WAIST_UP = ("허리 위까지만 크게 담고 다리와 발은 화면 밖으로 나가게 해 주세요. ",
+            "Frame from the waist up only; the legs and feet are outside the frame. ")
+
+
+def youth_text(person: dict, lang: str) -> str:
+    """작은 모델은 나이를 잘 안 따라와서 어린 선수는 더 세게 적는다."""
+    try:
+        age = int(str(person.get("age", "")).strip())
+    except ValueError:
+        return ""
+    if age > 21:
+        return ""
+    if lang == "ko":
+        return f"{age}세 10대 소년다운 앳된 얼굴이에요. 피부가 매끈하고 주름이 없고, 어른처럼 보이면 안 돼요. "
+    return f"He is a {age}-year-old teenager with a youthful boyish face, smooth skin and no wrinkles; he must not look like an adult. "
+
+
 def gunzo_prompt(person: dict, *, lang: str, has_ref: bool, ref_mode: str, has_kit: bool, action: str,
-                 club_hint: str) -> tuple[str, str]:
+                 club_hint: str, local: bool = False) -> tuple[str, str]:
     """(프롬프트, 고른 동작)"""
     lang = "en" if lang == "en" else "ko"
     ko = lang == "ko"
@@ -311,6 +332,12 @@ def gunzo_prompt(person: dict, *, lang: str, has_ref: bool, ref_mode: str, has_k
         "badge_note": (" (유니폼의 엠블럼과 스폰서는 괜찮아요)" if ko else " (the kit's badge and sponsor are fine)") if badge_ok else "",
     }
     text = GUNZO[lang].format(**vars_)
+    i = 0 if ko else 1
+    text += " " + FACE_CLEAR[i]
+    if act in ("save", "catch"):
+        text += GK_FACE[i]
+    if local:                       # 내 PC 그림도구: 다리를 자주 틀려서 아예 안 나오게, 나이는 더 세게
+        text += WAIST_UP[i] + youth_text(person, lang)
     while "  " in text:
         text = text.replace("  ", " ")
     return text.strip(), act

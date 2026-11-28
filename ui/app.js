@@ -1909,9 +1909,11 @@ async function renderABRun(st) {
   const lw = $("#abLocalWarn"), lon = st.meta.engine === "local" && st.meta.local_state && st.meta.local_state !== "off";
   lw.hidden = !lon;
   if (lon) {
-    lw.innerHTML = `<span>⚠ ${esc(DT_WARN)}</span>${st.running && !st.stopping ? "" : `<button class="btn sm" id="abDtOff">${st.stopping ? "지금 그리는 것 버리고 끄기" : "그림도구 끄기"}</button>`}`;
-    const b = $("#abDtOff");
-    if (b) b.onclick = async () => { await dtStop(); pollAB(); startABPoll(); };
+    lw.innerHTML = `<span>⚠ ${esc(DT_WARN)}</span><button class="btn sm" id="abDtOff">${st.running ? "멈추고 그림도구 끄기" : "그림도구 끄기"}</button>`;
+    $("#abDtOff").onclick = async () => {
+      if (AB.running) await call("batch_stop");      // 남은 사람은 더 안 그리고
+      await dtStop(); pollAB(); startABPoll();
+    };
   }
   $("#abStop").hidden = !st.running;
   $("#abResume").hidden = st.running || !c.wait;

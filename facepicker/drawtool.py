@@ -459,10 +459,8 @@ try:
             pipe.to("cuda")
     pipe.set_progress_bar_config(disable=True)
     def cap():
-        # 그래픽카드 메모리가 넘쳐 일반 메모리로 새면 수십 배 느려진다 → 남은 만큼만 쓰게 막고, 넘치면 바로 메모리 부족
-        free, total = torch.cuda.mem_get_info()
-        lim = (torch.cuda.memory_reserved() + free - 0.6 * 2**30) / total
-        torch.cuda.set_per_process_memory_fraction(max(0.3, min(0.95, lim)))
+        # 넘쳐서 일반 메모리로 새는 것만 막는 느슨한 한도 (너무 조이면 비웠다 잡았다 반복하느라 오히려 느려짐)
+        torch.cuda.set_per_process_memory_fraction(0.92)
     cap()
     print(f"켜짐: {mode}, {time.time() - t0:.1f}초, 그래픽카드 메모리 {torch.cuda.memory_allocated() / 2**30:.1f}GB")
     say(ready=True, secs=round(time.time() - t0, 1), gpu=torch.cuda.get_device_name(0), mode=mode)
@@ -484,7 +482,7 @@ for line in sys.stdin:
                 im.thumbnail((side, side))     # 참고 사진은 작게 (메모리·속도)
                 out.append(im)
             return out
-        refs = load_refs(768)
+        refs = load_refs(640)
         cap()
         seed = int(req.get("seed") or random.randint(1, 2**31 - 1))
         kw = dict(prompt=req["prompt"], height=int(req.get("h", 1024)), width=int(req.get("w", 1024)),
@@ -493,12 +491,18 @@ for line in sys.stdin:
         if refs:
             kw["image"] = refs if len(refs) > 1 else refs[0]
         n = kw["num_inference_steps"]
+        last = [time.time()]
         def on_step(p, i, t, k):
+            now = time.time()
+            free = torch.cuda.mem_get_info()[0] / 2**30
+            print(f"  단계 {i + 1}/{n}: {now - last[0]:.1f}초, 남은 그래픽카드 메모리 {free:.1f}GB")
+            last[0] = now
             say(progress=i + 1, steps=n)
             return k
         kw["callback_on_step_end"] = on_step
         say(progress=0, steps=n)
         t0 = time.time()
+        print(f"그리기 시작 (참고 {len(refs)}장, 남은 그래픽카드 메모리 {torch.cuda.mem_get_info()[0] / 2**30:.1f}GB)")
         def run(kw):
             try:
                 return pipe(**kw).images[0]
