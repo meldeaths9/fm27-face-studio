@@ -25,7 +25,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.9.26"
+VERSION = "1.9.27"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -556,6 +556,15 @@ class Api:
         return {"total": len(items), "items": page, "pinned": pinned_cards, "offset": 0, "max": BROWSE_MAX,
                 "index": {"building": idx.building, "count": len(idx.map), "configs": idx.configs},
                 "empty_query": not (name.strip() or team.strip())}
+
+    @_safe
+    def find_uid(self, uid: str) -> dict:
+        """UID로 세이브 속 사람 찾기 (첫 화면 UID 칸)."""
+        clean, _ = _clean_uid(uid)
+        for p in self._people.items:
+            if str(p.get("uid", "")) == clean:
+                return {"person": dict(p)}
+        return {"person": None, "uid": clean}
 
     @_safe
     def current_face(self, uid: str) -> dict:

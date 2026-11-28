@@ -433,6 +433,20 @@ function openManual() {
   $("#fUid").focus();
 }
 $("#btnManual").onclick = openManual;
+$("#qUid").addEventListener("keydown", async (e) => {
+  if (e.key !== "Enter") return;
+  const v = $("#qUid").value.trim();
+  if (!v) { openManual(); return; }
+  const r = await call("find_uid", v);
+  if (!r) return;
+  if (r.person) { await pickPerson(r.person, -1); }
+  else {
+    openManual();
+    $("#fUid").value = v; $("#fUid").dispatchEvent(new Event("input"));
+    toast("세이브에 없는 번호라 직접 편집으로 열었어요.", "info", 2500);
+  }
+  $("#qUid").value = "";
+});
 $("#btnEditAI").onclick = () => {
   const uid = (S.selUid || $("#fUid").value.trim().replace(/^r-/, "")).trim();
   if (!uid || !S.people.loaded) { toast("세이브에서 고른 사람만 AI로 그릴 수 있어요. 첫 화면에서 사람을 골라 주세요.", "warn"); return; }
@@ -1078,7 +1092,8 @@ async function loadApplied() { await refreshAppliedCount(); S.aSel.clear(); rend
 function renderApplied() {
   const q = $("#aq").value.trim().toLowerCase();
   const list = S.applied.filter((a) => !S.aPend.has(a.uid) && (!q || `${a.name} ${a.club} ${a.uid}`.toLowerCase().includes(q)));
-  $("#aStat").textContent = `총 ${S.applied.length}명` + (q ? ` · 표시 ${list.length}` : "") + (S.aSel.size ? ` · 선택 ${S.aSel.size}` : "");
+  $("#aStat").textContent = `게임에 들어간 사진 ${S.applied.length}장` + (q ? ` · 표시 ${list.length}` : "") + (S.aSel.size ? ` · 선택 ${S.aSel.size}` : "");
+  $("#btnADel").hidden = !S.aSel.size;
   if (!S.applied.length) {
     $("#agrid").innerHTML = `<div class="empty" style="grid-column:1/-1;padding:80px">${ico("layers")}<br>아직 적용한 얼굴이 없어요</div>`;
     return;
@@ -1213,7 +1228,13 @@ async function showConflicts(list) {
 
 /* ------------------------------------------------------------------ 설정 */
 let setAI = {}, setSel = null, setUse = null;
+function setPane(k) {
+  $$("#setNav button").forEach((b) => b.classList.toggle("on", b.dataset.p === k));
+  $$(".spane").forEach((p) => p.classList.toggle("on", p.dataset.p === k));
+}
+$$("#setNav button").forEach((b) => b.onclick = () => setPane(b.dataset.p));
 function openSettings(focusId) {
+  setPane(focusId ? "ai" : "gen");
   const s = S.settings;
   $("#sG").value = s.graphics_dir || ""; $("#sSize").value = s.output_size || 512; $("#sTpl").value = s.prompt_template || ""; $("#sLang").value = s.prompt_lang || "ko"; $("#sUpd").checked = s.check_updates !== false; $("#sBeta").checked = !!s.beta_updates; $("#updVer").textContent = ""; $("#sPack").value = s.pack_folder || "zzz_FMFaceStudio"; packOrder();
   setAI = {};
@@ -1299,7 +1320,11 @@ $("#btnSaveSettings").onclick = async () => {
   if (!S.promptDirty) autoPrompt();
 };
 $("#btnFolder").onclick = () => call("open_pack_dir");
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") $$(".modal.on").forEach((m) => m.classList.remove("on")); });
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if ($("#decoPop").classList.contains("on")) { closeDecoPop(); return; }
+  $$(".modal.on").forEach((m) => m.classList.remove("on"));
+});
 
 /* ------------------------------------------------------------------ 상단 상태 배지 */
 let ST = null, popKind = null;
@@ -1656,9 +1681,34 @@ function renderBulkOpts() {
   $$("#bDeco button").forEach((b) => b.classList.toggle("on", b.dataset.v === deco));
   $("#bOptSum").textContent = (crop === "face" ? "얼굴을 찾아 가운데로" : "사진 구도 그대로 (세로 사진은 위쪽 맞춤)") +
     " · " + (deco === "follow" ? "편집 화면 꾸미기: " + decoSummary() : "꾸미기 없이 사진만");
+  $("#bDecoChip").hidden = deco !== "follow";
+  $("#bDecoTxt").textContent = decoSummary();
+  const d = S.deco || {}, th = $("#bDecoThumb");
+  th.style.borderRadius = d.rounded ? "8px" : "4px";
+  th.style.boxShadow = d.border ? "inset 0 0 0 2px #e8ecf6" : "none";
+  th.innerHTML = d.caption ? `<i style="background:${({ gold: "#c9a34a", white: "#f2f2f2", navy: "#1b2a4a" })[d.style] || "#c9a34a"}"></i>` : "";
 }
+function openDecoPop() {
+  const deco = $(".pvdeco .deco") || $("#decoPopBody .deco");
+  $("#decoPopBody").appendChild(deco);
+  $("#decoPop").classList.add("on");
+}
+function closeDecoPop() {
+  const deco = $("#decoPopBody .deco");
+  if (deco) $(".pvdeco").appendChild(deco);
+  $("#decoPop").classList.remove("on");
+  renderBulkOpts();
+  if (typeof renderMDSum === "function") renderMDSum();
+}
+$("#bDecoChip").onclick = (e) => { e.preventDefault(); openDecoPop(); };
+$("#decoPopOk").onclick = closeDecoPop;
+$("#decoPopX").onclick = closeDecoPop;
 $$("#bCrop button").forEach((b) => b.onclick = () => { S.settings.bulk_crop = b.dataset.v; call("set_option", "bulk_crop", b.dataset.v); renderBulkOpts(); });
-$$("#bDeco button").forEach((b) => b.onclick = () => { S.settings.bulk_deco = b.dataset.v; call("set_option", "bulk_deco", b.dataset.v); renderBulkOpts(); });
+$$("#bDeco button").forEach((b) => b.onclick = () => {
+  const was = S.settings.bulk_deco;
+  S.settings.bulk_deco = b.dataset.v; call("set_option", "bulk_deco", b.dataset.v); renderBulkOpts();
+  if (b.dataset.v === "follow" && was !== "follow" && decoSummary() === "꾸미기 없음") openDecoPop();
+});
 function openBulk(files) {
   renderBulkOpts();
   $("#bulkModal").classList.add("on");
@@ -1835,7 +1885,7 @@ async function showABSetup() {
   $("#abSetup").hidden = false; $("#abRun").hidden = true;
   ["#abNew", "#abStop", "#abResume", "#abSelAll", "#abQueue"].forEach((k) => $(k).hidden = true);
   $("#abGo").hidden = false;
-  $("#abSum").textContent = "";
+  $("#abSum").textContent = ""; $("#abNote").textContent = "";
   renderABPrev();
   renderABEngines();
   renderABOpts();
@@ -1849,17 +1899,45 @@ async function showABSetup() {
   AB.total = r.total; AB.max = r.max;
   renderABPeople();
 }
+const ENG_DESC = { local: "그래픽카드로 그려요 · 한 명 약 10초", gemini: "한 명 약 100원 · 참고 사진 잘 따라와요", openai: "쓴 만큼 요금", xai: "쓴 만큼 요금", codex: "ChatGPT 구독 사용량으로", cloudflare: "하루 무료 한도 · 참고 사진 못 보내요" };
 function renderABEngines() {
   const sel = $("#abEngine"), cur = sel.value || "local";     // 기본은 내 PC 그림도구 (무료)
-  sel.innerHTML = AB_ENG.map((id) => {
-    const a = S.ai.find((x) => x.id === id); if (!a) return "";
-    return `<option value="${id}">${esc(a.name)} · ${esc(a.status)}</option>`;
+  const list = AB_ENG.map((id) => S.ai.find((x) => x.id === id)).filter(Boolean);
+  $("#abHold").append($("#abCost"), $("#abLocal"));
+  const es = $("#abEngSet"); if (es) es.remove();
+  sel.innerHTML = list.map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join("");
+  sel.value = list.some((a) => a.id === cur) ? cur : "local";
+  $("#abEngCards").innerHTML = list.map((a) => {
+    const paid = a.group === "api", tag = a.group === "sub" ? "구독" : paid ? "유료" : "무료";
+    return `<div class="engc" data-id="${a.id}"><button class="enghd"><span class="rd"></span><span class="grow"><b>${esc(a.id === "local" ? "내 PC 그리기 도구" : a.name)}</b><small>${esc(ENG_DESC[a.id] || a.status)}</small></span><span class="etag ${paid ? "paid" : ""}">${tag}</span></button>
+      <div class="engdet"><div class="engin"></div></div></div>`;
   }).join("");
-  sel.value = cur;
+  $$("#abEngCards .engc").forEach((c) => c.querySelector(".enghd").onclick = () => {
+    if (sel.value === c.dataset.id) return;
+    sel.value = c.dataset.id; abPrice();
+  });
   abPrice();
+}
+function placeABEngine() {
+  const eng = $("#abEngine").value;
+  $$("#abEngCards .engc").forEach((c) => c.classList.toggle("on", c.dataset.id === eng));
+  const box = $(`#abEngCards .engc[data-id="${eng}"] .engin`);
+  if (!box) return;
+  if (eng === "local") box.appendChild($("#abLocal"));
+  else {
+    box.appendChild($("#abCost"));
+    if (!$("#abEngSet") || $("#abEngSet").parentNode !== box) {
+      const old = $("#abEngSet"); if (old) old.remove();
+      const d = document.createElement("div"); d.id = "abEngSet"; d.className = "engset";
+      d.innerHTML = `<button class="btn sm" id="abEngSetBtn">모델·키 설정</button>`;
+      box.appendChild(d);
+      $("#abEngSetBtn").onclick = () => { $("#abModal").classList.remove("on"); openSettings(eng); };
+    }
+  }
 }
 async function abPrice() {
   const eng = $("#abEngine").value;
+  placeABEngine();
   AB.price = await call("batch_price", eng);
   $("#abLocal").hidden = eng !== "local";
   $("#abCost").hidden = eng === "local";
@@ -1943,7 +2021,7 @@ function renderDT() {
 }
 function renderABOpts() {
   $$("#abTask button").forEach((b) => b.classList.toggle("on", b.dataset.v === AB.task));
-  $$("#abKitKind button").forEach((b) => b.classList.toggle("on", b.dataset.v === AB.kitKind));
+  $$("#abKitKind button").forEach((b) => b.classList.toggle("on", b.dataset.v === "none" ? !$("#abKit").checked : $("#abKit").checked && b.dataset.v === AB.kitKind));
   $("#abTaskHint").textContent = AB_TASK_HINT[AB.task] || "";
   $("#abRefRow").style.display = AB.task !== "kit" ? "" : "none";
   $$(".gzrow").forEach((r) => r.style.display = AB.task === "gunzo" ? "" : "none");
@@ -1954,7 +2032,6 @@ function renderABOpts() {
   if (AB.kitNum) kp.innerHTML = `${AB.kitNumImg ? `<img src="${AB.kitNumImg}">` : ""}<span>${esc(AB.kitNumName)} ${KIND_KO[AB.kitNumKind] || ""}</span><a id="abKitReset" title="구단 유니폼으로 되돌리기">✕</a>`;
   const kr = $("#abKitReset"); if (kr) kr.onclick = () => { AB.kitNum = ""; renderABOpts(); };
   $("#abKitKind").style.display = AB.kitNum ? "none" : "";
-  $("#abKitKind").style.opacity = $("#abKit").checked ? 1 : .4;
   renderABCost();
 }
 function abTargets() {
@@ -2000,7 +2077,11 @@ function renderABSum() {
   renderABCost();
 }
 $$("#abTask button").forEach((b) => b.onclick = () => { if (b.disabled) return; AB.task = b.dataset.v; renderABOpts(); renderABPeople(); });
-$$("#abKitKind button").forEach((b) => b.onclick = () => { AB.kitKind = b.dataset.v; renderABOpts(); });
+$$("#abKitKind button").forEach((b) => b.onclick = () => {
+  if (b.dataset.v === "none") { $("#abKit").checked = false; AB.kitNum = ""; }
+  else { $("#abKit").checked = true; AB.kitKind = b.dataset.v; }
+  renderABOpts();
+});
 
 $("#abKitOther").onclick = () => {
   KIT_PICK_CB = (x, kind) => {
@@ -2022,6 +2103,7 @@ $("#abRefresh").onclick = async () => {
   AB.sel = new Set(AB.people.filter((p) => keep.has(p.uid) || !old.has(p.uid)).map((p) => p.uid));
   renderABPeople();
 };
+$("#abX").onclick = () => $("#abClose").click();
 $("#abClose").onclick = () => {
   $("#abModal").classList.remove("on"); stopABPoll(); AB.preselect = null;
   if (!AB.running) call("drawtool_stop");          // 다 그렸으면 그림도구를 바로 꺼서 메모리 돌려주기
@@ -2045,6 +2127,7 @@ $("#abGo").onclick = async () => {
 function showABRun(st) {
   $("#abSetup").hidden = true; $("#abRun").hidden = false; $("#abGo").hidden = true;
   ["#abNew", "#abSelAll", "#abQueue"].forEach((k) => $(k).hidden = false);
+  $("#abNote").textContent = "다 그린 그림을 눌러 고르고 대기열에 넣어요.";
   renderABRun(st);
   startABPoll();
 }
