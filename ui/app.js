@@ -166,15 +166,15 @@ async function doSearch(reset = true) {
   S.bTotal = r.total; S.bEmpty = r.empty_query; S.bIndex = r.index;
   S.bPin = (r.pinned || []).length;
   S.bItems = (r.pinned || []).concat(r.items); S.bMax = r.max || 50;
-  $("#abCnt").textContent = r.total ? `지금 목록 ${r.total.toLocaleString()}명 중에서 골라 AI로 그려요` : "지금 목록의 사람들을 AI로 그려요";
+  updAbCnt();
   renderBrowse(reset);
 }
 function cardHtml(p, i) {
   const tag = p.queued ? '<span class="tag queued">대기 중</span>' : p.face_state === "game" ? '<span class="tag game" title="사진이 없어서 게임 얼굴을 보여 줘요">게임 얼굴</span>' : p.face_state === "ours" ? '<span class="tag ours">내가 넣은 사진</span>' : p.face_state === "none" ? '<span class="tag none">사진 없음</span>' : `<span class="tag">${esc(p.pack)}</span>`;
   const tag2 = p.me ? '<span class="tag2">내 감독</span>' : p.newgen ? '<span class="tag2" style="background:rgba(31,209,165,.85);color:#03261c">뉴젠</span>' : "";
   const sq = p.squad && p.squad !== "1군" ? ` · ${esc(p.squad)}` : "";
-  return `<div class="pcard2${SEL.has(String(p.uid)) ? " sel" : ""}" data-i="${i}">${tag}${tag2}
-    <div class="ph2${p.face_state === "game" ? " gameface" : ""}">${p.face ? `<img src="${p.face}" loading="lazy">` : "사진 없음"}<span class="selck" title="고르기 (Ctrl+클릭·Shift+클릭·끌어서 여러 명)"></span><button class="pinb${p.pinned ? " on" : ""}" title="${p.pinned ? "고정 풀기" : "고정: 다른 팀을 검색해도 맨 위에 보여요"}">📌</button><div class="dropcue">사진을 놓으면<br>바로 대기열에</div></div>
+  return `<div class="pcard2${SEL.has(String(p.uid)) ? " sel" : ""}" data-i="${i}">
+    <div class="ph2${p.face_state === "game" ? " gameface" : ""}">${p.face ? `<img src="${p.face}" loading="lazy">` : ""}${tag}${tag2}<span class="selck" title="고르기 (Ctrl+클릭·Shift+클릭·끌어서 여러 명)"></span><button class="pinb${p.pinned ? " on" : ""}" title="${p.pinned ? "고정 풀기" : "고정: 다른 팀을 검색해도 맨 위에 보여요"}">📌</button><div class="dropcue">사진을 놓으면<br>바로 대기열에</div></div>
     <div class="nm">${esc(p.name)}</div>
     <div class="sub">${esc(p.club || "무소속")}${p.alt ? ` <span class="alt">(${esc(p.alt)})</span>` : ""}${sq}${p.age ? " · " + esc(p.age) + "세" : ""}${p.job && !p.me ? " · " + esc(p.job) : ""}</div></div>`;
 }
@@ -198,9 +198,14 @@ function renderSelBar() {
   const n = SEL.size;
   $("#selBar").hidden = !n;
   $("#selCnt").textContent = `${n}명 선택됨`;
+  updAbCnt();
+}
+function updAbCnt() {
+  const n = SEL.size;
+  $("#abCnt").textContent = n ? `선택한 ${n}명` : S.bTotal ? `지금 목록 ${S.bTotal.toLocaleString()}명` : "지금 목록";
+  $("#btnAB").classList.toggle("picked", !!n);
 }
 $("#selClear").onclick = () => { SEL.clear(); $$("#bgrid .pcard2.sel").forEach((c) => c.classList.remove("sel")); renderSelBar(); };
-$("#selAI").onclick = () => { AB.preselect = [...SEL.keys()]; openAB(); };
 $("#selDeco").onclick = () => openMultiDeco();
 /* 빈 곳에서 끌어서 네모로 고르기 */
 (() => {
@@ -1999,7 +2004,7 @@ $("#abEngine").onchange = abPrice;
 $("#abAll").onclick = () => { AB.sel = new Set(AB.people.map((p) => p.uid)); renderABPeople(); };
 $("#abNone").onclick = () => { AB.sel.clear(); renderABPeople(); };
 $("#abNoFace").onclick = () => { AB.sel = new Set(AB.people.filter((p) => !p.has_face).map((p) => p.uid)); renderABPeople(); };
-$("#btnAB").onclick = () => { AB.preselect = null; openAB(); };
+$("#btnAB").onclick = () => { AB.preselect = SEL.size ? [...SEL.keys()] : null; openAB(); };
 $("#btnRefresh").onclick = () => { doSearch(false); toast("목록을 다시 읽었어요.", "ok", 1500); };
 $("#abRefresh").onclick = async () => {
   const keep = new Set(AB.sel), old = new Set(AB.people.map((p) => p.uid));
@@ -2133,3 +2138,38 @@ $("#abQueue").onclick = async () => {
   if (!r.items.length) { stopABPoll(); $("#abModal").classList.remove("on"); }   // 다 넣었으면 첫 화면으로
   else renderABRun(r);
 };
+
+/* ---------------- 글씨 복사 (오른쪽 클릭) */
+(() => {
+  let menu = null;
+  const close = () => { if (menu) { menu.remove(); menu = null; } };
+  document.addEventListener("contextmenu", (e) => {
+    const inp = e.target.closest("input:not([type=checkbox]):not([type=radio]):not([type=range]), textarea");
+    const cp = e.target.closest(".cp, .kv .v, .pvname, .pvtags");
+    if (!inp && !cp) return;
+    e.preventDefault(); close();
+    const selTxt = inp ? inp.value.substring(inp.selectionStart, inp.selectionEnd) : String(window.getSelection());
+    const items = [["복사", async () => {
+      const t = selTxt || (inp ? inp.value : cp.innerText);
+      try { await navigator.clipboard.writeText(t); } catch (_) { /* 무시 */ }
+      toast && toast("복사했어요");
+    }]];
+    if (inp) {
+      items.push(["붙여넣기", async () => {
+        try { const t = await navigator.clipboard.readText(); inp.focus(); inp.setRangeText(t, inp.selectionStart, inp.selectionEnd, "end"); inp.dispatchEvent(new Event("input", { bubbles: true })); } catch (_) { /* 무시 */ }
+      }]);
+      items.push(["모두 선택", () => { inp.focus(); inp.select(); }]);
+    } else {
+      items.push(["모두 선택", () => { const r = document.createRange(); r.selectNodeContents(cp); const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); }]);
+    }
+    menu = document.createElement("div"); menu.className = "ctxm";
+    items.forEach(([t, f]) => { const b = document.createElement("button"); b.textContent = t; b.onclick = () => { close(); f(); }; menu.appendChild(b); });
+    document.body.appendChild(menu);
+    const w = menu.offsetWidth, h = menu.offsetHeight;
+    menu.style.left = Math.min(e.clientX, innerWidth - w - 6) + "px";
+    menu.style.top = Math.min(e.clientY, innerHeight - h - 6) + "px";
+  });
+  document.addEventListener("mousedown", (e) => { if (menu && !menu.contains(e.target)) close(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+  window.addEventListener("blur", close);
+})();
