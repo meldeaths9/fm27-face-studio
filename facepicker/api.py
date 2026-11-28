@@ -25,7 +25,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.9.18"
+VERSION = "1.9.19"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -550,7 +550,7 @@ class Api:
     def current_face(self, uid: str) -> dict:
         clean, _ = _clean_uid(uid)
         f = self._index.get(clean)
-        look = appearance.summary(gamesetup.appearance(clean))
+        look = appearance.summary(self._look(clean))
         if not f:
             return {"face": "", "pack": "", "ours": False, "look": look}
         return {"face": self._face_thumb(f["path"], 300), "pack": f["pack"], "ours": f.get("ours", False), "look": look}
@@ -1053,12 +1053,34 @@ class Api:
         return self._cfg.club_hints.get(str(person.get("club", "")).strip(), "")
 
     @_safe
+    def _look(self, uid: str, person: dict | None = None) -> str:
+        """플러그인이 모은 외모. 외모 속 키가 세이브의 키와 3cm 넘게 다르면 남의 것이 잘못 짝지어진 것 → 버린다."""
+        code = gamesetup.appearance(uid)
+        if not code:
+            return ""
+        d = appearance.decode(code)
+        h = (person or {}).get("h")
+        if not h:
+            items = self._people.items
+            if getattr(self, "_h_src", None) is not items:
+                self._h_src = items
+                self._h_map = {str(p.get("uid", "")).removeprefix("r-"): p.get("h") for p in items}
+            h = self._h_map.get(str(uid).removeprefix("r-"))
+        try:
+            if d and h and abs(int(d["height"]) - int(h)) > 3:
+                log.info("외모 자료 키가 안 맞아 버림: %s (외모 %s, 세이브 %s)", uid, d["height"], h)
+                return ""
+        except (TypeError, ValueError):
+            pass
+        return code
+
+    @_safe
     def build_prompt(self, person: dict, send_photo: bool, mode: str = "face", expression: str = "") -> str:
         if mode == "uniform":
             return prompts.uniform_prompt(person, lang=self._lang(), has_kit=self._kit is not None, club_hint=self._hint(person))
         clean, _ = _clean_uid(str(person.get("uid", "")))
         if clean and not person.get("look"):
-            person = {**person, "look": gamesetup.appearance(clean)}
+            person = {**person, "look": self._look(clean, person)}
         text, _ = prompts.face_prompt(
             person, lang=self._lang(), template=self._cfg.prompt_template,
             has_ref=bool(send_photo) and self._work is not None, has_kit=self._kit is not None,
@@ -1544,7 +1566,7 @@ class Api:
             return _extra(prompt, meta), [face] + ([kit] if kit is not None else [])
         clean = str(person.get("uid", "")).removeprefix("r-")
         if clean and not person.get("look"):
-            person["look"] = gamesetup.appearance(clean)
+            person["look"] = self._look(clean, person)
         ref, ref_mode = None, "photo"
         if meta.get("ref"):
             ref = self._batch_face(person)

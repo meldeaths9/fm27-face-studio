@@ -16,7 +16,7 @@ from .pack import looks_like_newgen
 from .settings import app_data_dir, default_fm_user_dir
 
 log = logging.getLogger("savedata")
-CACHE_VERSION = 5
+CACHE_VERSION = 6
 
 JOB_KO = {
     "COACH": "코치", "CHAIRPERSON": "회장", "DIRECTOR": "이사", "MANAGING_DIRECTOR": "대표이사",
@@ -170,7 +170,7 @@ def read_save(path: str | Path) -> dict:
                     "kind": "player", "newgen": looks_like_newgen(str(uid)), "job": "",
                     "mine": cuid is not None and cuid in my_club_uids, "me": False, "squad": "",
                     "cuid": cuid, "crep": getattr(pl, "club_reputation", None) or 0,
-                    "cnat": getattr(pl, "club_nation_id", None), "pos": _pos(pl),
+                    "cnat": getattr(pl, "club_nation_id", None), "pos": _pos(pl), "h": getattr(pl, "height_cm", None),
                 })
             _label_squads([p for p in people if p["kind"] == "player"], squad_keys)
             for st in s.staff():

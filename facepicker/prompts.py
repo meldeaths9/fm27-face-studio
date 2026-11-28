@@ -251,9 +251,12 @@ ACTIONS = {
     "save": ("몸을 날려 공을 막아 내는 골키퍼", "a goalkeeper diving full stretch to make a save, wearing goalkeeper gloves"),
     "catch": ("높은 공을 두 손으로 잡아 내는 골키퍼", "a goalkeeper catching a high ball with both hands, wearing goalkeeper gloves"),
     "touchline": ("터치라인에서 손짓하며 지시하는 모습", "standing on the touchline, gesturing and giving instructions"),
+    "gk_hold": ("공을 가슴에 안고 차분하게 서 있는 골키퍼", "a goalkeeper standing calmly, holding the ball against his chest with both gloved hands"),
+    "gk_throw": ("공을 동료에게 던져 주려는 골키퍼", "a goalkeeper about to throw the ball out to a teammate, ball held at shoulder height, wearing goalkeeper gloves"),
+    "gk_shout": ("한 손을 들어 수비에게 지시하며 외치는 골키퍼", "a goalkeeper raising one gloved hand and shouting instructions to his defenders"),
 }
 AUTO_ACTIONS = {
-    "gk": ["save", "catch"],
+    "gk": ["gk_hold", "gk_throw", "gk_shout"],      # 골키퍼는 차분하게 (선방·캐칭은 직접 고를 때만)
     "df": ["tackle", "header", "run", "pass"],
     "mf": ["pass", "dribble", "run", "shoot"],
     "fw": ["shoot", "celebrate", "dribble", "header"],
@@ -298,6 +301,10 @@ def youth_text(person: dict, lang: str) -> str:
         return ""
     if age > 21:
         return ""
+    if age >= 20:
+        if lang == "ko":
+            return f"{age}세, 20대 초반의 젊은 얼굴이에요. 주름이 없고 실제 나이보다 늙어 보이면 안 돼요. "
+        return f"He is {age}, a young man in his early twenties with a fresh young face and no wrinkles; he must not look older. "
     if lang == "ko":
         return f"{age}세 10대 소년다운 앳된 얼굴이에요. 피부가 매끈하고 주름이 없고, 어른처럼 보이면 안 돼요. "
     return f"He is a {age}-year-old teenager with a youthful boyish face, smooth skin and no wrinkles; he must not look like an adult. "
@@ -334,7 +341,7 @@ def gunzo_prompt(person: dict, *, lang: str, has_ref: bool, ref_mode: str, has_k
     text = GUNZO[lang].format(**vars_)
     i = 0 if ko else 1
     text += " " + FACE_CLEAR[i]
-    if act in ("save", "catch"):
+    if act in ("save", "catch", "gk_hold", "gk_throw", "gk_shout"):
         text += GK_FACE[i]
     if local:                       # 내 PC 그림도구: 다리를 자주 틀려서 아예 안 나오게, 나이는 더 세게
         text += WAIST_UP[i] + youth_text(person, lang)
@@ -394,7 +401,7 @@ def local_prompt(person: dict, *, task: str, has_ref: bool, ref_mode: str, has_k
         act = pick_action(person, action)
         s = _local_person(person, has_ref, ref_mode)
         s += f"In a night football match, {ACTIONS[act][1]}. "
-        if act in ("save", "catch"):
+        if act == "catch":
             s += GK_BALL
         if act != "touchline":
             s += _local_kit(person, kit_index, club)

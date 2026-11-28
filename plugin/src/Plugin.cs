@@ -20,7 +20,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string Id = "kr.fm27facestudio.plugin";
     public const string Name = "FM Face Studio";
-    public const string Version = "0.8.0";
+    public const string Version = "0.8.1";
 
     internal static ManualLogSource L = null!;
     internal static Harmony H = null!;
@@ -638,6 +638,7 @@ internal static class Appearance
     private static IntPtr _lastRef = IntPtr.Zero;
     private static string? _lastCode;
     private static int _lastFrame = -1;
+    private static int _encodesInFrame;
     private static bool _dirty;
     private static float _nextFlush;
     public static int Count => Map.Count;
@@ -647,6 +648,13 @@ internal static class Appearance
     {
         try
         {
+            // 0.8.1: 예전엔 같은 화면 갱신에 나온 외모를 다른 사람과 짝짓는 일이 있었다 → 한 번 비우고 다시 모은다
+            var mark = Path.Combine(Bridge.Dir, "appearance.v2");
+            if (!File.Exists(mark))
+            {
+                try { if (File.Exists(FilePath)) File.Delete(FilePath); } catch { }
+                try { File.WriteAllText(mark, "1"); } catch { }
+            }
             if (File.Exists(FilePath))
             {
                 var old = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(FilePath));
@@ -675,9 +683,11 @@ internal static class Appearance
     {
         try
         {
+            var f = Time.frameCount;
+            _encodesInFrame = f == _lastFrame ? _encodesInFrame + 1 : 1;
             _lastRef = __0 is null ? IntPtr.Zero : __0.Pointer;
             _lastCode = __result;
-            _lastFrame = Time.frameCount;
+            _lastFrame = f;
         }
         catch { }
     }
@@ -691,7 +701,8 @@ internal static class Appearance
             if (__result.StartsWith("newgen_")) uid = __result.Substring(7);
             else return;
             var same = __0 is not null && __0.Pointer == _lastRef;
-            if (!same && Time.frameCount != _lastFrame) return;
+            // 같은 대상이 확실할 때만. 같은 화면 갱신이라도 얼굴이 여러 개 그려졌으면 누구 것인지 모르니 버린다
+            if (!same && (Time.frameCount != _lastFrame || _encodesInFrame > 1)) return;
             if (!Map.TryGetValue(uid, out var cur) || cur != _lastCode)
             {
                 Map[uid] = _lastCode;
