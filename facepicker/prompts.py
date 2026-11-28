@@ -282,8 +282,8 @@ def pick_action(person: dict, action: str) -> str:
     return random.choice(AUTO_ACTIONS[grp])
 
 
-GK_FACE = ("공, 장갑, 뻗은 팔이 얼굴 앞을 가리지 않게 하고, 얼굴은 공 옆이나 아래에서 또렷하게 보이게 해 주세요. ",
-           "The ball, gloves and outstretched arms must not cover the face; keep the face clearly visible beside or below the ball. ")
+GK_FACE = ("공은 가슴 높이에서 잡고 머리 위로 들어 올리지 않게, 공·장갑·뻗은 팔이 얼굴 앞을 가리지 않게 얼굴을 또렷하게 보여 주세요. ",
+           "He holds the ball at chest height, never above his head; the ball, gloves and arms must not cover the face, which stays clearly visible. ")
 FACE_CLEAR = ("얼굴에 손, 팔, 공의 그림자가 드리우지 않게 얼굴이 밝게 보이게 해 주세요. 팔 둘, 손가락 다섯, 몸 구조가 자연스럽게. ",
               "No shadows from hands, arms or the ball on the face; the face is well lit. Anatomically correct: two arms, five fingers per hand. ")
 WAIST_UP = ("허리 위까지만 크게 담고 다리와 발은 화면 밖으로 나가게 해 주세요. ",
@@ -347,3 +347,69 @@ def pos_label(person: dict) -> str:
     if person.get("kind", "player") != "player":
         return ""
     return POS_LABEL.get(POS_GROUP.get(str(person.get("pos", "")).lower(), ""), "")
+
+
+# ---------------------------------------------------------------- 내 PC 그림도구용 짧은 프롬프트
+# 그림도구는 프롬프트를 앞에서부터 일정 길이(약 512토큰)까지만 읽는다 → 중요한 것부터 짧게.
+# 순서: 사람(나이·생김새) → 같은 사람 → 동작 → 유니폼 → 구도 → 배경
+GK_BALL = "He holds the ball at chest height, never above his head and never in front of his face. "
+
+
+def _local_person(person: dict, has_ref: bool, ref_mode: str) -> str:
+    from . import appearance
+    kind = person.get("kind", "player")
+    age = str(person.get("age", "")).strip()
+    nat = str(person.get("nationality", "")).strip()
+    role = ROLE.get(kind, ROLE["staff"])["en"]
+    who = (f"A {age}-year-old " if age else "A ") + role + (f" from {nat}" if nat else "")
+    s = who + ". " + youth_text(person, "en")
+    if has_ref and ref_mode == "photo":
+        s += "He is the exact same person as in image 1: same face, hair, skin tone and age. "
+    else:
+        look = appearance.describe(str(person.get("look", "")), "en")
+        if look:
+            s += f"Appearance: {look}. "
+        if has_ref:          # 게임 얼굴: 머리·피부는 따르되 진짜 사람처럼
+            s += "Use image 1 (a 3D game face) only for his hair, skin tone and face shape; make him a real human. "
+        else:
+            s += random_features(age, "en", with_hair=not look)
+    return s
+
+
+def _local_kit(person: dict, kit_index: int, club: str) -> str:
+    if kit_index:
+        return f"He wears the football kit shown in image {kit_index} (same colours, badge and sponsor). "
+    return f"He wears the {club} home football kit. " if club else "He wears a plain football kit. "
+
+
+def local_prompt(person: dict, *, task: str, has_ref: bool, ref_mode: str, has_kit: bool, action: str = "auto",
+                 expression: str = "", club_hint: str = "") -> tuple[str, str]:
+    """(프롬프트, 고른 동작)  task: face · kit · gunzo"""
+    club = club_text(str(person.get("club", "")).strip(), club_hint, "en")
+    kit_index = (2 if has_ref else 1) if has_kit else 0
+    if task == "kit":
+        s = ("Edit image 1. Keep the person exactly the same: face, hair, expression, pose, framing, background and lighting. "
+             "Only change the clothes. " + _local_kit(person, 2 if has_kit else 0, club) + "Realistic photo. No text.")
+        return s, ""
+    if task == "gunzo":
+        act = pick_action(person, action)
+        s = _local_person(person, has_ref, ref_mode)
+        s += f"In a night football match, {ACTIONS[act][1]}. "
+        if act in ("save", "catch"):
+            s += GK_BALL
+        if act != "touchline":
+            s += _local_kit(person, kit_index, club)
+        s += ("Waist-up shot, legs and feet outside the frame. His face is clearly visible, well lit, nothing covering it. "
+              "Two arms, five fingers per hand. Telephoto sports photo, stadium floodlights and crowd blurred. "
+              "Realistic photo, natural skin. No text, no numbers, no watermark.")
+        return s, act
+    expr = pick_expression(expression)
+    s = _local_person(person, has_ref, ref_mode)
+    s += f"He looks at the camera {EXPRESSIONS[expr]['en']}. "
+    if person.get("kind", "player") == "player":
+        s += _local_kit(person, kit_index, club)
+    else:
+        s += "He wears a club training jacket. "
+    s += ("Head-and-shoulders portrait, centered, plain light grey studio background, soft even light. "
+          "Realistic photo, natural skin texture. No text, no watermark.")
+    return s, ""

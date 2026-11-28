@@ -502,7 +502,11 @@ for line in sys.stdin:
         kw["callback_on_step_end"] = on_step
         say(progress=0, steps=n)
         t0 = time.time()
-        print(f"그리기 시작 (참고 {len(refs)}장, 남은 그래픽카드 메모리 {torch.cuda.mem_get_info()[0] / 2**30:.1f}GB)")
+        try:
+            ntok = len(pipe.tokenizer(req["prompt"]).input_ids)
+        except Exception:
+            ntok = -1
+        print(f"그리기 시작 (참고 {len(refs)}장, 프롬프트 {ntok}토큰{' — 512 넘어서 뒤가 잘릴 수 있음' if ntok > 512 else ''}, 남은 그래픽카드 메모리 {torch.cuda.mem_get_info()[0] / 2**30:.1f}GB)")
         def run(kw):
             try:
                 return pipe(**kw).images[0]

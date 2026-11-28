@@ -1676,15 +1676,31 @@ const won = (n) => Math.round(n).toLocaleString("ko-KR");
 
 async function openAB() {
   $("#abModal").classList.add("on");
+  showABSetup();                 // 항상 설정 화면부터. 지난 결과는 맨 위 띠로
+}
+let abPrevTimer = 0;
+async function renderABPrev() {
+  clearTimeout(abPrevTimer);
+  const el = $("#abPrev");
+  if (!$("#abModal").classList.contains("on") || $("#abSetup").hidden) return;
   const st = await call("batch_status");
-  if (st && st.items.length) { showABRun(st); return; }
-  showABSetup();
+  if (!st || !st.items.length) { el.hidden = true; AB.items = []; AB.running = false; return; }
+  AB.items = st.items; AB.running = st.running;
+  const c = st.counts, tot = st.items.length;
+  el.hidden = false;
+  el.innerHTML = st.running
+    ? `<span>그리는 중이에요 · ${c.done + c.fail}/${tot}명</span><button class="btn sm primary" id="abPrevGo">진행 보기</button>`
+    : `<span>지난번 그린 그림 ${c.done}장이 남아 있어요${c.done ? " · 아직 대기열에 안 넣었어요" : ""}${c.wait ? ` · 못 그린 ${c.wait}명` : ""}</span><button class="btn sm primary" id="abPrevGo">보러 가기</button>`;
+  $("#abPrevGo").onclick = async () => showABRun(await call("batch_status"));
+  if (st.running) abPrevTimer = setTimeout(renderABPrev, 2000);
 }
 async function showABSetup() {
   stopABPoll();
   $("#abSetup").hidden = false; $("#abRun").hidden = true;
   ["#abNew", "#abStop", "#abResume", "#abSelAll", "#abQueue"].forEach((k) => $(k).hidden = true);
   $("#abGo").hidden = false;
+  $("#abSum").textContent = "";
+  renderABPrev();
   renderABEngines();
   renderABOpts();
   $("#abPeople").innerHTML = `<div class="empty" style="grid-column:1/-1;padding:30px"><div><div class="spin"></div>목록을 모으는 중…</div></div>`;
@@ -1865,6 +1881,10 @@ $("#abClose").onclick = () => {
 $("#abGo").onclick = async () => {
   const list = abTargets(), pr = AB.price || {};
   if (!list.length) return;
+  const prev = await call("batch_status");
+  if (prev && prev.running) { toast("지금 그리는 게 끝나거나 멈춘 뒤에 새로 시작할 수 있어요.", "err", 3500); return; }
+  const left = prev ? prev.counts.done : 0;
+  if (left && !await confirmBox("새로 그리기", `지난번 그림 ${left}장이 지워져요. 대기열에 넣을 게 있으면 먼저 '보러 가기'에서 넣어 주세요.\n\n지우고 새로 그릴까요?`, "지우고 시작", true)) return;
   if (pr.kind === "paid" && !await confirmBox("요금 확인", `${list.length}명을 그려요. 예상 요금은 약 ${won(pr.won * list.length)}원이에요.\n\n요금은 API 키에 연결한 결제에서 빠져나가요. 시작할까요?`, "시작")) return;
   const r = await call("batch_start", list, AB.task, { engine: $("#abEngine").value, kit_kind: AB.kitKind, use_kit: $("#abKit").checked, ref: $("#abRef").checked, extra: $("#abExtra").value, action: $("#abAction").value, banner: AB.banner });
   if (!r) return;
@@ -1967,13 +1987,7 @@ $("#abBigDrop").onclick = () => { $("#abBig").classList.remove("on"); if (AB.big
 $("#abStop").onclick = async () => { await call("batch_stop"); toast("지금 그리는 것까지만 하고 멈춰요.", "info", 2500); };
 $("#abResume").onclick = async () => { const st = await call("batch_resume"); if (st) { renderABRun(st); startABPoll(); } };
 $("#abSelAll").onclick = () => { AB.items.filter((i) => i.status === "done").forEach((i) => AB.pick.add(i.id)); abQueueBtn(); $$("#abResults .abp.done").forEach((e) => e.classList.add("on")); };
-$("#abNew").onclick = async () => {
-  if (AB.running) { toast("그리는 중이에요. 먼저 멈춰 주세요.", "err"); return; }
-  const done = AB.items.filter((i) => i.status === "done").length;
-  if (done && !await confirmBox("새로 시작", `대기열에 안 넣은 그림 ${done}장이 지워져요. 새로 시작할까요?`, "지우고 새로", true)) return;
-  await call("batch_drop", AB.items.map((i) => i.id));
-  showABSetup();
-};
+$("#abNew").onclick = () => showABSetup();      // 결과는 그대로 두고 설정 화면으로
 $("#abQueue").onclick = async () => {
   const ids = AB.items.filter((i) => i.status === "done" && AB.pick.has(i.id)).map((i) => i.id);
   if (!ids.length) return;

@@ -25,7 +25,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.9.15"
+VERSION = "1.9.16"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -1536,7 +1536,11 @@ class Api:
             face = self._batch_face(person)
             if face is None:
                 raise RuntimeError("지금 쓰이는 사진이 없어서 유니폼만 바꿀 수 없어요.")
-            prompt = prompts.uniform_prompt(person, lang=lang, has_kit=kit is not None, club_hint=hint)
+            if meta.get("engine") == "local":
+                prompt, _ = prompts.local_prompt(person, task="kit", has_ref=True, ref_mode="photo",
+                                                 has_kit=kit is not None, club_hint=hint)
+            else:
+                prompt = prompts.uniform_prompt(person, lang=lang, has_kit=kit is not None, club_hint=hint)
             return _extra(prompt, meta), [face] + ([kit] if kit is not None else [])
         clean = str(person.get("uid", "")).removeprefix("r-")
         if clean and not person.get("look"):
@@ -1550,6 +1554,11 @@ class Api:
         if not providers.BY_ID.get(meta.get("engine"), {}).get("ref"):
             ref, kit = None, None
         photos = ([ref] if ref is not None else []) + ([kit] if kit is not None else [])
+        if meta.get("engine") == "local":        # 그림도구는 짧게, 중요한 것부터
+            prompt, _ = prompts.local_prompt(person, task=task, has_ref=ref is not None, ref_mode=ref_mode,
+                                             has_kit=kit is not None, action=meta.get("action", "auto"),
+                                             expression=meta.get("expression") or self._cfg.expression, club_hint=hint)
+            return _extra(prompt, meta), photos
         if task == "gunzo":
             prompt, _ = prompts.gunzo_prompt(person, lang=lang, has_ref=ref is not None, ref_mode=ref_mode,
                                              has_kit=kit is not None, action=meta.get("action", "auto"), club_hint=hint,
@@ -1560,8 +1569,6 @@ class Api:
             expression=meta.get("expression") or self._cfg.expression, club_hint=hint,
             manager_outfit=self._cfg.manager_outfit, ref_mode=ref_mode)
         photos = ([ref] if ref is not None else []) + ([kit] if kit is not None else [])
-        if meta.get("engine") == "local":
-            prompt = f"{prompt}\n{prompts.youth_text(person, lang)}".strip()
         return _extra(prompt, meta), photos
 
     @_safe
