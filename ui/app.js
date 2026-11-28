@@ -1716,6 +1716,7 @@ async function abPrice() {
 }
 /* ---------------- 내 PC 그림도구 (설치·지우기) */
 let DT = null, dtTimer = 0;
+const DT_WARN = "그림도구가 켜져 있는 동안 그래픽카드 메모리와 PC 메모리를 많이 써요. 게임이나 다른 프로그램이 느려질 수 있어요. 다 그렸으면 '그림도구 끄기'를 누르거나 앱을 끄세요. 3분 동안 안 쓰면 저절로 꺼져요.";
 const gb = (b) => (b / 1e9).toFixed(b >= 1e10 ? 0 : 1);
 async function loadDT(gpu) {
   const r = await call("drawtool_status", !!gpu);
@@ -1738,7 +1739,8 @@ function renderDT() {
   } else if (d.installed) {
     h += `<div class="lrow"><b>설치됨</b><code>${esc(d.root)}</code><span class="hint">쓰는 용량 약 ${gb(d.used || 0)}GB</span></div>`;
     h += Object.entries(d.models).map(([k, m]) => `<div class="mrow">${m.installed ? '<span class="done">✓ 받음</span>' : `<button class="btn sm" data-add="${k}">추가로 받기</button>`}<span>${esc(m.name)}</span><span class="sz">약 ${gb(m.size)}GB</span></div>`).join("");
-    h += `<div class="lrow"><span class="hint grow">요금 없이 내 그래픽카드로 그려요. 첫 장은 그림도구를 켜느라 1~2분 더 걸려요.</span><button class="btn sm" id="dtLog">설치 기록</button><button class="btn sm" id="dtDel">그림도구 지우기</button></div>`;
+    h += `<div class="lrow"><span class="hint grow">요금 없이 내 그래픽카드로 그려요. 첫 장은 그림도구를 켜느라 1~2분 더 걸려요.</span><button class="btn sm" id="dtLog">설치 기록</button>${d.runner && d.runner.state !== "off" ? '<button class="btn sm" id="dtOff" title="그래픽카드·메모리를 바로 돌려줘요">그림도구 끄기</button>' : ""}<button class="btn sm" id="dtDel">그림도구 지우기</button></div>
+    ${d.runner && d.runner.state !== "off" ? `<div class="abwarn"><span>⚠ ${DT_WARN}</span></div>` : ""}`;
   } else {
     const adv = $("#dtAdv") ? $("#dtAdv").checked : false;
     const need = d.pkg_est + d.models.std.size + (adv ? d.models.adv.size : 0);
@@ -1754,6 +1756,7 @@ function renderDT() {
   on("#dtCancel", async () => { await call("drawtool_cancel"); toast("설치를 멈추는 중이에요.", "info", 2000); setTimeout(() => loadDT(false), 1200); });
   on("#dtDir", async () => { const r = await call("drawtool_pick_dir"); if (r && !r.cancel) { DT = r; renderDT(); } });
   on("#dtLog", () => call("drawtool_open_log"));
+  on("#dtOff", async () => { const r = await call("drawtool_stop"); if (r && r.error) toast(r.error, "err"); else toast("그림도구를 껐어요.", "ok", 1800); loadDT(false); });
   const adv = $("#dtAdv"); if (adv) adv.onchange = renderDT;
   on("#dtGo", async () => {
     const keys = ["std"].concat($("#dtAdv").checked ? ["adv"] : []);
@@ -1846,7 +1849,10 @@ $("#abRefresh").onclick = async () => {
   AB.sel = new Set(AB.people.filter((p) => keep.has(p.uid) || !old.has(p.uid)).map((p) => p.uid));
   renderABPeople();
 };
-$("#abClose").onclick = () => { $("#abModal").classList.remove("on"); stopABPoll(); };
+$("#abClose").onclick = () => {
+  $("#abModal").classList.remove("on"); stopABPoll();
+  if (!AB.running) call("drawtool_stop");          // 다 그렸으면 그림도구를 바로 꺼서 메모리 돌려주기
+};
 $("#abGo").onclick = async () => {
   const list = abTargets(), pr = AB.price || {};
   if (!list.length) return;
@@ -1885,10 +1891,19 @@ async function renderABRun(st) {
   const c = st.counts, tot = st.items.length, fin = c.done + c.fail;
   $("#abFill").style.width = tot ? `${fin / tot * 100}%` : "0";
   const task = { face: "새 얼굴", kit: "유니폼만 바꾸기", gunzo: "건조" }[st.meta.task] || "";
-  const warm = st.meta.local_state === "loading" ? " · 그림도구 켜는 중 (처음 1~2분)" : "";
+  const lp = st.meta.local_progress || {};
+  const warm = st.meta.local_state === "loading" ? " · 그림도구 켜는 중 (처음 1~2분)"
+    : lp.steps ? ` · 그리는 중 ${lp.step}/${lp.steps}단계 · ${lp.secs || 0}초째` : "";
   const spent = st.meta.won && st.meta.spent ? ` · 이번에 ${st.meta.spent}장, 약 ${won(st.meta.won * st.meta.spent)}원` : "";
   $("#abProgText").textContent = `${task}${spent}${warm} · ${c.done}명 완료${c.fail ? ` · 실패 ${c.fail}` : ""}${c.wait + c.running ? ` · 남은 ${c.wait + c.running}명` : ""}${st.running ? "" : c.wait ? " · 멈춤" : " · 끝"}`;
   $("#abSum").textContent = tot ? `${tot}명` : "";
+  const lw = $("#abLocalWarn"), lon = st.meta.engine === "local" && st.meta.local_state && st.meta.local_state !== "off";
+  lw.hidden = !lon;
+  if (lon) {
+    lw.innerHTML = `<span>⚠ ${esc(DT_WARN)}</span>${st.running ? "" : '<button class="btn sm" id="abDtOff">그림도구 끄기</button>'}`;
+    const b = $("#abDtOff");
+    if (b) b.onclick = async () => { const r = await call("drawtool_stop"); if (r && r.error) toast(r.error, "err"); else toast("그림도구를 껐어요.", "ok", 1800); pollAB(); };
+  }
   $("#abStop").hidden = !st.running;
   $("#abResume").hidden = st.running || !c.wait;
   const g = $("#abResults");

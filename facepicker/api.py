@@ -25,7 +25,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.9.12"
+VERSION = "1.9.13"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -1397,6 +1397,9 @@ class Api:
     def drawtool_status(self, with_gpu: bool = False) -> dict:
         from . import drawtool
         st = self._drawtool().status()
+        from . import drawtool as _d
+        r = _d._RUNNERS.get(str(self._drawtool().root))
+        st["runner"] = r.view() if r else {"state": "off", "progress": {}}
         if with_gpu or not hasattr(self, "_gpu"):
             self._gpu = drawtool.gpu_info()
         st["gpu"] = self._gpu
@@ -1431,6 +1434,16 @@ class Api:
         self._cfg.save()
         r = dt.start_install([str(k) for k in keys or []])
         return r if r.get("error") else self.drawtool_status()
+
+    @_safe
+    def drawtool_stop(self) -> dict:
+        from . import drawtool
+        r = drawtool._RUNNERS.get(str(self._drawtool().root))
+        if r and r.state != "off":
+            if not r.stop():
+                return {"error": "그리는 중이라 끄지 않았어요. 멈추기를 먼저 눌러 주세요."}
+            return {"ok": True, "stopped": True}
+        return {"ok": True}
 
     @_safe
     def drawtool_cancel(self) -> dict:
@@ -1585,7 +1598,8 @@ class Api:
         if meta.get("engine") == "local":
             from . import drawtool
             r = drawtool._RUNNERS.get(str(self._drawtool().root))
-            meta["local_state"] = r.state if r else "off"
+            v = r.view() if r else {"state": "off", "progress": {}}
+            meta["local_state"], meta["local_progress"] = v["state"], v["progress"]
         return {"items": items, "running": b.running, "counts": b.counts(), "meta": meta}
 
     @_safe

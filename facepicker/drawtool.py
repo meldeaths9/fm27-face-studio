@@ -27,7 +27,7 @@ UV_ZIP = "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-
 PBS_API = "https://api.github.com/repos/astral-sh/python-build-standalone/releases?per_page=2"
 TORCH_INDEX = "https://download.pytorch.org/whl/cu128"
 PACKAGES = ["diffusers>=0.37", "transformers", "accelerate", "safetensors", "huggingface_hub", "hf_xet",
-            "sentencepiece", "protobuf", "pillow"]
+            "sentencepiece", "protobuf", "pillow", "bitsandbytes"]
 PKG_EST = 5.5e9            # 파이썬 + PyTorch + 나머지 (대략)
 
 MODELS = {
@@ -431,10 +431,35 @@ try:
     from diffusers import Flux2KleinPipeline
     model_dir = sys.argv[1]
     t0 = time.time()
-    pipe = Flux2KleinPipeline.from_pretrained(model_dir, torch_dtype=torch.bfloat16)
-    pipe.enable_model_cpu_offload()
+    vram = torch.cuda.get_device_properties(0).total_memory / 2**30
+    mode = "bf16"
+    pipe = None
+    if vram < 20:                    # 12GB 등: 4비트로 줄여 그래픽카드에 통째로 (일반 메모리로 넘치지 않게)
+        try:
+            from diffusers.quantizers import PipelineQuantizationConfig
+            qc = PipelineQuantizationConfig(
+                quant_backend="bitsandbytes_4bit",
+                quant_kwargs={"load_in_4bit": True, "bnb_4bit_quant_type": "nf4", "bnb_4bit_compute_dtype": torch.bfloat16},
+                components_to_quantize=["transformer", "text_encoder"])
+            pipe = Flux2KleinPipeline.from_pretrained(model_dir, quantization_config=qc, torch_dtype=torch.bfloat16)
+            try:
+                pipe.to("cuda")
+            except Exception:
+                pipe.vae.to("cuda")
+            mode = "nf4"
+        except Exception:
+            print("4비트 실패, 원래 크기로:\n" + traceback.format_exc())
+            pipe = None
+            torch.cuda.empty_cache()
+    if pipe is None:
+        pipe = Flux2KleinPipeline.from_pretrained(model_dir, torch_dtype=torch.bfloat16)
+        if vram < 20:
+            pipe.enable_model_cpu_offload()
+        else:
+            pipe.to("cuda")
     pipe.set_progress_bar_config(disable=True)
-    say(ready=True, secs=round(time.time() - t0, 1), gpu=torch.cuda.get_device_name(0))
+    print(f"켜짐: {mode}, {time.time() - t0:.1f}초, 그래픽카드 메모리 {torch.cuda.memory_allocated() / 2**30:.1f}GB")
+    say(ready=True, secs=round(time.time() - t0, 1), gpu=torch.cuda.get_device_name(0), mode=mode)
 except Exception as e:
     say(ready=False, error=f"{type(e).__name__}: {e}", trace=traceback.format_exc()[-1500:])
     sys.exit(1)
@@ -449,7 +474,7 @@ for line in sys.stdin:
         refs = []
         for p in req.get("refs") or []:
             im = Image.open(p).convert("RGB")
-            im.thumbnail((1024, 1024))
+            im.thumbnail((768, 768))     # 참고 사진은 작게 (메모리·속도)
             refs.append(im)
         seed = int(req.get("seed") or random.randint(1, 2**31 - 1))
         kw = dict(prompt=req["prompt"], height=int(req.get("h", 1024)), width=int(req.get("w", 1024)),
@@ -457,9 +482,22 @@ for line in sys.stdin:
                   generator=torch.Generator(device="cpu").manual_seed(seed))
         if refs:
             kw["image"] = refs if len(refs) > 1 else refs[0]
+        n = kw["num_inference_steps"]
+        def on_step(p, i, t, k):
+            say(progress=i + 1, steps=n)
+            return k
+        kw["callback_on_step_end"] = on_step
+        say(progress=0, steps=n)
         t0 = time.time()
-        img = pipe(**kw).images[0]
+        try:
+            img = pipe(**kw).images[0]
+        except TypeError as e:
+            if "callback" not in str(e):
+                raise
+            kw.pop("callback_on_step_end", None)
+            img = pipe(**kw).images[0]
         img.save(req["out"])
+        print(f"그림 {time.time() - t0:.1f}초 (참고 {len(refs)}장)")
         say(id=req.get("id"), ok=True, secs=round(time.time() - t0, 1), seed=seed)
     except torch.cuda.OutOfMemoryError as e:
         torch.cuda.empty_cache()
@@ -471,7 +509,7 @@ for line in sys.stdin:
 
 class Runner:
     """그리기 일꾼(모델을 올려 둔 파이썬)을 켜 두고 하나씩 그리게 한다. 오래 놀면 끈다."""
-    IDLE = 600
+    IDLE = 180
 
     def __init__(self, dt: "DrawTool"):
         self.dt = dt
@@ -480,12 +518,13 @@ class Runner:
         self.state = "off"           # off · loading · ready
         self.last = 0.0
         self.info: dict = {}
+        self.progress: dict = {}
         threading.Thread(target=self._idle_loop, daemon=True).start()
 
     def _idle_loop(self):
         while True:
             time.sleep(30)
-            if self.state == "ready" and time.time() - self.last > self.IDLE and not self.lock.locked():
+            if self.state == "ready" and time.time() - self.last > self.IDLE and not self.lock.locked() and not self.progress:
                 self.stop()
 
     def _read(self, timeout: float) -> dict:
@@ -497,7 +536,14 @@ class Runner:
                 raise RuntimeError("그림도구가 꺼졌어요. 그림도구 폴더의 draw.log를 확인해 주세요.")
             s = raw.decode("utf-8", "replace").strip()
             if s.startswith("@@"):
-                return json.loads(s[2:])
+                d = json.loads(s[2:])
+                if "progress" in d:          # 그리는 중 단계 알림
+                    if d["progress"] == 0:
+                        self.progress = {"step": 0, "steps": d.get("steps", 4), "since": time.time()}
+                    else:
+                        self.progress.update(step=d["progress"], steps=d.get("steps", 4))
+                    continue
+                return d
         raise RuntimeError("그림도구가 응답하지 않아요.")
 
     def _start(self, key: str = "std"):
@@ -505,6 +551,17 @@ class Runner:
         mdir = dt.model_dir(key)
         if not (mdir / "model_index.json").exists():
             raise RuntimeError("그림도구 모델이 없어요. 'AI로 한꺼번에 그리기'에서 설치해 주세요.")
+        self.state = "loading"
+        try:                                    # 예전에 설치한 사람: 4비트 부품 추가 (실패해도 원래 크기로 켜짐)
+            subprocess.run([str(dt.py), "-c", "import bitsandbytes"], check=True, capture_output=True,
+                           env=dt._env(), timeout=120, creationflags=NO_WINDOW)
+        except Exception:  # noqa: BLE001
+            try:
+                dt._get_uv()
+                subprocess.run([str(dt.uv), "pip", "install", "--python", str(dt.py), "bitsandbytes"], capture_output=True,
+                               env=dt._env(), timeout=1800, creationflags=NO_WINDOW)
+            except Exception as e:  # noqa: BLE001
+                log.warning("4비트 부품 설치 실패: %s", e)
         script = dt.root / "server.py"
         script.write_text(SERVER_PY, encoding="utf-8")
         logf = open(dt.root / "draw.log", "ab")
@@ -520,7 +577,15 @@ class Runner:
         self.state = "ready"
         log.info("그림도구 켜짐 (%.1f초)", r.get("secs", 0))
 
+    def view(self) -> dict:
+        pr = dict(self.progress)
+        if pr:
+            pr["secs"] = int(time.time() - pr.get("since", time.time()))
+        return {"state": self.state, "progress": pr, "mode": self.info.get("mode", "")}
+
     def stop(self):
+        if self.lock.locked() and self.progress:      # 그리는 중이면 끄지 않음
+            return False
         p, self.proc = self.proc, None
         self.state = "off"
         if p and p.poll() is None:
@@ -532,11 +597,16 @@ class Runner:
                     p.kill()
                 except Exception:  # noqa: BLE001
                     pass
+        return True
 
     def draw(self, prompt: str, refs: list, out: Path, steps: int = 4, seed: int = 0) -> dict:
         with self.lock:
             if not self.proc or self.proc.poll() is not None:
-                self._start()
+                try:
+                    self._start()
+                except Exception:
+                    self.stop()
+                    raise
             tmp = self.dt.root / "tmp"
             tmp.mkdir(exist_ok=True)
             paths = []
@@ -548,7 +618,10 @@ class Runner:
                    "steps": steps, "seed": seed}
             self.proc.stdin.write((json.dumps(req, ensure_ascii=False) + "\n").encode("utf-8"))   # type: ignore[union-attr]
             self.proc.stdin.flush()                                                               # type: ignore[union-attr]
-            r = self._read(600)
+            try:
+                r = self._read(900)
+            finally:
+                self.progress = {}
             self.last = time.time()
             if not r.get("ok"):
                 raise RuntimeError(r.get("error") or "그리기 실패")
@@ -567,4 +640,5 @@ def runner(root: Path) -> Runner:
 
 def stop_all():
     for r in _RUNNERS.values():
+        r.progress = {}
         r.stop()
