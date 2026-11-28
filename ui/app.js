@@ -1689,9 +1689,13 @@ async function renderABPrev() {
   const c = st.counts, tot = st.items.length;
   el.hidden = false;
   el.innerHTML = st.running
-    ? `<span>그리는 중이에요 · ${c.done + c.fail}/${tot}명</span><button class="btn sm primary" id="abPrevGo">진행 보기</button>`
+    ? `<span>그리는 중이에요 · ${c.done + c.fail}/${tot}명</span>${st.meta.engine === "local" ? '<button class="btn sm" id="abPrevOff">멈추고 그림도구 끄기</button>' : '<button class="btn sm" id="abPrevStop">멈추기</button>'}<button class="btn sm primary" id="abPrevGo">진행 보기</button>`
     : `<span>지난번 그린 그림 ${c.done}장이 남아 있어요${c.done ? " · 아직 대기열에 안 넣었어요" : ""}${c.wait ? ` · 못 그린 ${c.wait}명` : ""}</span><button class="btn sm primary" id="abPrevGo">보러 가기</button>`;
   $("#abPrevGo").onclick = async () => showABRun(await call("batch_status"));
+  const off = $("#abPrevOff");
+  if (off) off.onclick = async () => { await call("batch_stop"); await dtStop(); renderABPrev(); loadDT(false); };
+  const sp = $("#abPrevStop");
+  if (sp) sp.onclick = async () => { await call("batch_stop"); toast("지금 그리는 것까지만 하고 멈춰요.", "info", 2500); renderABPrev(); };
   if (st.running) abPrevTimer = setTimeout(renderABPrev, 2000);
 }
 async function showABSetup() {
@@ -1764,7 +1768,7 @@ function renderDT() {
   } else if (d.installed) {
     h += `<div class="lrow"><b>설치됨</b><code>${esc(d.root)}</code><span class="hint">쓰는 용량 약 ${gb(d.used || 0)}GB</span></div>`;
     h += Object.entries(d.models).map(([k, m]) => `<div class="mrow">${m.installed ? '<span class="done">✓ 받음</span>' : `<button class="btn sm" data-add="${k}">추가로 받기</button>`}<span>${esc(m.name)}</span><span class="sz">약 ${gb(m.size)}GB</span></div>`).join("");
-    h += `<div class="lrow"><span class="hint grow">요금 없이 내 그래픽카드로 그려요. 첫 장은 그림도구를 켜느라 1~2분 더 걸려요.</span><button class="btn sm" id="dtLog">설치 기록</button>${d.runner && d.runner.state !== "off" && !d.batch_busy ? '<button class="btn sm" id="dtOff" title="그래픽카드·메모리를 바로 돌려줘요">그림도구 끄기</button>' : ""}<button class="btn sm" id="dtDel">그림도구 지우기</button></div>
+    h += `<div class="lrow"><span class="hint grow">요금 없이 내 그래픽카드로 그려요. 첫 장은 그림도구를 켜느라 1~2분 더 걸려요.</span><button class="btn sm" id="dtLog">설치 기록</button>${d.runner && d.runner.state !== "off" ? `<button class="btn sm" id="dtOff" title="그래픽카드·메모리를 바로 돌려줘요">${d.batch_busy ? "멈추고 그림도구 끄기" : "그림도구 끄기"}</button>` : ""}<button class="btn sm" id="dtDel">그림도구 지우기</button></div>
     ${d.runner && d.runner.state !== "off" ? `<div class="abwarn"><span>⚠ ${DT_WARN}</span></div>` : ""}`;
   } else {
     const adv = $("#dtAdv") ? $("#dtAdv").checked : false;
@@ -1781,7 +1785,7 @@ function renderDT() {
   on("#dtCancel", async () => { await call("drawtool_cancel"); toast("설치를 멈추는 중이에요.", "info", 2000); setTimeout(() => loadDT(false), 1200); });
   on("#dtDir", async () => { const r = await call("drawtool_pick_dir"); if (r && !r.cancel) { DT = r; renderDT(); } });
   on("#dtLog", () => call("drawtool_open_log"));
-  on("#dtOff", async () => { await dtStop(); loadDT(false); });
+  on("#dtOff", async () => { if (d.batch_busy) await call("batch_stop"); await dtStop(); loadDT(false); renderABPrev(); });
   const adv = $("#dtAdv"); if (adv) adv.onchange = renderDT;
   on("#dtGo", async () => {
     const keys = ["std"].concat($("#dtAdv").checked ? ["adv"] : []);
