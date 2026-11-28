@@ -1779,7 +1779,7 @@ function renderDT() {
   if (t.active) {
     const pct = t.total ? Math.min(99, Math.round(t.done / t.total * 100)) : 0;
     h += `<div class="lrow"><b>설치 중</b><span>${esc(t.step || "")}</span></div>
-      <div class="abprog"><div class="abbar"><i style="width:${pct}%"></i></div><span>${t.files ? `파일 ${t.files[0]}/${t.files[1]} · ` : ""}${gb(t.done)} / 약 ${gb(t.total)}GB</span></div>
+      <div class="abprog"><div class="abbar"><i style="width:${pct}%"></i></div><span>${gb(t.done)} / 약 ${gb(t.total)}GB${t.rate > 1e6 ? ` · ${Math.round(t.rate / 1e6)}MB/s` : ""}</span></div>
       ${t.last ? `<div class="hint" style="font-family:Consolas,monospace;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.last)}</div>` : ""}
       <div class="lrow"><span class="hint grow">이 창을 닫아도 설치는 계속돼요. 큰 파일은 한동안 멈춘 것처럼 보일 수 있어요.</span><button class="btn sm" id="dtLog">설치 기록</button><button class="btn sm" id="dtCancel">설치 취소</button></div>`;
   } else if (d.installed) {

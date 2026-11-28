@@ -156,6 +156,7 @@ class DrawTool:
             "UV_NO_PROGRESS": "1",
             "HF_HOME": str(self.root / "cache" / "hf"),
             "HF_HUB_DISABLE_TELEMETRY": "1",
+            "HF_HUB_VERBOSITY": "error",               # 토큰 없음 같은 무해한 경고 숨기기
             "HF_XET_HIGH_PERFORMANCE": "1",            # 빠르게 받기 (파일을 쪼개 여러 연결로)
             "HF_HUB_DISABLE_SYMLINKS_WARNING": "1",
             "PYTHONIOENCODING": "utf-8",
@@ -208,21 +209,50 @@ class DrawTool:
             except Exception:  # noqa: BLE001
                 pass
 
+    @staticmethod
+    def _net_rx() -> int | None:
+        """이 PC가 지금까지 받은 바이트 (netstat -e 첫 숫자 줄). 못 읽으면 None."""
+        if sys.platform != "win32":
+            return None
+        try:
+            out = subprocess.run(["netstat", "-e"], capture_output=True, text=True, timeout=8,
+                                 creationflags=NO_WINDOW, errors="ignore").stdout
+            import re as _re
+            for line in out.splitlines():
+                nums = _re.findall(r"\d+", line.replace(",", ""))
+                if len(nums) >= 2 and int(nums[0]) > 1000:
+                    return int(nums[0])
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+
     def _measure(self) -> None:
-        """받은 양 = 폴더 크기 증가분 (패키지·모델 모두)."""
+        """받은 양. 패키지는 폴더 크기 증가분, 모델은 이 PC가 받은 양(네트워크)으로 잰다
+        (빠른 받기는 빈 파일을 미리 만들어 두고 채워서 폴더 크기로는 못 잰다)."""
+        net_prev, net_sum, net_model = None, 0, None
         while True:
             with self.lock:
                 if not self.task.get("active"):
                     return
                 base = self.task.get("base", 0)
             n = max(0, dir_size(self.root) - base)
+            rx = self._net_rx()
+            if rx is not None:
+                if net_prev is not None:
+                    net_sum += (rx - net_prev) % (1 << 32) if rx < net_prev else rx - net_prev   # 32비트 카운터 넘침
+                net_prev = rx
             with self.lock:
-                ms = self.task.get("model")                  # 모델 받는 중: 받은 파일 수로 (빈 파일을 미리 만들어서 크기로는 못 잼)
-                if ms and self.task.get("files"):
-                    a, b = self.task["files"]
-                    n = ms[0] + ms[1] * (a / max(1, b))
-                elif ms:
-                    n = ms[0]
+                ms = self.task.get("model")
+                if ms:
+                    if net_model is None or net_model[0] != id(ms):
+                        net_model = (id(ms), net_sum)
+                    got = net_sum - net_model[1] if rx is not None else 0
+                    by_files = 0
+                    if self.task.get("files"):
+                        a, b = self.task["files"]
+                        by_files = ms[1] * (a / max(1, b))
+                    n = ms[0] + min(ms[1] * 0.99, max(got, by_files))
+                    self.task["rate"] = int(got / max(1, time.time() - ms[2])) if len(ms) > 2 and rx is not None else 0
                 self.task["done"] = max(self.task.get("done", 0), min(n, self.task.get("total", n)))
             time.sleep(2)
 
@@ -261,7 +291,8 @@ class DrawTool:
                 with self.lock:
                     if m:
                         self.task["files"] = [int(m.group(2)), int(m.group(3))]
-                    self.task["last"] = part[-140:]
+                    if "HF_TOKEN" not in part and "unauthenticated" not in part:   # 무해한 안내는 화면에 안 띄움
+                        self.task["last"] = part[-140:]
             if time.time() - t0 > timeout:
                 self.cancel()
         code = self._proc.wait()
@@ -371,7 +402,7 @@ class DrawTool:
                 m = MODELS[k]
                 self._step(f"{m['name']} 받는 중 (약 {m['size'] / 1e9:.0f}GB)")
                 with self.lock:
-                    self.task["model"] = [self.task.get("done", 0), m["size"]]
+                    self.task["model"] = [self.task.get("done", 0), m["size"], time.time()]
                     self.task.pop("files", None)
                 code = ("import sys\nfrom huggingface_hub import snapshot_download\n"
                         "snapshot_download(sys.argv[1], local_dir=sys.argv[2], allow_patterns=sys.argv[3].split(','), max_workers=8)\n")
