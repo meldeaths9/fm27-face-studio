@@ -25,7 +25,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.9.23"
+VERSION = "1.9.24"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -163,6 +163,11 @@ class Api:
         except Exception as e:  # noqa: BLE001
             self._pack_moved = ""
             log.warning("우리 폴더 옮기기 실패: %s", e)
+        try:
+            if self._pack().repair():
+                log.info("config.xml: 20억 이상 번호에 r- 없는 줄도 추가")
+        except Exception as e:  # noqa: BLE001
+            log.warning("config.xml 고치기 실패: %s", e)
         self._index.ours_name = self._cfg.pack_name
         self._index.load_cached(self._cfg.graphics_dir)
 

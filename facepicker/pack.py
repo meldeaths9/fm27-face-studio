@@ -91,6 +91,25 @@ class FacePack:
             res.append(FaceEntry(uid, newgen, m.get("name", ""), m.get("club", ""), m.get("kind", "player")))
         return res
 
+    def repair(self) -> bool:
+        """예전 버전이 r- 줄만 써 둔 config.xml을 두 줄 방식으로 고친다."""
+        cfg = self.config_path()
+        try:
+            text = cfg.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            return False
+        need = False
+        for e in self.entries():
+            if (e.newgen or looks_like_newgen(e.uid)) and (
+                    f"person/{e.uid}/portrait" not in text or f"person/r-{e.uid}/portrait" not in text):
+                need = True
+                break
+        if not need:
+            return False
+        with _WRITE_LOCK:
+            self._write_config(self.entries())
+        return True
+
     def image_path(self, uid: str) -> Path:
         return self.dir / f"{uid}.png"
 
@@ -110,7 +129,12 @@ class FacePack:
         for e in sorted(entries, key=lambda x: (0, int(x.uid)) if x.uid.isdigit() else (1, 0)):
             if not e.uid.isdigit():
                 continue
-            lines.append(f'    <record from="{e.uid}" to="{e.target}"/>\n')
+            # 20억 이상 번호는 뉴젠(r-)인지 DB 선수인지 짐작이 틀릴 수 있어 두 줄 다 쓴다.
+            # 없는 쪽을 가리키는 줄은 게임이 무시한다.
+            plain = f"graphics/pictures/person/{e.uid}/portrait"
+            lines.append(f'    <record from="{e.uid}" to="{plain}"/>\n')
+            if e.newgen or looks_like_newgen(e.uid):
+                lines.append(f'    <record from="{e.uid}" to="graphics/pictures/person/r-{e.uid}/portrait"/>\n')
         lines.append(CONFIG_TAIL)
         tmp = cfg.with_suffix(".xml.tmp")
         tmp.write_text("".join(lines), encoding="utf-8")
