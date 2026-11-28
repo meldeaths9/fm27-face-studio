@@ -95,62 +95,45 @@
   <section class="view" id="viewEdit">
     <div class="editbar">
       <button class="backbtn" id="btnBack" title="선수 목록으로 (Esc · 마우스 뒤로가기)"><svg class="i"><use href="#i-back"/></svg>선수 목록</button>
-      <div class="crumb"><span class="c1">선수 목록</span><span class="c2">›</span><b id="crumbName">새 인물</b></div>
+      <div class="ebar-div"></div>
+      <div class="etitle"><h1 class="cp" id="crumbName">새 인물</h1><div class="esub"><span class="cp" id="whoSub"></span><span class="pvtags" id="whoTags"></span></div></div>
       <div class="sp"></div>
       <div class="pn"><button class="btn sm" id="btnPrev" title="이전 선수 (Alt+←)">‹ 이전</button><span class="pnc" id="pnCount"></span><button class="btn sm" id="btnNext" title="다음 선수 (Alt+→)">다음 ›</button></div>
       <button class="btn sm ghost" id="btnKeys" title="단축키 (?)">⌨ 단축키</button>
     </div>
-    <section class="panel">
-      <div class="ph"><h2>인물</h2><div class="sp"></div><span class="step">2</span></div>
-      <div class="pb grow" style="overflow:auto">
-        <div class="who">
-          <div class="whoimg" id="curFace"><svg class="i"><use href="#i-users"/></svg></div>
-          <div class="whotx"><div class="nm" id="whoName">이름 없음</div><div class="sub" id="whoSub"></div><div class="pvtags" id="whoTags" style="justify-content:flex-start"></div>
-            <div class="hint" id="curFrom"></div>
-            <div class="hint" id="curLook" hidden></div>
-            <button class="btn sm" id="btnUseCur" style="margin-top:8px" hidden>지금 사진 불러오기</button></div>
-        </div>
-        <div class="sel-box">
-          <div class="form">
-            <div class="full"><span class="lbl">UID <span class="hint">· 생성 인물은 r- 붙여도 돼요</span></span><label class="field"><input id="fUid" placeholder="게임 프로필의 고유번호"></label></div>
-            <div class="full"><span class="lbl">이름</span><label class="field"><input id="fName" placeholder="표시용 이름"></label></div>
-            <div class="full"><span class="lbl">소속</span><label class="field"><input id="fClub"></label></div>
-            <div class="full"><span class="lbl">클럽 설명 <span class="hint">· AI용, 작은 클럽은 AI가 잘 몰라요</span></span><label class="field"><input id="fClubHint" placeholder="예: 잉글랜드 크로즈비의 클럽"></label></div>
-            <div><span class="lbl">나이</span><label class="field"><input id="fAge"></label></div>
-            <div><span class="lbl">국적 <span class="hint">· AI용</span></span><label class="field"><input id="fNat" placeholder="예: Korea"></label></div>
-          </div>
-          <div style="display:flex;align-items:center;margin-top:11px">
-            <label class="switch"><input type="checkbox" id="fNewgen"><i></i>뉴젠 · 생성 인물</label>
-            <div style="flex:1"></div>
-            <button class="btn sm ghost" id="btnClear">비우기</button>
-          </div>
-        </div>
-      </div>
-    </section>
 
-    <section class="panel">
-      <div class="ph"><span class="step">3</span><h2>사진 편집</h2><div class="sp"></div>
-        <div class="toolbar">
-          <button class="btn sm" id="btnOpen"><svg class="i"><use href="#i-upload"/></svg>불러오기</button>
-          <button class="btn sm" id="btnPaste"><svg class="i"><use href="#i-clip"/></svg>붙여넣기</button>
-          <button class="btn sm" id="btnAuto" disabled><svg class="i"><use href="#i-scan"/></svg>얼굴 맞춤</button>
-          <button class="btn sm" id="btnNobg" disabled><svg class="i"><use href="#i-eraser"/></svg>배경 제거</button>
-          <button class="btn sm" id="btnRevert" disabled title="AI 생성 전 원본으로"><svg class="i"><use href="#i-undo"/></svg>원본</button>
-        </div>
-        <input type="file" id="file" accept="image/*" hidden>
-        <input type="file" id="kitFile" accept="image/*" hidden>
+    <div class="ecol estage">
+      <div class="toolbar">
+        <button class="btn sm" id="btnOpen"><svg class="i"><use href="#i-upload"/></svg>불러오기</button>
+        <button class="btn sm" id="btnPaste"><svg class="i"><use href="#i-clip"/></svg>붙여넣기</button>
+        <button class="btn sm" id="btnAuto" disabled><svg class="i"><use href="#i-scan"/></svg>얼굴 맞춤</button>
+        <button class="btn sm" id="btnNobg" disabled><svg class="i"><use href="#i-eraser"/></svg>배경 제거</button>
+        <div class="sp"></div>
+        <button class="btn sm" id="btnUseCur" hidden>지금 사진 불러오기</button>
+        <button class="btn sm ghost" id="btnRevert" disabled title="AI 생성 전 원본으로"><svg class="i"><use href="#i-undo"/></svg>원본으로</button>
       </div>
-      <div class="pb grow">
-        <div class="editor">
-          <div style="display:flex;flex-direction:column;gap:10px;min-height:0">
-            <div class="stage grow" id="stage" tabindex="0">
-              <canvas id="cv"></canvas>
-              <div class="drop" id="drop"><div><svg class="i"><use href="#i-image"/></svg><b>사진을 끌어다 놓으세요</b>클릭해서 고르거나 <span style="color:#cfc5ff">Ctrl+V</span>로 붙여넣기</div></div>
-              <div class="busy" id="busy"><div><div class="spin"></div><div id="busyText" style="font-weight:700">처리 중…</div><div class="hint" id="busySub"></div></div></div>
-            </div>
-            <div class="zoom"><svg class="i"><use href="#i-search"/></svg><input type="range" id="zoom" min="0" max="1000" value="0" disabled><span id="zoomTxt" style="width:48px;text-align:right">-</span></div>
-          </div>
-          <div class="pv">
+      <input type="file" id="file" accept="image/*" hidden>
+      <input type="file" id="kitFile" accept="image/*" hidden>
+      <div class="stage grow" id="stage" tabindex="0">
+        <canvas id="cv"></canvas>
+        <div class="drop" id="drop"><div><svg class="i"><use href="#i-image"/></svg><b>사진을 끌어다 놓으세요</b>클릭해서 고르거나 <span style="color:#cfc5ff">Ctrl+V</span>로 붙여넣기</div></div>
+        <div class="busy" id="busy"><div><div class="spin"></div><div id="busyText" style="font-weight:700">처리 중…</div><div class="hint" id="busySub"></div></div></div>
+        <div class="curbox" title="지금 게임에서 쓰이는 얼굴"><div class="whoimg" id="curFace"><svg class="i"><use href="#i-users"/></svg></div><span>지금 게임 얼굴</span></div>
+      </div>
+      <div class="zoom"><svg class="i"><use href="#i-search"/></svg><input type="range" id="zoom" min="0" max="1000" value="0" disabled><span id="zoomTxt" style="width:48px;text-align:right">-</span></div>
+    </div>
+
+    <div class="ecol eside">
+      <div class="eside-in">
+        <div class="aicard">
+          <svg class="i"><use href="#i-spark"/></svg>
+          <div class="grow"><b>이 사람 AI로 그리기</b><small id="aiCardSub">이 사람만 고른 채로 AI로 그리기 창이 열려요</small></div>
+          <button class="btn primary" id="btnEditAI">열기</button>
+        </div>
+
+        <div class="esec">
+          <h3>꾸미기</h3>
+          <div class="pvdeco">
             <div class="pvcard">
               <div class="pvimg" id="pvBox"><img id="pvImg" alt="" hidden><svg class="i ph0" style="width:42px;height:42px;stroke-width:1.3"><use href="#i-users"/></svg></div>
               <div class="pvname" id="pvName">적용될 사진</div>
@@ -173,7 +156,26 @@
           </div>
         </div>
 
-        <div class="ai">
+        <details class="esec info" id="infoBox">
+          <summary><h3>인물 정보</h3><span class="hint" id="curFrom"></span></summary>
+          <div class="nm" id="whoName" hidden>이름 없음</div>
+          <div class="hint" id="curLook" hidden></div>
+          <div class="form">
+            <div class="full"><span class="lbl">UID <span class="hint">· 생성 인물은 r- 붙여도 돼요</span></span><label class="field"><input id="fUid" placeholder="게임 프로필의 고유번호"></label></div>
+            <div class="full"><span class="lbl">이름</span><label class="field"><input id="fName" placeholder="표시용 이름"></label></div>
+            <div class="full"><span class="lbl">소속</span><label class="field"><input id="fClub"></label></div>
+            <div class="full"><span class="lbl">클럽 설명 <span class="hint">· AI용, 작은 클럽은 AI가 잘 몰라요</span></span><label class="field"><input id="fClubHint" placeholder="예: 잉글랜드 크로즈비의 클럽"></label></div>
+            <div><span class="lbl">나이</span><label class="field"><input id="fAge"></label></div>
+            <div><span class="lbl">국적 <span class="hint">· AI용</span></span><label class="field"><input id="fNat" placeholder="예: Korea"></label></div>
+          </div>
+          <div style="display:flex;align-items:center;margin-top:11px">
+            <label class="switch"><input type="checkbox" id="fNewgen"><i></i>뉴젠 · 생성 인물</label>
+            <div style="flex:1"></div>
+            <button class="btn sm ghost" id="btnClear">비우기</button>
+          </div>
+        </details>
+
+        <div class="ai" hidden>
           <div class="hd"><svg class="i spark"><use href="#i-spark"/></svg>AI로 만들기
             <div class="chips" id="aiMode" style="margin-left:6px"><button class="chip on" data-m="face">새 얼굴</button><button class="chip" data-m="uniform">유니폼만 바꾸기</button></div>
             <div class="sp"></div>
@@ -198,10 +200,9 @@
             <button class="btn sm primary" id="btnAI"><svg class="i"><use href="#i-spark"/></svg><span id="btnAIText">AI 생성</span></button>
           </div>
         </div>
-
-        <button class="btn big primary" id="btnAdd"><svg class="i"><use href="#i-plus"/></svg>대기열에 추가</button>
       </div>
-    </section>
+      <button class="btn big primary" id="btnAdd"><svg class="i"><use href="#i-plus"/></svg>대기열에 추가</button>
+    </div>
   </section>
   </div>
 

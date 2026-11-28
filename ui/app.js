@@ -170,13 +170,15 @@ async function doSearch(reset = true) {
   renderBrowse(reset);
 }
 function cardHtml(p, i) {
-  const tag = p.queued ? '<span class="tag queued">대기 중</span>' : p.face_state === "game" ? '<span class="tag game" title="사진이 없어서 게임 얼굴을 보여 줘요">게임 얼굴</span>' : p.face_state === "ours" ? '<span class="tag ours">내가 넣은 사진</span>' : p.face_state === "none" ? '<span class="tag none">사진 없음</span>' : `<span class="tag">${esc(p.pack)}</span>`;
-  const tag2 = p.me ? '<span class="tag2">내 감독</span>' : p.newgen ? '<span class="tag2" style="background:rgba(31,209,165,.85);color:#03261c">뉴젠</span>' : "";
+  const st = p.queued ? ["q", "대기 중"] : p.face_state === "ours" ? ["ours", "내 사진"] : p.face_state === "none" ? ["none", "사진 없음"]
+    : p.face_state === "game" ? ["game", "게임 얼굴"] : ["pack", p.pack || "다른 팩"];
   const sq = p.squad && p.squad !== "1군" ? ` · ${esc(p.squad)}` : "";
-  return `<div class="pcard2${SEL.has(String(p.uid)) ? " sel" : ""}" data-i="${i}">
-    <div class="ph2${p.face_state === "game" ? " gameface" : ""}">${p.face ? `<img src="${p.face}" loading="lazy">` : ""}${tag}${tag2}<span class="selck" title="고르기 (Ctrl+클릭·Shift+클릭·끌어서 여러 명)"></span><button class="pinb${p.pinned ? " on" : ""}" title="${p.pinned ? "고정 풀기" : "고정: 다른 팀을 검색해도 맨 위에 보여요"}">📌</button><div class="dropcue">사진을 놓으면<br>바로 대기열에</div></div>
+  const extra = (p.me ? " · 내 감독" : "") + (p.newgen ? " · 뉴젠" : "");
+  return `<div class="pcard2${SEL.has(String(p.uid)) ? " sel" : ""}${p.queued ? " queued" : ""}${p.pinned ? " pinned" : ""}" data-i="${i}">
+    <div class="ph2${p.face_state === "game" ? " gameface" : ""}">${p.face ? `<img src="${p.face}" loading="lazy">` : ""}<span class="selck" title="고르기 (Ctrl+클릭·Shift+클릭·끌어서 여러 명)"></span><button class="pinb${p.pinned ? " on" : ""}" title="${p.pinned ? "고정 풀기" : "고정: 다른 팀을 검색해도 맨 위에 보여요"}">📌</button><div class="dropcue">사진을 놓으면<br>바로 대기열에</div></div>
     <div class="nm">${esc(p.name)}</div>
-    <div class="sub">${esc(p.club || "무소속")}${p.alt ? ` <span class="alt">(${esc(p.alt)})</span>` : ""}${sq}${p.age ? " · " + esc(p.age) + "세" : ""}${p.job && !p.me ? " · " + esc(p.job) : ""}</div></div>`;
+    <div class="sub"><span class="cl">${esc(p.club || "무소속")}${p.alt ? ` (${esc(p.alt)})` : ""}</span><span class="rest">${sq}${p.age ? " · " + esc(p.age) + "세" : ""}${p.job && !p.me ? " · " + esc(p.job) : ""}${extra}</span></div>
+    <div class="fst ${st[0]}"><i></i>${esc(st[1])}</div></div>`;
 }
 /* ---------------- 여러 명 고르기 */
 const SEL = new Map();          // uid → 사람
@@ -197,6 +199,7 @@ function selRange(i) {
 function renderSelBar() {
   const n = SEL.size;
   $("#selBar").hidden = !n;
+  document.body.classList.toggle("selmode", !!n);
   $("#selCnt").textContent = `${n}명 선택됨`;
   updAbCnt();
 }
@@ -426,9 +429,15 @@ function openManual() {
   showCurrent(null);
   showView("edit");
   S.promptDirty = false; autoPrompt();
+  $("#infoBox").open = true;
   $("#fUid").focus();
 }
 $("#btnManual").onclick = openManual;
+$("#btnEditAI").onclick = () => {
+  const uid = (S.selUid || $("#fUid").value.trim().replace(/^r-/, "")).trim();
+  if (!uid || !S.people.loaded) { toast("세이브에서 고른 사람만 AI로 그릴 수 있어요. 첫 화면에서 사람을 골라 주세요.", "warn"); return; }
+  AB.preselect = [uid]; openAB();
+};
 let pvGen = 0;
 function resetEditor() {
   pvGen++;
@@ -494,6 +503,7 @@ async function pickPerson(p, idx) {
   S.selUid = p.uid;
   S.curIdx = typeof idx === "number" ? idx : -1;
   fillPerson(p);
+  $("#infoBox").open = false;
   showView("edit");
   updatePN();
   S.promptDirty = false;

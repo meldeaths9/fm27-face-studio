@@ -41,7 +41,8 @@ Source: "..\dist_dir\FMFaceStudio\*"; DestDir: "{app}"; Flags: ignoreversion rec
 
 [Icons]
 Name: "{autoprograms}\FM Face Studio"; Filename: "{app}\FMFaceStudio.exe"
-Name: "{autodesktop}\FM Face Studio"; Filename: "{app}\FMFaceStudio.exe"; Tasks: desktopicon
+; 앱 안 업데이트(조용한 설치)나 이미 아이콘이 있을 때는 바탕화면을 건드리지 않는다
+Name: "{autodesktop}\FM Face Studio"; Filename: "{app}\FMFaceStudio.exe"; Tasks: desktopicon; Check: NeedDesktopIcon
 
 [Run]
 Filename: "{app}\FMFaceStudio.exe"; Description: "{cm:LaunchProgram,FM Face Studio}"; Flags: nowait postinstall skipifsilent
@@ -50,3 +51,9 @@ Filename: "{app}\FMFaceStudio.exe"; Flags: nowait; Check: WizardSilent
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
+
+[Code]
+function NeedDesktopIcon: Boolean;
+begin
+  Result := (not WizardSilent) and (not FileExists(ExpandConstant('{autodesktop}\FM Face Studio.lnk')));
+end;
