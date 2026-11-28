@@ -25,7 +25,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.9.11"
+VERSION = "1.9.12"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -1549,8 +1549,9 @@ class Api:
         if engine == "local":
             if not self._drawtool().installed():
                 return {"error": "먼저 아래 칸에서 그림도구를 설치해 주세요."}
-            cfg = dict(cfg, dir=str(self._drawtool().root))
         cfg = self._cfg.ai_cfg.get(engine, {})
+        if engine == "local":
+            cfg = dict(cfg, dir=str(self._drawtool().root))
         if providers.status(engine, cfg) not in ("키 있음", "설치됨"):
             return {"error": "need_key", "engine": engine}
         if task == "kit" and not providers.BY_ID[engine]["ref"]:
