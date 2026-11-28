@@ -20,7 +20,7 @@ public sealed class Plugin : BasePlugin
 {
     public const string Id = "kr.fm27facestudio.plugin";
     public const string Name = "FM Face Studio";
-    public const string Version = "0.8.1";
+    public const string Version = "0.8.2";
 
     internal static ManualLogSource L = null!;
     internal static Harmony H = null!;
@@ -968,16 +968,23 @@ internal static class Kits
 /// </summary>
 internal static class NewgenFaces
 {
-    private static readonly HashSet<string> Seen = new();
+    private static readonly Dictionary<string, int> Seen = new();     // UID → 저장한 그림 너비
     private static string Dir => Path.Combine(Bridge.Dir, "newgen");
 
     public static void Save(Texture tex, string uid)
     {
         try
         {
-            if (uid.Length == 0 || !uid.All(char.IsDigit) || Seen.Contains(uid)) return;
-            if (tex.width < 64 || tex.width > 1024) return;
-            Seen.Add(uid);
+            if (uid.Length == 0 || !uid.All(char.IsDigit)) return;
+            // 선수단 목록의 작은 얼굴(32px~)도 모은다. 나중에 더 큰 얼굴(프로필 화면)을 보면 그걸로 바꾼다.
+            if (tex.width < 32 || tex.width > 1024) return;
+            if (Seen.TryGetValue(uid, out var had) && had >= tex.width) return;
+            if (!Seen.ContainsKey(uid))
+            {
+                var f = Path.Combine(Dir, uid + ".raw");     // 지난번에 저장한 게 이미 크면 그대로
+                if (File.Exists(f) && new FileInfo(f).Length >= (long)tex.width * tex.height * 4) { Seen[uid] = tex.width; return; }
+            }
+            Seen[uid] = tex.width;
             Directory.CreateDirectory(Dir);
             Collect.SaveRaw(tex, Path.Combine(Dir, uid + ".raw"));
         }

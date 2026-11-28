@@ -1087,3 +1087,13 @@ details.info .form { margin-top: 4px; }
 .lq { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; color: #e2e6f2; }
 .lq .seg button { height: 26px; padding: 0 12px; font-size: 12px; }
 .lq small { flex-basis: 100%; color: var(--muted); font-size: 11.5px; }
+.engc { position: relative; }
+.enghelp { position: absolute; top: 10px; right: 10px; width: 22px; height: 22px; border-radius: 50%; border: 1px solid #3a4466; background: #0f1526; color: #c3cadc; font-size: 12px; font-weight: 700; cursor: pointer; display: grid; place-items: center; padding: 0; }
+.enghelp:hover, .enghelp.on { border-color: #8b75ff; color: #fff; background: #2a2462; }
+.engc .enghd { padding-right: 40px; }
+.engc .etags { margin-right: 4px; }
+.engtip { margin: 0 12px 12px; padding: 10px 12px; border-radius: 10px; background: #0f1526; border: 1px solid #262f4a; font-size: 12px; line-height: 1.6; color: #c3cadc; }
+.engtip ul { margin: 0 0 6px; padding-left: 16px; }
+.engtip b { color: #fff; }
+.btn.dangerl { color: #ff8a9a; }
+.btn.dangerl:hover:not(:disabled) { color: #ffb3bd; background: #2a1219; }
