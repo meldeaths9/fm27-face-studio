@@ -66,6 +66,9 @@ def _features(person: dict, age: str, lang: str, has_ref: bool, ref_mode: str) -
     from . import appearance
     look = appearance.describe(str(person.get("look", "")), lang)
     if has_ref and ref_mode == "photo":
+        # 사진이 있어도 인종·피부색은 꼭 적는다 (사진을 안 붙였거나 AI가 무시해도 엇나가지 않게)
+        if look:
+            return (f"이 사람의 외모: {look}. " if lang == "ko" else f"This person's appearance: {look}. ")
         return ""
     if look:
         head = (f"게임에 정해진 외모: {look}. " if lang == "ko" else f"Appearance set in the game: {look}. ")

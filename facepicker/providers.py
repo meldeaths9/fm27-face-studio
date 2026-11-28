@@ -24,6 +24,9 @@ from PIL import Image
 
 from . import gemini
 
+# 성능·한도가 아쉬워 화면에서 뺀 것들 (코드는 남겨 둠)
+HIDDEN = {"cloudflare", "web_chatgpt", "web_grok"}
+
 PROVIDERS = [
     # id, 이름, 묶음, 사진 참고 가능, 설명
     {"id": "web_gemini", "name": "제미나이 웹", "group": "free_web", "ref": True,

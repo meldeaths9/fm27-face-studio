@@ -25,7 +25,7 @@ from .people import People
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.9.28"
+VERSION = "1.9.29"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -327,6 +327,8 @@ class Api:
     def _ai_view(self) -> list[dict]:
         out = []
         for p in providers.PROVIDERS:
+            if p["id"] in providers.HIDDEN:
+                continue
             cfg = self._cfg.ai_cfg.get(p["id"], {})
             out.append({**p, "status": providers.status(p["id"], cfg),
                         "key": cfg.get("key", ""), "account": cfg.get("account", ""), "size": cfg.get("size", ""),
@@ -342,7 +344,7 @@ class Api:
             "settings": {
                 "graphics_dir": c.graphics_dir, "output_size": c.output_size, "check_updates": c.check_updates, "beta_updates": bool(getattr(c, "beta_updates", False)), "pack_folder": c.pack_name, "bulk_crop": c.bulk_crop, "bulk_deco": c.bulk_deco, "ab_deco": dict(c.ab_deco or {}),
                 "prompt_template": c.prompt_template, "send_photo": c.send_photo,
-                "ai_provider": c.ai_provider, "deco": c.deco, "prompt_lang": c.prompt_lang,
+                "ai_provider": c.ai_provider if c.ai_provider not in providers.HIDDEN else "web_gemini", "deco": c.deco, "prompt_lang": c.prompt_lang,
                 "expression": c.expression, "manager_outfit": c.manager_outfit, "ref_mode": c.ref_mode, "club_hints": c.club_hints,
             },
             "ai": self._ai_view(),
@@ -556,6 +558,14 @@ class Api:
         return {"total": len(items), "items": page, "pinned": pinned_cards, "offset": 0, "max": BROWSE_MAX,
                 "index": {"building": idx.building, "count": len(idx.map), "configs": idx.configs},
                 "empty_query": not (name.strip() or team.strip())}
+
+    @_safe
+    def copy_text(self, text: str) -> dict:
+        try:
+            return {"ok": clipboard.set_files_and_text([], str(text or ""))}
+        except Exception as e:  # noqa: BLE001
+            log.warning("글자 복사 실패: %s", e)
+            return {"ok": False}
 
     @_safe
     def find_uid(self, uid: str) -> dict:

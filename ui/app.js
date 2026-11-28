@@ -116,6 +116,7 @@ function avatar(p) {
   return `<div class="av" style="background:linear-gradient(135deg,hsl(${h} 55% 42%),hsl(${(h + 40) % 360} 60% 30%))">${esc(initials(p.name))}</div>`;
 }
 async function copyText(t) {
+  try { const r = await window.pywebview.api.copy_text(String(t)); if (r && r.ok) return true; } catch (e) { /* 아래 방식으로 */ }
   try { await navigator.clipboard.writeText(t); return true; } catch (e) { /* 아래 방식으로 */ }
   const ta = document.createElement("textarea");
   ta.value = t; ta.style.position = "fixed"; ta.style.opacity = "0";
@@ -1245,7 +1246,7 @@ function openSettings(focusId) {
   $("#mSettings").classList.add("on");
 }
 function renderAIList() {
-  $("#aiList").innerHTML = Object.entries(GROUPS).map(([g, label]) =>
+  $("#aiList").innerHTML = Object.entries(GROUPS).filter(([g]) => S.ai.some((a) => a.group === g)).map(([g, label]) =>
     `<div class="aigrp">${esc(label)}</div>` + S.ai.filter((a) => a.group === g).map((a) => {
       const ok = ["바로 사용", "키 있음", "설치됨"].includes(a.status);
       return `<div class="airow ${a.id === setSel ? "on" : ""} ${a.id === setUse ? "use" : ""}" data-id="${a.id}"><span class="rd"></span>
@@ -1317,12 +1318,14 @@ $("#btnSaveSettings").onclick = async () => {
   applyState(r);
   $("#mSettings").classList.remove("on");
   toast("설정을 저장했어요.", "ok", 2000);
+  if ($("#abModal").classList.contains("on") && !$("#abSetup").hidden) { delete $("#abWebTpl").dataset.loaded; renderABEngines(); }
   if (!S.promptDirty) autoPrompt();
 };
 $("#btnFolder").onclick = () => call("open_pack_dir");
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   if ($("#decoPop").classList.contains("on")) { closeDecoPop(); return; }
+  if ($("#mSettings").classList.contains("on")) { $("#mSettings").classList.remove("on"); return; }
   $$(".modal.on").forEach((m) => m.classList.remove("on"));
 });
 
@@ -1850,13 +1853,16 @@ $("#bulkGo").onclick = async () => {
 
 /* ================================================================ AI로 한꺼번에 그리기 */
 const AB = { banner: "none", deco: { caption: false, style: "gold", rounded: false, border: false }, kitNum: "", kitNumKind: "home", kitNumImg: "", kitNumName: "", people: [], sel: new Set(), task: "face", kitKind: "home", thumbs: {}, ver: {}, items: [], pick: new Set(), timer: 0, running: false, price: null, big: null };
-const AB_ENG = ["local", "gemini", "openai", "xai", "codex", "cloudflare"];
+// 품질 좋은 순서 → 같은 품질이면 무료 먼저
+const AB_ENG = ["gemini", "openai", "xai", "codex", "web", "local"];
+const ENG_Q = { gemini: ["최고", "q4"], openai: ["최고", "q4"], xai: ["최고", "q4"], codex: ["최고", "q4"], web: ["낮음", "q2"], local: ["아주 낮음", "q1"] };
 const AB_TASK_HINT = { face: "게임 외모 설명(피부·머리)으로 새 얼굴을 그려요.", kit: "지금 사진의 얼굴은 두고 옷만 바꿔요. 지금 사진이 있는 사람만 돼요.", gunzo: "경기장에서 뛰는 모습을 그려요. 얼굴 참고를 켜면 지금 얼굴로 그려요." };
 
 const won = (n) => Math.round(n).toLocaleString("ko-KR");
 
 async function openAB() {
   $("#abModal").classList.add("on");
+  AB.eng = "";
 
   showABSetup();                 // 항상 설정 화면부터. 지난 결과는 맨 위 띠로
 }
@@ -1899,23 +1905,23 @@ async function showABSetup() {
   AB.total = r.total; AB.max = r.max;
   renderABPeople();
 }
-const ENG_DESC = { web: "사진·프롬프트를 한 명씩 사이트에 붙여넣어요", local: "그래픽카드로 그려요 · 한 명 약 10초", gemini: "한 명 약 100원 · 참고 사진 잘 따라와요", openai: "쓴 만큼 요금", xai: "쓴 만큼 요금", codex: "ChatGPT 구독 사용량으로", cloudflare: "하루 무료 한도 · 참고 사진 못 보내요" };
+const ENG_DESC = { web: "제미나이 웹에 한 명씩 붙여넣어요", local: "그래픽카드로 그려요 · 한 명 약 10초", gemini: "한 명 약 100원", openai: "쓴 만큼 요금", xai: "쓴 만큼 요금", codex: "ChatGPT 구독 사용량으로", cloudflare: "하루 무료 한도 · 참고 사진 못 보내요" };
 function renderABEngines() {
-  const sel = $("#abEngine"), cur = sel.value || "local";     // 기본은 내 PC 그림도구 (무료)
-  const list = AB_ENG.map((id) => S.ai.find((x) => x.id === id)).filter(Boolean);
-  list.splice(2, 0, { id: "web", name: "웹사이트", group: "free_web", status: "" });
+  const sel = $("#abEngine"), cur = AB.eng || "";       // 처음엔 아무것도 안 고른 상태
+  const list = AB_ENG.map((id) => id === "web" ? { id: "web", name: "웹사이트", group: "free_web", status: "" } : S.ai.find((x) => x.id === id)).filter(Boolean);
   $("#abHold").append($("#abCost"), $("#abLocal"), $("#abWebSet"));
   const es = $("#abEngSet"); if (es) es.remove();
-  sel.innerHTML = list.map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join("");
-  sel.value = list.some((a) => a.id === cur) ? cur : "local";
+  sel.innerHTML = `<option value=""></option>` + list.map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join("");
+  sel.value = list.some((a) => a.id === cur) ? cur : "";
   $("#abEngCards").innerHTML = list.map((a) => {
     const paid = a.group === "api", tag = a.group === "sub" ? "구독" : paid ? "유료" : "무료";
-    return `<div class="engc" data-id="${a.id}"><button class="enghd"><span class="rd"></span><span class="grow"><b>${esc(a.id === "local" ? "내 PC 그리기 도구" : a.name)}</b><small>${esc(ENG_DESC[a.id] || a.status)}</small></span><span class="etag ${paid ? "paid" : ""}">${tag}</span></button>
+    const q = ENG_Q[a.id] || ["", ""];
+    return `<div class="engc" data-id="${a.id}"><button class="enghd"><span class="rd"></span><span class="grow"><b>${esc(a.id === "local" ? "내 PC 그리기 도구" : a.id === "gemini" ? "제미나이 API" : a.name)}</b><small>${esc(ENG_DESC[a.id] || a.status)}</small></span><span class="etags"><span class="etag ${paid ? "paid" : ""}">${tag}</span><span class="eq ${q[1]}">품질 ${esc(q[0])}</span></span></button>
       <div class="engdet"><div class="engin"></div></div></div>`;
   }).join("");
   $$("#abEngCards .engc").forEach((c) => c.querySelector(".enghd").onclick = () => {
     if (sel.value === c.dataset.id) return;
-    sel.value = c.dataset.id; abPrice();
+    sel.value = c.dataset.id; AB.eng = c.dataset.id; abPrice();
   });
   abPrice();
 }
@@ -1933,13 +1939,14 @@ function placeABEngine() {
       const d = document.createElement("div"); d.id = "abEngSet"; d.className = "engset";
       d.innerHTML = `<button class="btn sm" id="abEngSetBtn">모델·키 설정</button>`;
       box.appendChild(d);
-      $("#abEngSetBtn").onclick = () => { $("#abModal").classList.remove("on"); openSettings(eng); };
+      $("#abEngSetBtn").onclick = () => { AB.fromSettings = true; openSettings(eng); };
     }
   }
 }
 async function abPrice() {
   const eng = $("#abEngine").value;
   placeABEngine();
+  if (!eng) { AB.price = { kind: "none" }; $("#abLocal").hidden = true; $("#abCost").hidden = true; renderABCost(); return; }
   AB.price = eng === "web" ? { kind: "web" } : await call("batch_price", eng);
   $("#abLocal").hidden = eng !== "local";
   $("#abCost").hidden = eng === "local";
@@ -2046,14 +2053,14 @@ function renderABCost() {
   const eng = $("#abEngine").value, a = S.ai.find((x) => x.id === eng) || {};
   let warn = "";
   if (!pr.ready) warn = ` <a id="abKey">${esc(a.name)} 연결 정보 넣기</a>`;
-  if (pr.kind === "web") el.innerHTML = "";
+  if (pr.kind === "web" || pr.kind === "none") el.innerHTML = "";
   else if (pr.kind === "free") el.innerHTML = `무료 사용량 안에서 그려요 (하루 한도가 있어요). 참고 사진은 못 보내서 <b>유니폼·지금 사진 참고가 빠져요</b>.${warn}`;
   else if (pr.kind === "sub") el.innerHTML = `ChatGPT 구독 사용량으로 그려요. 많이 그리면 한도에 걸릴 수 있어요.${warn}`;
   else el.innerHTML = `1장 약 <b>${won(pr.won)}원</b> × ${n}명 = 약 <b>${won(pr.won * n)}원</b> <span class="hint">(${esc(pr.model)} · 예상값이에요. 다시 그리면 그만큼 더 나가요)</span>${warn}${BILLING_URL[eng] ? ` <a class="billink" data-url="${BILLING_URL[eng]}">잔액 보기</a>` : ""}`;
   $$("#abCost [data-url]").forEach((l) => l.onclick = () => call("open_url", l.dataset.url));
-  const k = $("#abKey"); if (k) k.onclick = () => { $("#abModal").classList.remove("on"); openSettings(eng); };
-  $("#abGo").disabled = !n;
-  $("#abGo").textContent = eng === "web" ? (n ? `${n}명 한 명씩 시작` : "시작") : n ? `${n}명 그리기 시작` : "그리기 시작";
+  const k = $("#abKey"); if (k) k.onclick = () => { AB.fromSettings = true; openSettings(eng); };
+  $("#abGo").disabled = !n || !eng;
+  $("#abGo").textContent = !eng ? "그리기 도구를 골라 주세요" : eng === "web" ? (n ? `${n}명 한 명씩 시작` : "시작") : n ? `${n}명 그리기 시작` : "그리기 시작";
 }
 function renderABPeople() {
   const g = $("#abPeople");
@@ -2374,8 +2381,8 @@ $("#abQueue").onclick = async () => {
     const selTxt = inp ? inp.value.substring(inp.selectionStart, inp.selectionEnd) : String(window.getSelection());
     const items = [["복사", async () => {
       const t = selTxt || (inp ? inp.value : cp.innerText);
-      try { await navigator.clipboard.writeText(t); } catch (_) { /* 무시 */ }
-      toast && toast("복사했어요");
+      const ok = await copyText(t);
+      toast(ok ? "복사했어요" : "복사하지 못했어요", ok ? "ok" : "warn", 1500);
     }]];
     if (inp) {
       items.push(["붙여넣기", async () => {

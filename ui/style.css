@@ -1013,3 +1013,35 @@ details.info .form { margin-top: 4px; }
 .wdrop.drag { border-color: var(--accent); background-color: rgba(108,80,245,.08); }
 .wdrop.has { border-style: solid; border-color: #2fd19f; }
 .wdrop.has > div { visibility: hidden; }
+/* 존재감: 소제목·버튼 묶음 */
+.lbl3, .lbl2 { font-size: 13px; color: #c3cadc; font-weight: 700; }
+.seg { background: #121829; border: 1px solid #262f4a; }
+.seg button { color: #9aa3bd; }
+.seg button:hover { color: var(--text); }
+.seg button.on { background: #2e3758; color: #fff; }
+.ogrp { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 12px; border-radius: 12px; background: #131a2e; border: 1px solid #262f4a; }
+.olbl { font-size: 13px; font-weight: 700; color: #e8ecf6; }
+.ogrp .seg { border: 0; background: #0f1526; }
+.bulkopts { gap: 12px; }
+.btn.accent { background: #1c1844; border: 1px solid #5a46c9; color: #e8ecf6; font-weight: 600; }
+.btn.accent .i { color: #a99bff; }
+.btn.accent:hover:not(:disabled) { background: #251f5a; }
+.selbar #selDeco { background: var(--accent); color: #fff; }
+.selbar #selDeco:hover { background: #7a60ff; }
+#mSettings { z-index: 60; }
+#decoPop { z-index: 60; }
+/* AI로 그리기 3칸 */
+.dlg.bulk.ab { width: min(1320px, 96vw); }
+.abtools { width: 340px; flex: none; overflow-y: auto; padding: 20px 18px 20px 24px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+.ableft { width: 340px; }
+.abextra { flex: 1; min-height: 120px; }
+.abextra textarea { flex: 1; min-height: 110px; resize: none; background: var(--bg2); border: 1px solid #262f4a; border-radius: 10px; color: var(--text); padding: 10px 12px; font: inherit; outline: 0; }
+.abextra textarea:focus { border-color: #5a46c9; }
+.etags { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex: none; }
+.eq { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 6px; background: #1f2740; color: #9aa3bd; white-space: nowrap; }
+.eq.q4 { background: #123629; color: #7fe3c4; }
+.eq.q2 { background: #3a2f10; color: #ffcf7a; }
+.eq.q1 { background: #3a1620; color: #ffb3bd; }
+.engc { background: #131a2e; border-color: #262f4a; }
+.abseg4 button { white-space: nowrap; padding: 0 10px; }
+.abkitrow { flex-wrap: wrap; }
