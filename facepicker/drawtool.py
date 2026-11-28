@@ -434,23 +434,35 @@ try:
     vram = torch.cuda.get_device_properties(0).total_memory / 2**30
     mode = "bf16"
     pipe = None
-    if vram < 20:                    # 12GB 등: 4비트로 줄여 그래픽카드에 통째로 (일반 메모리로 넘치지 않게)
+    def quantized(parts):
+        from diffusers.quantizers import PipelineQuantizationConfig
+        qc = PipelineQuantizationConfig(
+            quant_backend="bitsandbytes_4bit",
+            quant_kwargs={"load_in_4bit": True, "bnb_4bit_quant_type": "nf4", "bnb_4bit_compute_dtype": torch.bfloat16},
+            components_to_quantize=parts)
+        return Flux2KleinPipeline.from_pretrained(model_dir, quantization_config=qc, torch_dtype=torch.bfloat16)
+    if vram < 20:
+        # 12GB 등: 그림 본체만 4비트로 줄이고, 글 이해 부품은 원래 크기로 둔다 (4비트로 줄이면 지시를 잘 못 알아들음).
+        # 글 이해 부품은 글을 읽을 때만 그래픽카드에 올렸다 내린다 (model cpu offload).
         try:
-            from diffusers.quantizers import PipelineQuantizationConfig
-            qc = PipelineQuantizationConfig(
-                quant_backend="bitsandbytes_4bit",
-                quant_kwargs={"load_in_4bit": True, "bnb_4bit_quant_type": "nf4", "bnb_4bit_compute_dtype": torch.bfloat16},
-                components_to_quantize=["transformer", "text_encoder"])
-            pipe = Flux2KleinPipeline.from_pretrained(model_dir, quantization_config=qc, torch_dtype=torch.bfloat16)
-            try:
-                pipe.to("cuda")
-            except Exception:
-                pipe.vae.to("cuda")
-            mode = "nf4"
+            pipe = quantized(["transformer"])
+            pipe.enable_model_cpu_offload()
+            mode = "nf4+te16"
         except Exception:
-            print("4비트 실패, 원래 크기로:\n" + traceback.format_exc())
+            print("글 이해 부품 원래 크기 실패, 모두 4비트로:\n" + traceback.format_exc())
             pipe = None
-            torch.cuda.empty_cache()
+            gc.collect(); torch.cuda.empty_cache()
+            try:
+                pipe = quantized(["transformer", "text_encoder"])
+                try:
+                    pipe.to("cuda")
+                except Exception:
+                    pipe.vae.to("cuda")
+                mode = "nf4"
+            except Exception:
+                print("4비트 실패, 원래 크기로:\n" + traceback.format_exc())
+                pipe = None
+                gc.collect(); torch.cuda.empty_cache()
     if pipe is None:
         pipe = Flux2KleinPipeline.from_pretrained(model_dir, torch_dtype=torch.bfloat16)
         if vram < 20:

@@ -356,23 +356,22 @@ GK_BALL = "He holds the ball at chest height, never above his head and never in 
 
 
 def _local_person(person: dict, has_ref: bool, ref_mode: str) -> str:
+    """피부색·머리를 맨 첫 마디에 (뒤에 두면 잘 안 따라옴)."""
     from . import appearance
     kind = person.get("kind", "player")
     age = str(person.get("age", "")).strip()
     nat = str(person.get("nationality", "")).strip()
     role = ROLE.get(kind, ROLE["staff"])["en"]
-    who = (f"A {age}-year-old " if age else "A ") + role + (f" from {nat}" if nat else "")
-    s = who + ". " + youth_text(person, "en")
+    who = (f"a {age}-year-old " if age else "a ") + role + (f" from {nat}" if nat else "")
     if has_ref and ref_mode == "photo":
-        s += "He is the exact same person as in image 1: same face, hair, skin tone and age. "
+        return (f"The exact same person as in image 1 (same face, hair, skin tone and age), {who}. "
+                + youth_text(person, "en"))
+    look = appearance.describe(str(person.get("look", "")), "en")
+    s = (f"{look[0].upper()}{look[1:]}: {who}. " if look else f"{who[0].upper()}{who[1:]}. ") + youth_text(person, "en")
+    if has_ref:          # 게임 얼굴: 머리·피부는 따르되 진짜 사람처럼
+        s += "Use image 1 (a 3D game face) for his hair, skin tone and face shape; make him a real human. "
     else:
-        look = appearance.describe(str(person.get("look", "")), "en")
-        if look:
-            s += f"Appearance: {look}. "
-        if has_ref:          # 게임 얼굴: 머리·피부는 따르되 진짜 사람처럼
-            s += "Use image 1 (a 3D game face) only for his hair, skin tone and face shape; make him a real human. "
-        else:
-            s += random_features(age, "en", with_hair=not look)
+        s += random_features(age, "en", with_hair=not look)
     return s
 
 
