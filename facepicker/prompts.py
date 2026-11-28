@@ -384,7 +384,7 @@ def _local_person(person: dict, has_ref: bool, ref_mode: str) -> str:
     if has_ref and ref_mode == "photo":
         return (f"The exact same person as in image 1 (same face, hair, skin tone and age), {who}. "
                 + youth_text(person, "en"))
-    look = appearance.describe(str(person.get("look", "")), "en")
+    look = appearance.describe(str(person.get("look", "")), "en") or str(person.get("look_guess", ""))
     s = (f"{look[0].upper()}{look[1:]}: {who}. " if look else f"{who[0].upper()}{who[1:]}. ") + youth_text(person, "en")
     if has_ref:          # 게임 얼굴: 머리·피부는 따르되 진짜 사람처럼
         s += "Use image 1 (a 3D game face) for his hair, skin tone and face shape; make him a real human. "

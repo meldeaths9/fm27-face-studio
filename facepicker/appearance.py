@@ -85,3 +85,61 @@ def summary(code: str) -> str:
     col = HAIR_COL.get(d["hair_col"], ("?",))[0]
     ln = HAIR_LEN.get(d["hair_len"], ("?",))[0]
     return f"{eth} · 피부 {d['skin']}/20 · {col} {ln} · {d['height']}cm · {_build(d, 'ko')}"
+
+
+# ------------------------------------------------------------------ 사진에서 피부·머리 색 짐작
+def guess_from_image(im) -> str:
+    """게임 3D 얼굴(또는 사진)에서 피부색·머리색을 영어 한 마디로. 못 하면 빈 글자.
+    게임에 외모 정보가 없는 뉴젠을 사진 없이 그릴 때 쓴다."""
+    try:
+        import colorsys
+        from PIL import Image
+        im = im.convert("RGBA").resize((128, 128), Image.BILINEAR)
+        px = im.load()
+
+        def region(x0, x1, y0, y1):
+            out = []
+            for y in range(int(y0 * 128), int(y1 * 128)):
+                for x in range(int(x0 * 128), int(x1 * 128)):
+                    r, g, b, a = px[x, y]
+                    if a > 200 and not (abs(r - g) < 6 and abs(g - b) < 6 and r > 200):   # 투명·회색 배경 빼기
+                        out.append((r, g, b))
+            return out
+
+        def median(cs):
+            cs = sorted(cs, key=lambda c: sum(c))
+            return cs[len(cs) // 2]
+
+        skin = region(0.38, 0.62, 0.50, 0.64)          # 볼·코
+        if len(skin) < 40:
+            return ""
+        r, g, b = median(skin)
+        lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+        # 게임 3D 얼굴은 조명 때문에 실제보다 조금 어둡게 나온다
+        skin_t = ("very fair" if lum > 0.72 else "fair" if lum > 0.60 else "light olive" if lum > 0.53
+                  else "tan" if lum > 0.50 else "dark brown" if lum > 0.40 else "very dark brown")
+        hair = region(0.30, 0.70, 0.05, 0.20)          # 이마 위
+        hair_t = "a shaved head"
+        if len(hair) > 120:
+            hr, hg, hb = median(hair)
+            # 머리 자리 색이 피부와 비슷하면 민머리
+            if abs(hr - r) + abs(hg - g) + abs(hb - b) > 60:
+                h, s, v = colorsys.rgb_to_hsv(hr / 255, hg / 255, hb / 255)
+                if v < 0.16:
+                    c = "black"
+                elif s < 0.18 and v > 0.55:
+                    c = "grey"
+                elif (h < 0.07 or h > 0.95) and s > 0.45 and v > 0.3:
+                    c = "ginger red"
+                elif 0.07 <= h < 0.17 and v > 0.55 and s < 0.55:
+                    c = "blonde"
+                elif 0.05 <= h < 0.17 and v > 0.42:
+                    c = "light brown"
+                elif v < 0.3:
+                    c = "dark brown"
+                else:
+                    c = "brown"
+                hair_t = f"{c} hair"
+        return f"{skin_t} skin, {hair_t}"
+    except Exception:  # noqa: BLE001
+        return ""

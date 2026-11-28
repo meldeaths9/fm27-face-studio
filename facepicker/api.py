@@ -25,7 +25,7 @@ from .people import People, plain
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.9.35"
+VERSION = "1.9.36"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -1458,8 +1458,8 @@ class Api:
         return r
 
     @_safe
-    def drawtool_open_log(self) -> dict:
-        p = self._drawtool().root / "install.log"
+    def drawtool_open_log(self, which: str = "install") -> dict:
+        p = self._drawtool().root / ("draw.log" if which == "draw" else "install.log")
         if p.exists() and sys.platform == "win32":
             os.startfile(p)  # type: ignore[attr-defined]
         return {"ok": p.exists()}
@@ -1510,6 +1510,14 @@ class Api:
         return im
 
     @staticmethod
+    def _game_face_raw(person: dict):
+        """뉴젠 게임 얼굴 (투명 배경 그대로)."""
+        if not person.get("newgen"):
+            return None
+        pth = gamesetup.newgen_face(str(person.get("uid", "")))
+        return imaging.load_image(str(pth)) if pth else None
+
+    @staticmethod
     def _game_face(person: dict):
         if not person.get("newgen"):
             return None
@@ -1551,6 +1559,11 @@ class Api:
             ref, kit = None, None
         if meta.get("engine") == "local" and (meta.get("cfg") or {}).get("model") == "adv":
             ref, kit = None, None                # 실사 고급은 글로만 그린다 (참고 사진을 못 봄)
+        if ref is None and not person.get("look"):
+            # 게임 외모 정보가 없고 사진도 못 보내면: 게임 얼굴·지금 사진에서 피부·머리 색이라도 읽어서 글로 넣는다
+            src = self._game_face_raw(person) or self._batch_face(person)
+            if src is not None:
+                person["look_guess"] = appearance.guess_from_image(src)
         photos = ([ref] if ref is not None else []) + ([kit] if kit is not None else [])
         if meta.get("engine") == "local":        # 그림도구는 짧게, 중요한 것부터
             prompt, _ = prompts.local_prompt(person, task=task, has_ref=ref is not None, ref_mode=ref_mode,

@@ -1789,7 +1789,7 @@ function renderDT() {
       h += `<div class="lq"><span>품질</span><div class="seg"><button data-lm="std" class="${lm === "std" ? "on" : ""}">일반</button><button data-lm="adv" class="${lm === "adv" ? "on" : ""}">고급</button></div><small>${lm === "adv" ? "글로만 그려요 · 지금 얼굴·유니폼 사진은 못 봐요" : "지금 얼굴·유니폼 사진을 보고 그려요"}</small></div>`;
     }
     h += `<label class="lpause"><span class="switch"><input type="checkbox" id="dtPause"${S.settings.pause_on_fm ? " checked" : ""}><i></i></span><span>FM27이 켜져 있으면 잠깐 멈추기<small>게임을 끄면 이어서 그려요</small></span></label>`;
-    h += `<div class="lbtns"><span class="hint grow" title="${esc(d.root)}">설치됨 · ${gb(d.used || 0)}GB</span>${d.runner && d.runner.state !== "off" ? `<button class="btn sm warnb" id="dtOff" title="그래픽카드·메모리를 바로 돌려줘요">${d.batch_busy ? "멈추고 끄기" : "그림도구 끄기"}</button>` : ""}<button class="btn sm ghost" id="dtLog">기록</button><button class="btn sm ghost" id="dtDel">지우기</button></div>
+    h += `<div class="lbtns"><span class="hint grow" title="${esc(d.root)}">설치됨 · ${gb(d.used || 0)}GB</span>${d.runner && d.runner.state !== "off" ? `<button class="btn sm warnb" id="dtOff" title="그래픽카드·메모리를 바로 돌려줘요">${d.batch_busy ? "멈추고 끄기" : "그림도구 끄기"}</button>` : ""}<button class="btn sm ghost" id="dtLog">설치 기록</button><button class="btn sm ghost" id="dtDrawLog">그리기 기록</button><button class="btn sm ghost" id="dtDel">지우기</button></div>
     ${d.runner && d.runner.state !== "off" ? `<div class="abwarn"><span>⚠ ${DT_WARN}</span></div>` : ""}`;
   } else {
     const adv = $("#dtAdv") ? $("#dtAdv").checked : false;
@@ -1806,6 +1806,7 @@ function renderDT() {
   on("#dtCancel", async () => { await call("drawtool_cancel"); toast("설치를 멈추는 중이에요.", "info", 2000); setTimeout(() => loadDT(false), 1200); });
   on("#dtDir", async () => { const r = await call("drawtool_pick_dir"); if (r && !r.cancel) { DT = r; renderDT(); } });
   on("#dtLog", () => call("drawtool_open_log"));
+  on("#dtDrawLog", () => call("drawtool_open_log", "draw"));
   on("#dtOff", async () => { if (d.batch_busy) await call("batch_stop"); await dtStop(); loadDT(false); renderABPrev(); });
   const adv = $("#dtAdv"); if (adv) adv.onchange = renderDT;
   $$("#abLocal [data-lm]").forEach((b) => b.onclick = () => { AB.localModel = b.dataset.lm; renderDT(); renderABOpts(); });
