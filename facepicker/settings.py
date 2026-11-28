@@ -104,6 +104,7 @@ class Settings:
         self.bulk_crop: str = "face"      # 대량·끌어다 놓기 자르기: face(얼굴 맞춤) / keep(그대로, 위쪽 맞춤)
         self.bulk_deco: str = "none"      # 대량·끌어다 놓기 꾸미기: follow(편집 화면 설정) / none
         self.check_updates: bool = True
+        self.pause_on_fm: bool = False     # FM27이 켜져 있으면 내 PC 그림도구는 잠깐 멈춤
         self.drawtool_dir: str = ""        # 내 PC 그림도구 폴더 (비우면 %LOCALAPPDATA%\FMFaceStudio_DrawTool)
         self.beta_updates: bool = False   # 테스트 버전(prerelease)도 받기   # 켤 때 GitHub에서 새 버전 확인
         self.skip_version: str = ""       # '이 버전 건너뛰기'

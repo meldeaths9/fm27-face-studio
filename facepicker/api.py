@@ -25,7 +25,7 @@ from .people import People, plain
 from .settings import Settings, app_data_dir
 from .style import STYLE_LABELS, Deco, decorate
 
-VERSION = "1.9.32"
+VERSION = "1.9.33"
 DISPLAY_MAX = 1600   # 화면에 보낼 편집용 사진 최대 크기
 log = logging.getLogger("api")
 
@@ -345,7 +345,7 @@ class Api:
         return {
             "version": VERSION, "pack_moved": getattr(self, "_pack_moved", ""),
             "settings": {
-                "graphics_dir": c.graphics_dir, "output_size": c.output_size, "check_updates": c.check_updates, "beta_updates": bool(getattr(c, "beta_updates", False)), "pack_folder": c.pack_name, "bulk_crop": c.bulk_crop, "bulk_deco": c.bulk_deco, "ab_deco": dict(c.ab_deco or {}),
+                "graphics_dir": c.graphics_dir, "output_size": c.output_size, "check_updates": c.check_updates, "beta_updates": bool(getattr(c, "beta_updates", False)), "pack_folder": c.pack_name, "bulk_crop": c.bulk_crop, "bulk_deco": c.bulk_deco, "pause_on_fm": bool(getattr(c, "pause_on_fm", False)), "ab_deco": dict(c.ab_deco or {}),
                 "prompt_template": c.prompt_template, "send_photo": c.send_photo,
                 "ai_provider": c.ai_provider if c.ai_provider not in providers.HIDDEN else "web_gemini", "deco": c.deco, "prompt_lang": c.prompt_lang,
                 "expression": c.expression, "manager_outfit": c.manager_outfit, "ref_mode": c.ref_mode, "club_hints": c.club_hints,
@@ -807,6 +807,8 @@ class Api:
             self._cfg.bulk_deco = value
         elif key == "ab_deco" and isinstance(value, dict):
             self._cfg.ab_deco = {k: value.get(k) for k in ("caption", "style", "rounded", "border") if k in value}
+        elif key == "pause_on_fm":
+            self._cfg.pause_on_fm = bool(value)
         elif key == "check_updates":
             self._cfg.check_updates = bool(value)
         elif key == "beta_updates":
@@ -1603,6 +1605,7 @@ class Api:
         pr = self.batch_price(engine)
         meta["won"] = pr.get("won", 0) if isinstance(pr, dict) and pr.get("kind") == "paid" else 0
         b.reset(people, meta)
+        b.pause_check = (lambda: bool(getattr(self._cfg, "pause_on_fm", False)) and fm_running()) if engine == "local" else None
         b.start(self._batch_job, workers=1 if engine == "local" else int(opts.get("workers") or 2), post=self._batch_post)
         return {"ok": True, "count": len(people), "skipped": skipped}
 
@@ -1735,7 +1738,8 @@ class Api:
             r = drawtool._RUNNERS.get(str(self._drawtool().root))
             v = r.view() if r else {"state": "off", "progress": {}}
             meta["local_state"], meta["local_progress"] = v["state"], v["progress"]
-        return {"items": items, "running": b.running, "stopping": bool(b.running and b._stop), "counts": b.counts(), "meta": meta}
+        return {"items": items, "running": b.running, "stopping": bool(b.running and b._stop), "counts": b.counts(), "meta": meta,
+                "paused": bool(getattr(b, "paused", False))}
 
     @_safe
     def batch_thumbs(self, ids: list) -> dict:

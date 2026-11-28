@@ -152,11 +152,35 @@ class Batch:
                     if it["status"] == "running":
                         it["status"] = "wait"
                 self.running = False
+                self.paused = False
                 self.save()
+
+    def _wait_pause(self) -> None:
+        """FM27이 켜져 있으면 꺼질 때까지 쉰다 (옵션)."""
+        chk = getattr(self, "pause_check", None)
+        if not chk:
+            return
+        last = 0.0
+        while not self._stop:
+            if time.time() - last >= 10:
+                last = time.time()
+                try:
+                    on = chk()
+                except Exception:  # noqa: BLE001
+                    on = False
+                self.paused = on
+                if not on:
+                    return
+                from . import drawtool
+                drawtool.stop_all()            # 쉬는 동안 그래픽카드 메모리도 돌려준다
+            time.sleep(1)
 
     def _worker(self, make_job) -> None:
         pid, cfg = self.meta.get("engine"), dict(self.meta.get("cfg") or {})
         while not self._stop:
+            self._wait_pause()
+            if self._stop:
+                return
             it = self._next()
             if not it:
                 return
