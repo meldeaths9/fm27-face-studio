@@ -1745,7 +1745,7 @@ async function dtStop() {
   if (r && r.error) toast(r.error, "err", 3000);
   else if (r && r.stopped) toast("그림도구를 껐어요.", "ok", 1800);
 }
-const DT_WARN = "그림도구가 켜져 있는 동안 그래픽카드 메모리와 PC 메모리를 많이 써요. 게임이나 다른 프로그램이 느려질 수 있어요. 다 그렸으면 '그림도구 끄기'를 누르거나 앱을 끄세요. 3분 동안 안 쓰면 저절로 꺼져요.";
+const DT_WARN = "그림도구가 켜져 있는 동안 그래픽카드 메모리와 PC 메모리를 많이 써요. 게임이나 다른 프로그램이 느려질 수 있어요.\n다 그렸으면 '그림도구 끄기'를 누르거나 앱을 끄세요. 3분 동안 안 쓰면 저절로 꺼져요.";
 const gb = (b) => (b / 1e9).toFixed(b >= 1e10 ? 0 : 1);
 async function loadDT(gpu) {
   const r = await call("drawtool_status", !!gpu);
